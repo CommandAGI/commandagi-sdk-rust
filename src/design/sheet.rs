@@ -31,11 +31,18 @@
 //!                                                                           ".R1 > .pin2", ".J1" (a junction),
 //!                                                                           "net.GND" (a label naming that net)
 //! netlabel(net, connection)                                                 a label naming the net of a pin
+//! part(name).symbol("Lib:Name").library("x.kicad_sym").value(…)            a library part: its symbol named by its
+//!                                                                           library ref in a .kicad_sym, by path
+//! unit(part, n).sch_x(…).sch_y(…)                                           where unit n (2 or more) of a part sits;
+//!                                                                           the part's own sch_x, sch_y place unit 1
+//! code(name).source(path).inputs(json)                                      a code part: the parts another file
+//!                                                                           declares, run with these inputs
 //! fragment(iter)                                                            several elements as one item (a loop)
 //! ```
 //!
 //! `sch_x` and `sch_y` are the sheet's own coordinates: millimetres, Y DOWN. `sch_rotation` is 0, 90, 180 or 270
-//! degrees. A part with neither is declared and not placed. A wire is a binding between two pins, never a coincidence
+//! degrees; `sch_mirror` is "x" or "y". A part with neither is declared and not placed. A library part's pins are the
+//! library's: the editor reads them, and binds a pin named by number (".U1 > .pin5") to the unit that has it. A wire is a binding between two pins, never a coincidence
 //! of coordinates. Each node carries the call it came from in `meta.source` (`super::source`), so the circuit editor
 //! writes its edits back into the file. What the sheet cannot say is refused by name, never guessed.
 
@@ -51,6 +58,10 @@ pub const SCH_LABEL: &str = "sch.label";
 const PART_PORT: &str = "part";
 const PART_BODY_PORT: &str = "@part";
 const VERTEX_PORT: &str = "v";
+/// A library part's wire end before the editor reads its library: the part node, and the pin by number.
+pub const LIBRARY_PIN_PORT: &str = "pin:";
+/// The node a code part declares (the graph's own `code` op): it runs another file.
+const CODE_OP: &str = "code";
 
 /// A placement's node type: `sch.symbol.` + FNV-1a over its pin sockets joined by NUL (part of the format).
 pub fn sch_symbol_type_for(sockets: &[&str]) -> String {
@@ -180,6 +191,31 @@ impl El {
     pub fn sch_rotation(self, degrees: impl Into<f64>) -> El {
         self.prop("sch_rotation", Json::Num(degrees.into()))
     }
+    /// The symbol's mirror: "x" or "y".
+    pub fn sch_mirror(self, axis: &str) -> El {
+        self.prop("sch_mirror", Json::from(axis))
+    }
+    /// A library part's symbol, by its library ref: `"Device:R_Small"`.
+    pub fn symbol(self, library_ref: &str) -> El {
+        self.prop("symbol", Json::from(library_ref))
+    }
+    /// The `.kicad_sym` that holds a library part's symbol, by its path relative to this file.
+    pub fn library(self, path: &str) -> El {
+        self.prop("library", Json::from(path))
+    }
+    /// A library part's value: `"LM358"`.
+    pub fn value(self, value: impl Into<PartValue>) -> El {
+        self.prop("value", value.into().0)
+    }
+    /// The file a code part runs, by its path relative to this file.
+    pub fn source(self, path: &str) -> El {
+        self.prop("source", Json::from(path))
+    }
+    /// A code part's inputs (its file's parameters), as JSON text of an object: `.inputs(r#"{"resistor": "330"}"#)`.
+    pub fn inputs(self, json: &str) -> El {
+        let value = Json::parse(json).unwrap_or_else(|e| Json::Str(format!("\u{0}{e}")));
+        self.prop("inputs", value)
+    }
     /// A trace's path goes on to one more selector (each step is one wire).
     pub fn then(mut self, selector: impl Into<String>) -> El {
         self.path.push(selector.into());
@@ -203,7 +239,15 @@ parts! {
     voltagesource: "An ideal voltage source: `voltagesource(\"V1\").voltage(\"9\")`; pin 1 (`pos`) is +.",
     currentsource: "An ideal current source: `currentsource(\"I1\").current(\"1m\")`; pin 1 (`pos`) is +.",
     ground: "A ground symbol (its name starts with #, as KiCad names power symbols): its net is GND.",
-    junction: "A wire vertex at (`sch_x`, `sch_y`)."
+    junction: "A wire vertex at (`sch_x`, `sch_y`).",
+    part: "A library part: `part(\"U1\").symbol(\"Amplifier_Operational:LM358\").library(\"opamps.kicad_sym\")`.",
+    code: "A code part: `code(\"blinker\").source(\"blinker.circuit.ts\").inputs(r#\"{\"resistor\": \"330\"}\"#)`."
+}
+
+/// Where unit `n` (2 or more) of a part sits: `unit("U1", 2).sch_x(101.6).sch_y(25.4)`.
+#[track_caller]
+pub fn unit(part: impl Into<String>, n: u32) -> El {
+    El::new("unit", Some(part.into()), here()).prop("unit", Json::Num(n as f64))
 }
 
 /// A wire between two selectors: `trace(".V1 > .pos", ".R1 > .pin1")`.
@@ -262,9 +306,58 @@ impl Document for Group {
 
 struct Placed {
     reference: String,
-    placement: Option<String>,
-    pins: usize,
-    aliases: &'static [(&'static str, &'static str)],
+    /// The part node's id.
+    id: String,
+    /// Its placements by unit.
+    units: Vec<(u32, String)>,
+    /// An ideal part's pin count and aliases; none for a library part (its pins are the library's).
+    ideal: Option<(usize, &'static [(&'static str, &'static str)])>,
+}
+
+/// Add the placement of `unit` of `part` that `el` declares (its sch_x, sch_y, sch_rotation, sch_mirror).
+fn place(s: &mut Scope, part: &mut Placed, unit: u32, el: &El, sockets: &[&str]) -> Result<(), String> {
+    let (x, y, rot) = (num(el, "sch_x"), num(el, "sch_y"), num(el, "sch_rotation"));
+    let mirror = el.get("sch_mirror").map(|m| m.as_str().unwrap_or("").to_string());
+    if x.is_none() && y.is_none() {
+        if rot.is_some() || mirror.is_some() {
+            let what = if rot.is_some() { "sch_rotation" } else { "sch_mirror" };
+            return Err(format!("{}: {what} needs sch_x and sch_y", el.at()));
+        }
+        if el.tag == "unit" {
+            return Err(format!("{}: a unit is placed: give it sch_x and sch_y", el.at()));
+        }
+        return Ok(());
+    }
+    if let Some(r) = rot {
+        if ![0.0, 90.0, 180.0, 270.0].contains(&r) {
+            return Err(format!("{}: sch_rotation is 0, 90, 180 or 270", el.at()));
+        }
+    }
+    if let Some(m) = &mirror {
+        if m != "x" && m != "y" {
+            return Err(format!("{}: sch_mirror is \"x\" or \"y\"", el.at()));
+        }
+    }
+    let inputs = vec![
+        ("unit".to_string(), Json::Num(unit as f64)),
+        ("style".into(), Json::Num(1.0)),
+        ("at".into(), Json::obj().with("x", x.unwrap_or(0.0)).with("y", y.unwrap_or(0.0))),
+        ("rot".into(), Json::Num(rot.unwrap_or(0.0))),
+        ("mirror".into(), Json::from(mirror.unwrap_or_default().as_str())),
+        (PART_PORT.into(), wire(&part.id, PART_BODY_PORT)),
+    ];
+    let reference = part.reference.clone();
+    let id = s.add(&sch_symbol_type_for(sockets), inputs, Some(&format!("sym_{reference}_{unit}")), Some(&reference), meta(el.site))?;
+    part.units.push((unit, id));
+    Ok(())
+}
+
+/// A text attribute that must be there.
+fn text_prop(el: &El, prop: &str, what: &str) -> Result<String, String> {
+    match el.get(prop).and_then(Json::as_str) {
+        Some(v) if !v.trim().is_empty() => Ok(v.to_string()),
+        _ => Err(format!("{}: {prop} is {what}", el.at())),
+    }
 }
 
 fn refuse_unknown(el: &El, allowed: &[&str]) -> Result<(), String> {
@@ -284,7 +377,7 @@ fn declare_sheet(s: &mut Scope, children: &[El]) -> Result<(), String> {
     let mut later: Vec<&El> = Vec::new();
     for el in children {
         if let Some(ideal) = ideal(el.tag) {
-            let mut allowed = vec!["sch_x", "sch_y", "sch_rotation"];
+            let mut allowed = vec!["sch_x", "sch_y", "sch_rotation", "sch_mirror"];
             allowed.extend(ideal.value);
             if ideal.excitation {
                 allowed.push("excitation");
@@ -322,28 +415,10 @@ fn declare_sheet(s: &mut Scope, children: &[El]) -> Result<(), String> {
                 inputs.push(("excitation".into(), excitation.clone()));
             }
             let part = s.add(&part_type_for(&pins), inputs, Some(&reference), Some(&reference), meta(el.site))?;
-            let (x, y, rot) = (num(el, "sch_x"), num(el, "sch_y"), num(el, "sch_rotation"));
-            let mut placement = None;
-            if x.is_some() || y.is_some() {
-                if let Some(r) = rot {
-                    if ![0.0, 90.0, 180.0, 270.0].contains(&r) {
-                        return Err(format!("{}: sch_rotation is 0, 90, 180 or 270", el.at()));
-                    }
-                }
-                let sockets: Vec<&str> = pins.iter().map(|(id, _)| id.as_str()).collect();
-                let inputs = vec![
-                    ("unit".to_string(), Json::Num(1.0)),
-                    ("style".into(), Json::Num(1.0)),
-                    ("at".into(), Json::obj().with("x", x.unwrap_or(0.0)).with("y", y.unwrap_or(0.0))),
-                    ("rot".into(), Json::Num(rot.unwrap_or(0.0))),
-                    ("mirror".into(), "".into()),
-                    (PART_PORT.into(), wire(&part, PART_BODY_PORT)),
-                ];
-                placement = Some(s.add(&sch_symbol_type_for(&sockets), inputs, Some(&format!("sym_{reference}_1")), Some(&reference), meta(el.site))?);
-            } else if rot.is_some() {
-                return Err(format!("{}: sch_rotation needs sch_x and sch_y", el.at()));
-            }
-            parts.insert(reference.clone(), Placed { reference, placement, pins: ideal.pins, aliases: ideal.aliases });
+            let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: Some((ideal.pins, ideal.aliases)) };
+            let sockets: Vec<&str> = pins.iter().map(|(id, _)| id.as_str()).collect();
+            place(s, &mut placed, 1, el, &sockets)?;
+            parts.insert(reference, placed);
             continue;
         }
         match el.tag {
@@ -357,10 +432,76 @@ fn declare_sheet(s: &mut Scope, children: &[El]) -> Result<(), String> {
                 let id = s.add(SCH_JUNCTION, vec![("at".into(), at)], Some(&name), Some("Junction"), meta(el.site))?;
                 junctions.insert(name, id);
             }
-            "trace" | "netlabel" => later.push(el),
+            "part" => {
+                refuse_unknown(el, &["symbol", "library", "value", "sch_x", "sch_y", "sch_rotation", "sch_mirror"])?;
+                let reference = el.name.clone().filter(|n| !n.trim().is_empty()).ok_or_else(|| format!("{}: name is the part's reference (U1)", el.at()))?;
+                if parts.contains_key(&reference) {
+                    return Err(format!("two parts are called {reference}"));
+                }
+                let symbol = text_prop(el, "symbol", "its library ref (\"Device:R_Small\")")?;
+                let mut halves = symbol.split(':');
+                if !(halves.next().is_some_and(|l| !l.is_empty()) && halves.next().is_some_and(|n| !n.is_empty()) && halves.next().is_none()) {
+                    return Err(format!("{}: symbol is a library ref, \"Library:Symbol\" (\"Device:R_Small\"), not {symbol:?}", el.at()));
+                }
+                let library = text_prop(el, "library", "the path of the .kicad_sym that holds the symbol")?;
+                if !library.to_lowercase().ends_with(".kicad_sym") {
+                    return Err(format!("{}: library names a .kicad_sym file, not {library:?}", el.at()));
+                }
+                // The pins are the library's: the editor reads them (and the part's type) from the library file.
+                let mut inputs = vec![("ref".to_string(), Json::from(reference.as_str()))];
+                if let Some(v) = el.get("value") {
+                    inputs.push(("value".into(), value_text(v).into()));
+                }
+                inputs.push(("symbol".into(), symbol.as_str().into()));
+                inputs.push(("library".into(), library.as_str().into()));
+                inputs.push(("pins".into(), Json::Arr(Vec::new())));
+                let part = s.add(&part_type_for(&[]), inputs, Some(&reference), Some(&reference), meta(el.site))?;
+                let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: None };
+                place(s, &mut placed, 1, el, &[])?;
+                parts.insert(reference, placed);
+            }
+            "code" => {
+                refuse_unknown(el, &["source", "inputs"])?;
+                let name = el.name.clone().filter(|n| !n.trim().is_empty()).ok_or_else(|| format!("{}: name is the code part's id", el.at()))?;
+                let source = text_prop(el, "source", "the path of the file it runs, relative to this one")?;
+                let mut inputs = vec![("source".to_string(), Json::from(source.as_str()))];
+                match el.get("inputs") {
+                    None => {}
+                    Some(Json::Obj(entries)) => {
+                        if entries.iter().any(|(k, _)| k == "source") {
+                            return Err(format!("{}: source is the file, not one of its inputs", el.at()));
+                        }
+                        inputs.extend(entries.iter().cloned());
+                    }
+                    Some(Json::Str(e)) if e.starts_with('\u{0}') => return Err(format!("{}: inputs is JSON text ({})", el.at(), &e[1..])),
+                    Some(_) => return Err(format!("{}: inputs is an object of the file's parameters", el.at())),
+                }
+                if s.has(&slug(&name)) {
+                    return Err(format!("two nodes are called {name}"));
+                }
+                let label = source.rsplit('/').next().unwrap_or(&source).to_string();
+                s.add(CODE_OP, inputs, Some(&name), Some(&label), meta(el.site))?;
+            }
+            "unit" | "trace" | "netlabel" => later.push(el),
             other => return Err(format!("{other}() is not read on a schematic (see commandagi::design::sheet)")),
         }
     }
+
+    // Units first: a wire may land on any unit's pin.
+    for el in later.iter().filter(|el| el.tag == "unit") {
+        refuse_unknown(el, &["unit", "sch_x", "sch_y", "sch_rotation", "sch_mirror"])?;
+        let reference = el.name.clone().unwrap_or_default();
+        let part = parts.get_mut(&reference).ok_or_else(|| format!("{}: there is no part {reference}", el.at()))?;
+        let n = num(el, "unit").filter(|n| n.fract() == 0.0 && *n >= 2.0).ok_or_else(|| format!("{}: unit is 2 or more (the part's own sch_x and sch_y place unit 1)", el.at()))? as u32;
+        if part.ideal.is_some() {
+            return Err(format!("{}: {reference} is an ideal part, which has one unit", el.at()));
+        }
+        if part.units.iter().any(|(u, _)| *u == n) {
+            return Err(format!("{}: unit {n} of {reference} is placed twice", el.at()));
+        }
+        place(s, part, n, el, &[])?;
+    }
+    let later: Vec<&El> = later.into_iter().filter(|el| el.tag != "unit").collect();
 
     let end = |sel: &str, el: &El| -> Result<End, String> {
         let t = sel.trim();
@@ -384,11 +525,22 @@ fn declare_sheet(s: &mut Scope, children: &[El]) -> Result<(), String> {
                     return Err(refused());
                 }
                 let p = parts.get(part).ok_or_else(|| format!("{}: there is no part {part}", el.at()))?;
-                let placement = p.placement.as_ref().ok_or_else(|| format!("{}: {} is not on the sheet (give it sch_x and sch_y)", el.at(), p.reference))?;
+                if p.units.is_empty() {
+                    return Err(format!("{}: {} is not on the sheet (give it sch_x and sch_y)", el.at(), p.reference));
+                }
+                let Some((count, aliases)) = p.ideal else {
+                    // A library part's pin by number (".pin5" or ".5"); the editor binds it to the unit that has it.
+                    let number = match pin.get(..3) {
+                        Some(head) if head.eq_ignore_ascii_case("pin") && pin.len() > 3 => &pin[3..],
+                        _ => pin,
+                    };
+                    return Ok(End::Pin(p.id.clone(), format!("{LIBRARY_PIN_PORT}{number}")));
+                };
+                let placement = &p.units.iter().find(|(u, _)| *u == 1).ok_or_else(|| format!("{}: {} is not on the sheet (give it sch_x and sch_y)", el.at(), p.reference))?.1;
                 let key = pin.to_lowercase();
-                let number = p.aliases.iter().find(|(a, _)| *a == key).map(|(_, n)| n.to_string()).or_else(|| key.chars().all(|c| c.is_ascii_digit()).then(|| key.clone()));
+                let number = aliases.iter().find(|(a, _)| *a == key).map(|(_, n)| n.to_string()).or_else(|| key.chars().all(|c| c.is_ascii_digit()).then(|| key.clone()));
                 match number.and_then(|n| n.parse::<usize>().ok()) {
-                    Some(n) if n >= 1 && n <= p.pins => Ok(End::Pin(placement.clone(), format!("p{n}"))),
+                    Some(n) if n >= 1 && n <= count => Ok(End::Pin(placement.clone(), format!("p{n}"))),
                     _ => Err(format!("{}: {} has no pin {pin}", el.at(), p.reference)),
                 }
             }
