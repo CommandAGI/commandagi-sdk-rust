@@ -126,6 +126,8 @@ elements! {
     invert: children;
     /// A photo's adjustment.
     posterize: children;
+    /// A photo's adjustment: the develop (light, colour, effects) in one tag.
+    develop: children;
     /// A photo's filter on a raster's own pixels.
     gaussian_blur = "gaussianBlur": children;
     /// A photo's filter on a raster's own pixels.
@@ -411,7 +413,7 @@ attributes! {
 pub(crate) const FAMILY: Family = Family { module: "twod", roots: &["drawing", "painting", "photo", "nest"], declare };
 
 /// A photo's adjustments: each a layer whose attributes are the adjustment.
-pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", "vibrance", "colorBalance", "blackWhite", "invert", "threshold", "posterize"];
+pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", "vibrance", "colorBalance", "blackWhite", "invert", "threshold", "posterize", "develop"];
 /// A photo's filters: each on a raster's own pixels.
 pub const PHOTO_FILTERS: &[&str] = &["gaussianBlur", "unsharpMask", "sharpen", "noise"];
 
@@ -704,6 +706,16 @@ fn common_refused(el: &El, a: &Json, why: &str) -> Result<(), String> {
     }
 }
 
+/// An adjustment tag as a layer: the layer's own fields, and the rest as its `adjustment`.
+fn adjustment_layer(el: &El, node_type: &str) -> Result<Option<(String, Json)>, String> {
+    let mut common = Json::obj();
+    let mut adjustment = Json::obj().with("type", el.tag);
+    for (k, v) in entries(&attrs(el, &[])?) {
+        if COMMON.contains(&k.as_str()) { &mut common } else { &mut adjustment }.set(k, v.clone());
+    }
+    Ok(Some((node_type.into(), common.with("adjustment", adjustment))))
+}
+
 const PAINT: StackKind = StackKind {
     root: "painting",
     prefix: "paint",
@@ -711,6 +723,7 @@ const PAINT: StackKind = StackKind {
     layer: |el| match el.tag {
         "layer" => pixel_layer(el, "paint.layer"),
         "fill" | "group" => Ok(Some((format!("paint.{}", el.tag), attrs(el, &[])?))),
+        t if PHOTO_ADJUSTMENTS.contains(&t) => adjustment_layer(el, "paint.adjust"),
         _ => Ok(None),
     },
     chain: |el| {
@@ -734,14 +747,7 @@ const PHOTO: StackKind = StackKind {
     layer: |el| match el.tag {
         "raster" => pixel_layer(el, "photo.raster"),
         "fill" | "gradient" | "group" => Ok(Some((format!("photo.{}", el.tag), attrs(el, &[])?))),
-        t if PHOTO_ADJUSTMENTS.contains(&t) => {
-            let mut common = Json::obj();
-            let mut adjustment = Json::obj().with("type", t);
-            for (k, v) in entries(&attrs(el, &[])?) {
-                if COMMON.contains(&k.as_str()) { &mut common } else { &mut adjustment }.set(k, v.clone());
-            }
-            Ok(Some(("photo.adjust".into(), common.with("adjustment", adjustment))))
-        }
+        t if PHOTO_ADJUSTMENTS.contains(&t) => adjustment_layer(el, "photo.adjust"),
         _ => Ok(None),
     },
     chain: |el| {
