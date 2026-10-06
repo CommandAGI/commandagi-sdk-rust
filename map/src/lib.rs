@@ -6,11 +6,15 @@
 //! compiling the file, and the local host refuses, before it compiles a file, what would let the file read this
 //! computer at compile time.
 //!
-//! `map(text)` lists every call of a function by path (`resistor("R1")`, `sheet::group(…)`) in source order, with the
-//! method calls chained on it as its attributes (`.sch_x(114.3)`): each one's span, its argument's span, and its value
-//! when the argument is a literal (else the expression's text). A call written as an item of another call's array
-//! argument (`group("Divider", [ … ])`) is a child of that call, unless it is inside a closure or a loop. It lists the
-//! `use` declarations (where a new constructor is imported), and what the sandbox refuses.
+//! `map(text)` gives the one source-map shape every SDK gives (`graph.meta.sourceMap`, the contract the write-back
+//! engine reads): every call of a snake-case function by name or path (`resistor("R1")`, `schematic::group(…)`), in
+//! source order, with the methods chained on it as its attributes (`.sch_x(114.3)`, `props`) and its arguments in
+//! order (`args`: the positional attributes and the children parameter). An argument that is `[…]`, `vec![…]` or a
+//! tuple is a children `list`, and each element written as one of its entries is a child of the call with a `slot`
+//! (where a sibling may be written beside it), unless it is in a closure or a loop (`looped`). A call whose value is
+//! bound or passed on has a `spread`: an attribute it does not write may come from there. A value is a literal when
+//! it is one, `-x`, `json(r#"…"#)` (its parsed JSON: the value helper is never an element) or an array or `vec![…]`
+//! of these. It also lists the `use` declarations (where a new constructor is imported), and what the sandbox refuses.
 //!
 //! Offsets are UTF-16 code units from the start of the text (what a JavaScript string indexes); lines are 1-based; a
 //! `site` is the line and 1-based column in characters, which is what `std::panic::Location` gives a running file.
@@ -42,7 +46,11 @@ pub fn map(text: &str) -> Json {
         Ok(file) => file,
         Err(e) => {
             let at = e.span().start();
-            return out.with("error", format!("line {}: {e}", at.line)).with("elements", Json::Arr(vec![])).with("imports", Json::Arr(vec![]));
+            return out
+                .with("elements", Json::Arr(vec![]))
+                .with("imports", Json::Arr(vec![]))
+                .with("refused", Json::Arr(vec![]))
+                .with("error", format!("line {}: {e}", at.line));
         }
     };
     let mut m = Mapper { text, units: &units, elements: Vec::new(), imports: Vec::new(), refused: Vec::new(), parent: None, in_loop: false, item: None };
@@ -64,9 +72,26 @@ pub fn map(text: &str) -> Json {
         .iter()
         .map(|&i| {
             let el = &elements[i];
-            let mut j = el.json.clone();
-            j.set("index", rank[i] as f64);
+            let mut j = Json::obj().with("index", rank[i] as f64);
+            if let Json::Obj(fields) = el.json.clone() {
+                for (k, v) in fields {
+                    j.set(&k, v);
+                }
+            }
             j.set("parent", el.parent.map(|p| Json::Num(rank[p] as f64)).unwrap_or(Json::Null));
+            for &(arg, entry, child) in &el.refs {
+                let Some(Json::Arr(args)) = field(&mut j, "args") else { continue };
+                let target = match entry {
+                    None => Some(&mut args[arg]),
+                    Some(n) => match field(&mut args[arg], "list").and_then(|l| field(l, "entries")) {
+                        Some(Json::Arr(entries)) => Some(&mut entries[n]),
+                        _ => None,
+                    },
+                };
+                if let Some(t) = target {
+                    t.set("element", rank[child] as f64);
+                }
+            }
             j
         })
         .collect();
@@ -100,18 +125,34 @@ struct Element {
     end: u32,
     parent: Option<usize>,
     json: Json,
+    /// The elements written as its arguments: (argument, list entry or none, the element).
+    refs: Vec<(usize, Option<usize>, usize)>,
 }
 
-/// A call that is an item of its parent's array: the ends of the items around it.
+/// Where a call that is a child sits among its siblings: the ends of the entries around it.
 #[derive(Clone, Copy)]
-struct Item {
-    parent: usize,
-    /// The end of the item before it, or the offset after the array's `[`.
+struct Slot {
+    /// The end of the entry before it, or the offset after the list's `[` / `(`.
     before: u32,
-    /// The start of the item after it, or the offset of the array's `]`.
+    /// The start of the entry after it, or the offset of the list's `]` / `)`.
     after: u32,
     /// A comma follows it.
     comma: bool,
+}
+
+/// The expression visited next is an argument of the element being mapped, or an entry of its children list (a slot).
+#[derive(Clone, Copy)]
+struct Item {
+    slot: Option<Slot>,
+}
+
+/// A children list written as an argument: `[…]`, `vec![…]` or a tuple `(…)`.
+struct List {
+    kind: &'static str,
+    entries: Vec<Expr>,
+    open: Span,
+    close: Span,
+    trailing: bool,
 }
 
 struct Mapper<'a> {
@@ -122,7 +163,6 @@ struct Mapper<'a> {
     refused: Vec<Json>,
     parent: Option<usize>,
     in_loop: bool,
-    /// The expression visited next is this item of an array.
     item: Option<Item>,
 }
 
@@ -168,6 +208,7 @@ impl Mapper<'_> {
         }
     }
 
+    /// A literal's value: a literal, `-x`, `json(r#"…"#)` (its parsed JSON), or an array or `vec![…]` of these.
     fn lit(&self, e: &Expr) -> Option<Json> {
         match e {
             Expr::Lit(l) => match &l.lit {
@@ -182,44 +223,85 @@ impl Mapper<'_> {
                 _ => None,
             },
             Expr::Paren(p) => self.lit(&p.expr),
+            Expr::Call(c) if is_json(c) => match c.args.first() {
+                Some(Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. })) => Json::parse(&s.value()).ok(),
+                _ => None,
+            },
+            Expr::Array(a) => a.elems.iter().map(|x| self.lit(x)).collect::<Option<Vec<_>>>().map(Json::Arr),
+            Expr::Macro(m) if m.mac.path.is_ident("vec") => {
+                let items = m.mac.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated).ok()?;
+                items.iter().map(|x| self.lit(x)).collect::<Option<Vec<_>>>().map(Json::Arr)
+            }
             _ => None,
         }
     }
 
-    /// An argument: its span and its value (literal) or its text.
+    /// An argument or a list entry: its span, its line, and its value (a literal) or its text.
     fn arg(&self, e: &Expr) -> Json {
         let (s, t) = self.off(e.span());
-        let j = Json::obj().with("start", s as f64).with("end", t as f64);
+        let j = Json::obj().with("start", s as f64).with("end", t as f64).with("line", e.span().start().line as f64);
         match self.lit(e) {
             Some(v) => j.with("literal", true).with("value", v),
             None => j.with("literal", false).with("expr", self.source(e.span())),
         }
     }
 
-    /// The array a call takes its children from (`[ … ]` or `vec![ … ]`): its items and the brackets' spans.
-    fn children_of(e: &Expr) -> Option<(Vec<Expr>, Span, Span, bool)> {
+    /// The children list an argument is: `[ … ]`, `vec![ … ]` or a tuple `( … )`.
+    fn list_of(e: &Expr) -> Option<List> {
         match e {
-            Expr::Array(a) => Some((a.elems.iter().cloned().collect(), a.bracket_token.span.open(), a.bracket_token.span.close(), a.elems.trailing_punct())),
+            Expr::Array(a) => Some(List { kind: "array", entries: a.elems.iter().cloned().collect(), open: a.bracket_token.span.open(), close: a.bracket_token.span.close(), trailing: a.elems.trailing_punct() }),
+            Expr::Tuple(t) => Some(List { kind: "tuple", entries: t.elems.iter().cloned().collect(), open: t.paren_token.span.open(), close: t.paren_token.span.close(), trailing: t.elems.trailing_punct() && t.elems.len() > 1 }),
             Expr::Macro(m) if m.mac.path.is_ident("vec") => {
                 let syn::MacroDelimiter::Bracket(b) = &m.mac.delimiter else { return None };
                 let items = m.mac.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated).ok()?;
-                Some((items.iter().cloned().collect(), b.span.open(), b.span.close(), items.trailing_punct()))
+                Some(List { kind: "vec", entries: items.iter().cloned().collect(), open: b.span.open(), close: b.span.close(), trailing: items.trailing_punct() })
             }
             _ => None,
         }
     }
 
+    /// Visit an expression; → the element it is, when it is one.
+    fn expr(&mut self, e: &Expr) -> Option<usize> {
+        if let Some(index) = self.element(e) {
+            return Some(index);
+        }
+        self.item = None;
+        match e {
+            Expr::Closure(c) => self.looped(|m| visit::visit_expr_closure(m, c)),
+            Expr::ForLoop(f) => {
+                self.visit_expr(&f.expr);
+                self.looped(|m| m.visit_block(&f.body));
+            }
+            Expr::While(w) => self.looped(|m| visit::visit_expr_while(m, w)),
+            Expr::Loop(l) => self.looped(|m| visit::visit_expr_loop(m, l)),
+            Expr::Macro(mac) => {
+                // The arguments of a macro the file may call are expressions: a call in them is mapped too.
+                if let Ok(items) = mac.mac.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated) {
+                    for x in &items {
+                        self.visit_expr(x);
+                    }
+                }
+            }
+            _ => visit::visit_expr(self, e),
+        }
+        None
+    }
+
     /// A call by path with the methods chained on it: `resistor("R1").resistance("3k").sch_x(114.3)`.
-    fn element(&mut self, outer: &Expr) -> bool {
+    fn element(&mut self, outer: &Expr) -> Option<usize> {
         let mut methods: Vec<&syn::ExprMethodCall> = Vec::new();
         let mut e = outer;
         while let Expr::MethodCall(m) = e {
             methods.push(m);
             e = &m.receiver;
         }
-        let Expr::Call(call) = e else { return false };
-        let Expr::Path(func) = &*call.func else { return false };
-        let Some(last) = func.path.segments.last() else { return false };
+        let Expr::Call(call) = e else { return None };
+        let Expr::Path(func) = &*call.func else { return None };
+        // A constructor is snake case by a path of modules (`rect`, `twod::rect`); `String::from` and `Some` are not.
+        if is_json(call) || !func.path.segments.iter().all(|s| s.ident.to_string().trim_start_matches("r#").starts_with(|c: char| c.is_ascii_lowercase() || c == '_')) {
+            return None;
+        }
+        let last = func.path.segments.last()?;
         methods.reverse();
 
         let item = self.item.take();
@@ -228,6 +310,8 @@ impl Mapper<'_> {
         let begin = call.span().start();
         let line_start = self.text[..self.text.len().min(call.span().byte_range().start)].rfind('\n').map(|i| i + 1).unwrap_or(0);
         let column = start - self.units.at[line_start] + 1;
+        let (_, open) = self.off(call.paren_token.span.open());
+        let (close, _) = self.off(call.paren_token.span.close());
         let mut j = Json::obj()
             .with("tag", last.ident.to_string())
             .with("callee", self.source(func.span()))
@@ -241,83 +325,91 @@ impl Mapper<'_> {
             .map(|m| {
                 let (s, _) = self.off(m.dot_token.span());
                 let (_, t) = self.off(m.paren_token.span.close());
-                let mut p = Json::obj().with("name", m.method.to_string()).with("start", s as f64).with("end", t as f64).with("line", m.method.span().start().line as f64);
+                let mut p = Json::obj().with("name", m.method.to_string()).with("start", s as f64).with("end", t as f64);
                 match m.args.first() {
                     Some(a) if m.args.len() == 1 => {
                         let (vs, ve) = self.off(a.span());
                         p.set("valueStart", vs as f64);
                         p.set("valueEnd", ve as f64);
                         match self.lit(a) {
-                            Some(v) => p.with("literal", true).with("value", v),
-                            None => p.with("literal", false).with("expr", self.source(a.span())),
+                            Some(v) => p = p.with("literal", true).with("value", v),
+                            None => p = p.with("literal", false).with("expr", self.source(a.span())),
                         }
                     }
-                    _ => p.with("literal", false).with("expr", m.args.iter().map(|a| self.source(a.span())).collect::<Vec<_>>().join(", ")),
+                    _ => p = p.with("literal", false).with("expr", m.args.iter().map(|a| self.source(a.span())).collect::<Vec<_>>().join(", ")),
                 }
+                p.with("line", m.method.span().start().line as f64)
             })
             .collect();
         j.set("props", Json::Arr(props));
-        j.set("args", Json::Arr(call.args.iter().map(|a| self.arg(a)).collect()));
-        // A call whose value is bound or passed on (not an item of an array) may have attributes set elsewhere.
-        let placed = item.is_some_and(|it| Some(it.parent) == self.parent);
+        j.set("args", Json::Arr(Vec::new()));
+        j.set("open", open as f64);
+        j.set("close", close as f64);
+        // A call whose value is bound or passed on (not an argument or a list entry of an element) may have
+        // attributes set elsewhere.
         let spread = Json::obj().with("line", begin.line as f64).with("expr", format!("{}(…), whose value the code passes on", self.source(func.span())));
-        j.set("spread", if placed { Json::Null } else { spread });
-        j.set("item", match item.filter(|_| placed) {
-            Some(it) => Json::obj().with("before", it.before as f64).with("after", it.after as f64).with("comma", it.comma),
+        j.set("spread", if item.is_some() { Json::Null } else { spread });
+        let slot = item.and_then(|it| it.slot);
+        j.set("slot", match slot {
+            Some(s) => Json::obj().with("before", s.before as f64).with("after", s.after as f64).with("comma", s.comma),
             None => Json::Null,
         });
-        j.set("child", placed && !self.in_loop);
-        j.set("loop", self.in_loop);
+        j.set("looped", self.in_loop);
+        j.set("placed", slot.is_some() && !self.in_loop);
         let index = self.elements.len();
-        self.elements.push(Element { start, end, parent: self.parent, json: j });
+        self.elements.push(Element { start, end, parent: self.parent, json: j, refs: Vec::new() });
 
-        // Its arguments: an array of elements makes it their parent; anything else is visited in its own right.
+        // Its arguments: positional attributes and children. A list argument's entries are its children.
         let saved = (self.parent, self.item);
         self.parent = Some(index);
-        for a in &call.args {
-            match Self::children_of(a) {
-                Some((items, open, close, trailing)) => {
-                    let (_, after_open) = self.off(open);
-                    let (close_at, _) = self.off(close);
-                    let spans: Vec<(u32, u32)> = items.iter().map(|x| self.off(x.span())).collect();
-                    let indent = spans.first().map(|&(s, _)| self.indent_at(s)).unwrap_or_default();
-                    let last_end = spans.last().map(|s| s.1).unwrap_or(after_open);
-                    self.elements[index].json.set(
-                        "items",
-                        Json::obj()
-                            .with("open", after_open as f64)
-                            .with("close", close_at as f64)
-                            .with("count", items.len() as f64)
-                            .with("lastEnd", last_end as f64)
-                            .with("trailing", trailing)
-                            .with("indent", indent),
-                    );
-                    for (k, x) in items.iter().enumerate() {
-                        let before = if k == 0 { after_open } else { spans[k - 1].1 };
-                        let after = spans.get(k + 1).map(|s| s.0).unwrap_or(close_at);
-                        let comma = k + 1 < items.len() || trailing;
-                        self.item = Some(Item { parent: index, before, after, comma });
-                        self.visit_expr(x);
+        let mut args = Vec::new();
+        for (k, a) in call.args.iter().enumerate() {
+            let mut arg = self.arg(a);
+            match Self::list_of(a) {
+                Some(list) => {
+                    let (_, after_open) = self.off(list.open);
+                    let (close_at, _) = self.off(list.close);
+                    let spans: Vec<(u32, u32)> = list.entries.iter().map(|x| self.off(x.span())).collect();
+                    let mut entries = Vec::new();
+                    for (n, x) in list.entries.iter().enumerate() {
+                        let before = if n == 0 { after_open } else { spans[n - 1].1 };
+                        let after = spans.get(n + 1).map(|s| s.0).unwrap_or(close_at);
+                        let comma = n + 1 < list.entries.len() || list.trailing;
+                        entries.push(self.arg(x));
+                        self.item = Some(Item { slot: Some(Slot { before, after, comma }) });
+                        if let Some(child) = self.expr(x) {
+                            self.elements[index].refs.push((k, Some(n), child));
+                        }
                         self.item = None;
                     }
+                    arg.set(
+                        "list",
+                        Json::obj()
+                            .with("kind", list.kind)
+                            .with("open", after_open as f64)
+                            .with("close", close_at as f64)
+                            .with("trailing", list.trailing)
+                            .with("entries", Json::Arr(entries)),
+                    );
                 }
-                None => self.visit_expr(a),
+                None => {
+                    self.item = Some(Item { slot: None });
+                    if let Some(child) = self.expr(a) {
+                        self.elements[index].refs.push((k, None, child));
+                    }
+                    self.item = None;
+                }
             }
+            args.push(arg);
         }
+        self.elements[index].json.set("args", Json::Arr(args));
         for m in &methods {
             for a in &m.args {
                 self.visit_expr(a);
             }
         }
         (self.parent, self.item) = saved;
-        true
-    }
-
-    /// The indent of the line a UTF-16 offset is on.
-    fn indent_at(&self, unit: u32) -> String {
-        let byte = self.units.at.iter().position(|&u| u >= unit).unwrap_or(self.text.len()).min(self.text.len());
-        let start = self.text[..byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        self.text[start..].chars().take_while(|c| *c == ' ' || *c == '\t').collect()
+        Some(index)
     }
 
     fn looped(&mut self, f: impl FnOnce(&mut Self)) {
@@ -390,28 +482,7 @@ impl Mapper<'_> {
 
 impl<'ast> Visit<'ast> for Mapper<'_> {
     fn visit_expr(&mut self, e: &'ast Expr) {
-        if matches!(e, Expr::Call(_) | Expr::MethodCall(_)) && self.element(e) {
-            return;
-        }
-        self.item = None;
-        match e {
-            Expr::Closure(c) => self.looped(|m| visit::visit_expr_closure(m, c)),
-            Expr::ForLoop(f) => {
-                self.visit_expr(&f.expr);
-                self.looped(|m| m.visit_block(&f.body));
-            }
-            Expr::While(w) => self.looped(|m| visit::visit_expr_while(m, w)),
-            Expr::Loop(l) => self.looped(|m| visit::visit_expr_loop(m, l)),
-            Expr::Macro(mac) => {
-                // The arguments of a macro the file may call are expressions: a call in them is mapped too.
-                if let Ok(items) = mac.mac.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated) {
-                    for x in &items {
-                        self.visit_expr(x);
-                    }
-                }
-            }
-            _ => visit::visit_expr(self, e),
-        }
+        self.expr(e);
     }
 
     fn visit_item_use(&mut self, u: &'ast syn::ItemUse) {
@@ -442,6 +513,18 @@ impl<'ast> Visit<'ast> for Mapper<'_> {
         }
         visit::visit_attribute(self, a);
     }
+}
+
+fn field<'a>(j: &'a mut Json, key: &str) -> Option<&'a mut Json> {
+    match j {
+        Json::Obj(entries) => entries.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v),
+        _ => None,
+    }
+}
+
+/// `json(…)`: the value helper, a literal, not an element.
+fn is_json(call: &syn::ExprCall) -> bool {
+    matches!(&*call.func, Expr::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "json"))
 }
 
 // ── The WebAssembly interface: no imports; the page writes the text into memory it asked for, then reads the JSON. ──
