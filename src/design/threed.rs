@@ -386,7 +386,7 @@ fn builtin_planes_of(root: &El) -> Result<Vec<&'static str>, String> {
 }
 
 fn declare(root: El) -> Result<Declared, String> {
-    declare_threed(&root, "Part").map(Declared::Graph)
+    declare_threed(&root, &super::source::stem().unwrap_or_else(|| "Part".into())).map(Declared::Graph)
 }
 
 /// The graph a part or assembly element declares: an op graph whose nodes are its parameters, planes, features and

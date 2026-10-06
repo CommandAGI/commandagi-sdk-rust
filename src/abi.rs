@@ -7,7 +7,11 @@
 //! #[no_mangle] pub extern "C" fn commandagi_run() -> u32 { ::commandagi::abi::run(document) }
 //! #[no_mangle] pub extern "C" fn commandagi_out_ptr() -> u32 { ::commandagi::abi::out_ptr() }
 //! #[no_mangle] pub extern "C" fn commandagi_out_len() -> u32 { ::commandagi::abi::out_len() }
+//! #[no_mangle] pub extern "C" fn commandagi_stem_alloc(len: u32) -> u32 { ::commandagi::abi::stem_alloc(len) }
 //! ```
+//!
+//! Before the run, the sandbox may write the file's stem (UTF-8) where `commandagi_stem_alloc` says: a document that
+//! names itself nothing is named after it.
 //!
 //! The module has no imports. `commandagi_run` returns 1 and leaves the answer as UTF-8 at `commandagi_out_ptr`
 //! (`commandagi_out_len` bytes): `{"ok":true,"graph","params","sites"}`, and for a document that is not a graph also
@@ -20,6 +24,16 @@ use std::cell::RefCell;
 
 thread_local! {
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    static STEM_IN: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Room for the file's stem, `len` bytes of UTF-8: where the sandbox writes it before `run`.
+pub fn stem_alloc(len: u32) -> u32 {
+    STEM_IN.with(|b| {
+        let mut b = b.borrow_mut();
+        *b = vec![0; len as usize];
+        b.as_mut_ptr() as usize as u32
+    })
 }
 
 fn set_out(text: String) {
@@ -56,6 +70,7 @@ pub fn run(document: impl FnOnce() -> El) -> u32 {
         set_out(failed(format!("{what}{at}")));
     }));
     set_out(failed("the file did not finish".into()));
+    STEM_IN.with(|b| source::set_stem(&String::from_utf8_lossy(&b.borrow())));
     match answer(declare(document())) {
         Ok(answer) => {
             set_out(answer.text());

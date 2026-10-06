@@ -75,3 +75,18 @@ impl Sources {
 pub fn sites() -> Json {
     COUNTS.with(|c| Json::Arr(c.borrow().iter().map(|(s, n)| Json::Arr(vec![s.line.into(), s.column.into(), (*n).into()])).collect()))
 }
+
+thread_local! {
+    static STEM: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// The file's name without its extensions (`Brackets` of `Brackets.nest.rs`), as the sandbox gave it before the run:
+/// what a document that names itself nothing is called, as the TypeScript and Python runs call it.
+pub fn stem() -> Option<String> {
+    STEM.with(|s| Some(s.borrow().clone()).filter(|s| !s.is_empty()))
+}
+
+/// Set the file's stem (the sandbox, through `abi::stem_alloc`; a test).
+pub fn set_stem(stem: &str) {
+    STEM.with(|s| *s.borrow_mut() = stem.to_string());
+}

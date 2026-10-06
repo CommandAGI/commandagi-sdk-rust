@@ -38,8 +38,7 @@
 //! `mask` is not a node, so a masked node carries the mask's call in `meta.sources.mask`. A tag the vocabulary does not
 //! have is refused by name.
 //!
-//! A file names no document: a root without `.name(…)` declares the one named "Drawing" (TypeScript names it by the
-//! file).
+//! A root without `.name(…)` declares the document named after its file, as TypeScript does ("Drawing" with no file).
 
 use super::element::{attributes, elements, rust_name};
 use super::ir::{channels, slug, wire, Scope};
@@ -414,8 +413,10 @@ pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", 
 /// A photo's filters: each on a raster's own pixels.
 pub const PHOTO_FILTERS: &[&str] = &["gaussianBlur", "unsharpMask", "sharpen", "noise"];
 
-/// The name of a document whose root names none.
-const UNNAMED: &str = "Drawing";
+/// The name of a document whose root names none: the file's, as TypeScript names it ("Drawing" with no file).
+fn unnamed() -> String {
+    super::source::stem().unwrap_or_else(|| "Drawing".into())
+}
 
 fn declare(root: El) -> Result<Declared, String> {
     let mut d = Doc::default();
@@ -896,7 +897,7 @@ impl Doc {
                 m.set(k, v.clone());
             }
         }
-        self.s = Some(Scope::new(&format!("draw:{}", slug(own.unwrap_or(UNNAMED))), m.clone()));
+        self.s = Some(Scope::new(&format!("draw:{}", slug(&own.map(str::to_string).unwrap_or_else(unnamed))), m.clone()));
         let layers = root.child_elements().map(|c| self.drawn(c, true)).collect::<Result<Vec<_>, _>>()?;
         let mut inputs = Vec::new();
         if let Some(bg) = m.get("background") {
@@ -982,7 +983,7 @@ impl Doc {
         if let Some((k, _)) = entries(&a).iter().find(|(k, _)| !["name", "width", "height", "background", "dpi"].contains(&k.as_str())) {
             return Err(format!("{}: {} is not read (it has name, width, height, background, dpi)", tag(kind.root), rust_name(k)));
         }
-        let title = a.get("name").and_then(Json::as_str).unwrap_or(UNNAMED).to_string();
+        let title = a.get("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(unnamed);
         self.s = Some(Scope::new(&format!("{}:{}", kind.prefix, slug(&title)), Json::obj().with("domain", kind.prefix).with("name", title)));
         let kids: Vec<&El> = root.child_elements().collect();
         let layers = self.stack(kind, &kids)?;
@@ -999,7 +1000,7 @@ impl Doc {
         if let Some((k, _)) = entries(&a).iter().find(|(k, _)| !["safeZMm", "overrides"].contains(&k.as_str())) {
             return Err(format!("nest(): {} is not read (it has safe_z_mm, overrides)", rust_name(k)));
         }
-        let title = root.attr("name").and_then(Json::as_str).unwrap_or(UNNAMED).to_string();
+        let title = root.attr("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(unnamed);
         self.s = Some(Scope::new(&format!("nest:{}", slug(&title)), Json::obj().with("domain", "nest").with("name", title)));
         let mut one: Vec<(String, Json)> = Vec::new();
         let mut parts = Vec::new();
