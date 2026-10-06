@@ -53,7 +53,7 @@ pub fn map(text: &str) -> Json {
                 .with("error", format!("line {}: {e}", at.line));
         }
     };
-    let mut m = Mapper { text, units: &units, elements: Vec::new(), imports: Vec::new(), refused: Vec::new(), parent: None, in_loop: false, item: None };
+    let mut m = Mapper { text, units: &units, elements: Vec::new(), imports: Vec::new(), refused: Vec::new(), parent: None, in_loop: false, item: None, root: false };
     if let Ok(tokens) = text.parse::<TokenStream>() {
         m.scan_macros(tokens);
     }
@@ -164,6 +164,8 @@ struct Mapper<'a> {
     parent: Option<usize>,
     in_loop: bool,
     item: Option<Item>,
+    /// The expression visited next is what `fn document()` returns: the file's root, whose value goes nowhere else.
+    root: bool,
 }
 
 impl Mapper<'_> {
@@ -305,6 +307,7 @@ impl Mapper<'_> {
         methods.reverse();
 
         let item = self.item.take();
+        let root = std::mem::take(&mut self.root);
         let (start, _) = self.off(call.span());
         let (_, end) = self.off(outer.span());
         let begin = call.span().start();
@@ -348,7 +351,7 @@ impl Mapper<'_> {
         // A call whose value is bound or passed on (not an argument or a list entry of an element) may have
         // attributes set elsewhere.
         let spread = Json::obj().with("line", begin.line as f64).with("expr", format!("{}(…), whose value the code passes on", self.source(func.span())));
-        j.set("spread", if item.is_some() { Json::Null } else { spread });
+        j.set("spread", if item.is_some() || root { Json::Null } else { spread });
         let slot = item.and_then(|it| it.slot);
         j.set("slot", match slot {
             Some(s) => Json::obj().with("before", s.before as f64).with("after", s.after as f64).with("comma", s.comma),
@@ -483,6 +486,24 @@ impl Mapper<'_> {
 impl<'ast> Visit<'ast> for Mapper<'_> {
     fn visit_expr(&mut self, e: &'ast Expr) {
         self.expr(e);
+    }
+
+    fn visit_item_fn(&mut self, f: &'ast syn::ItemFn) {
+        for a in &f.attrs {
+            self.visit_attribute(a);
+        }
+        let n = f.block.stmts.len();
+        for (i, st) in f.block.stmts.iter().enumerate() {
+            // The returned element is the document: an attribute it does not write is written nowhere else.
+            match st {
+                syn::Stmt::Expr(e, None) if i + 1 == n && f.sig.ident == "document" => {
+                    self.root = true;
+                    self.visit_expr(e);
+                    self.root = false;
+                }
+                _ => self.visit_stmt(st),
+            }
+        }
     }
 
     fn visit_item_use(&mut self, u: &'ast syn::ItemUse) {

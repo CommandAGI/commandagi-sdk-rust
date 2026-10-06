@@ -50,7 +50,7 @@ fn maps_each_element_its_attributes_its_arguments_and_its_place() {
     assert_eq!(els.iter().map(|e| num(e, "index")).collect::<Vec<_>>(), [0.0, 1.0, 2.0, 3.0]);
     assert_eq!(group.get("parent"), Some(&Json::Null));
     assert_eq!(group.get("callee").and_then(Json::as_str), Some("group"));
-    assert!(group.get("spread").unwrap().get("expr").is_some(), "the root's value is passed on");
+    assert_eq!(group.get("spread"), Some(&Json::Null), "what fn document() returns is the root: its value goes nowhere else");
     assert_eq!(group.get("slot"), Some(&Json::Null));
     assert_eq!(slice(DIVIDER, num(group, "open"), num(group, "close")).chars().next(), Some('"'));
     assert_eq!(num(r1, "parent"), 0.0);
