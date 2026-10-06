@@ -33,7 +33,9 @@
 //! Each module `pub use`s [`El`], [`json`], [`fragment`] and [`Value`] so `use commandagi::design::<module>::*;` is
 //! the file's one import.
 
+pub mod documents;
 pub mod element;
+pub mod fab;
 pub mod ir;
 pub mod json;
 pub mod schematic;
@@ -69,7 +71,7 @@ pub struct Family {
 }
 
 /// Every family a file's root may be. A root tag names one family.
-pub const FAMILIES: &[Family] = &[schematic::FAMILY];
+pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY];
 
 /// Declare a document from its root element: the family of the root's tag reads it.
 pub fn declare(root: El) -> Result<Declared, String> {
