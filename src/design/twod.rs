@@ -403,6 +403,8 @@ attributes! {
         outline;
         /// A part's holes: lists of `[x, y]` points.
         holes;
+        /// The file a nest's part was imported from: `json(r#"{"file": "disc.svg"}"#)`.
+        source;
     }
 }
 
