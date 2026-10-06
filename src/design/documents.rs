@@ -167,13 +167,14 @@ pub fn tree_of_element(root: &El, v: &Vocabulary) -> Result<DocTree, String> {
         let mut seen: Vec<String> = Vec::new();
         for c in &children {
             let r = v.rule(c.tag).expect("a child's tag was checked");
-            let id = match (r.key, r.single) {
+            // A record whose key is not written is told apart by its place (as `identities` does).
+            let id = match (r.key.filter(|key| c.attr(key).is_some()), r.single) {
                 (Some(key), _) => format!("{}#{}", c.tag, js_string(c.attr(key))),
                 (None, true) => c.tag.to_string(),
                 _ => continue,
             };
             if seen.contains(&id) {
-                return Err(match r.key {
+                return Err(match r.key.filter(|key| c.attr(key).is_some()) {
                     Some(key) => format!("two {}() in {}() have {} {:?}", fn_name(c.tag), fn_name(el.tag), rust_name(key), js_string(c.attr(key))),
                     None => format!("{}() has one {}()", fn_name(el.tag), fn_name(c.tag)),
                 });
