@@ -1,10 +1,10 @@
 // The schematic vocabulary against the graph the Python and TypeScript SDKs declare for the same sheet
 // (`divider.json`: the Python SDK's run of the shipped Divider.sch.py, `meta.source` taken out).
 
-use commandagi::design::sheet::*;
+use commandagi::design::schematic::*;
 use commandagi::design::{declare, Json};
 
-fn divider() -> Group {
+fn divider() -> El {
     group("Divider", [
         voltagesource("V1").voltage("9").sch_x(114.3).sch_y(114.3),
         resistor("R1").resistance("3k").sch_x(114.3).sch_y(88.9),
@@ -16,6 +16,14 @@ fn divider() -> Group {
         trace(".V1 > .neg", ".#PWR1 > .pin1"),
         netlabel("OUT", ".R1 > .pin2"),
     ])
+}
+
+fn graph(root: El) -> Json {
+    declare(root).unwrap().graph().unwrap()
+}
+
+fn bad(root: El) -> String {
+    declare(root).unwrap_err()
 }
 
 fn without_sources(mut graph: Json) -> Json {
@@ -31,15 +39,14 @@ fn without_sources(mut graph: Json) -> Json {
 
 #[test]
 fn declares_the_graph_the_other_sdks_declare() {
-    let graph = declare(divider()).unwrap();
     let golden = Json::parse(include_str!("divider.json")).unwrap();
-    assert_eq!(without_sources(graph).text(), golden.text());
+    assert_eq!(without_sources(graph(divider())).text(), golden.text());
 }
 
 #[test]
 fn every_node_carries_the_call_it_came_from() {
-    let graph = declare(divider()).unwrap();
-    let Some(Json::Obj(nodes)) = graph.get("nodes") else { panic!("no nodes") };
+    let g = graph(divider());
+    let Some(Json::Obj(nodes)) = g.get("nodes") else { panic!("no nodes") };
     // R1's part and its placement both come from the call in line 10 of this file, column 9.
     for id in ["R1", "sym_R1_1"] {
         let node = &nodes.iter().find(|(k, _)| k == id).unwrap().1;
@@ -51,18 +58,17 @@ fn every_node_carries_the_call_it_came_from() {
 #[test]
 fn a_call_in_a_loop_counts_each_evaluation() {
     let ladder = group("Ladder", (1..=3).map(|i| resistor(format!("R{i}")).resistance(1000).sch_x(i * 10).sch_y(0)));
-    let graph = declare(ladder).unwrap();
-    let r2 = graph.get("nodes").and_then(|n| n.get("R2")).unwrap();
+    let g = graph(ladder);
+    let r2 = g.get("nodes").and_then(|n| n.get("R2")).unwrap();
     assert_eq!(r2.get("inputs").and_then(|i| i.get("value")), Some(&Json::from("1000")));
     let sites = commandagi::design::source::sites().text();
-    assert!(sites.contains("[53,50,3]"), "{sites}");
+    assert!(sites.contains(&format!("[{},50,3]", line!() - 5)), "{sites}");
 }
 
 #[test]
 fn a_fragment_is_its_elements() {
     let sheet = group("F", [resistor("R1").sch_x(0).sch_y(0), fragment((2..=3).map(|i| resistor(format!("R{i}")).sch_x(i).sch_y(0)))]);
-    let graph = declare(sheet).unwrap();
-    let ids: Vec<String> = match graph.get("nodes") {
+    let ids: Vec<String> = match graph(sheet).get("nodes") {
         Some(Json::Obj(n)) => n.iter().map(|(k, _)| k.clone()).collect(),
         _ => vec![],
     };
@@ -71,20 +77,20 @@ fn a_fragment_is_its_elements() {
 
 #[test]
 fn refuses_what_the_sheet_cannot_say() {
-    let bad = |g: Group| declare(g).unwrap_err();
     assert_eq!(bad(group("S", [ground("PWR1")])), "ground(\"PWR1\"): a ground symbol's name starts with # (#PWR1), as KiCad names power symbols");
     assert_eq!(bad(group("S", [junction("J1").resistance("1k")])), "junction(\"J1\"): resistance is not read on a schematic");
     assert_eq!(bad(group("S", [resistor("R1").sch_x(1).sch_y(2).sch_rotation(45)])), "resistor(\"R1\"): sch_rotation is 0, 90, 180 or 270");
-    assert_eq!(bad(group("S", [resistor("R1"), trace(".R1 > .pin1", "net.GND")])), "trace(): R1 is not on the sheet (give it sch_x and sch_y)");
-    assert_eq!(bad(group("S", [resistor("R1").sch_x(0).sch_y(0), trace(".R1 > .pin3", "net.GND")])), "trace(): R1 has no pin pin3");
+    assert_eq!(bad(group("S", [resistor("R1").sch_x("1").sch_y(2)])), "resistor(\"R1\"): sch_x is a number (mm or degrees), not \"1\"");
+    assert_eq!(bad(group("S", [resistor("R1"), trace(".R1 > .pin1", "net.GND")])), "trace(\".R1 > .pin1\", \"net.GND\"): R1 is not on the sheet (give it sch_x and sch_y)");
+    assert_eq!(bad(group("S", [resistor("R1").sch_x(0).sch_y(0), trace(".R1 > .pin3", "net.GND")])), "trace(\".R1 > .pin3\", \"net.GND\"): R1 has no pin pin3");
     assert_eq!(bad(group("S", [resistor("R1"), resistor("R1")])), "two parts are called R1");
-    assert!(bad(group("S", [voltagesource("V1").excitation("{oops")])).starts_with("voltagesource(\"V1\"): excitation is JSON text"));
+    assert_eq!(bad(group("S", [voltagesource("V1").excitation(json("{oops"))])), "voltagesource(\"V1\"): excitation is JSON text (expected a string at 1)");
+    assert_eq!(bad(group("", [])), "group() needs a name");
 }
 
 #[test]
 fn an_empty_group_declares_an_empty_sheet() {
-    let graph = declare(group("Empty", [])).unwrap();
-    assert_eq!(graph.text(), r#"{"id":"eda:Empty","nodes":{},"meta":{"domain":"eda","rung":"board","name":"Empty"}}"#);
+    assert_eq!(graph(group("Empty", [])).text(), r#"{"id":"eda:Empty","nodes":{},"meta":{"domain":"eda","rung":"board","name":"Empty"}}"#);
 }
 
 fn node(graph: &Json, id: &str) -> Json {
@@ -99,11 +105,11 @@ fn a_library_part_names_its_symbol_by_ref_places_each_unit_mirrors_and_a_code_pa
         part("U1").symbol("Amplifier_Operational:LM358").library("opamps.kicad_sym").value("LM358").sch_x(50.8).sch_y(25.4).sch_mirror("x"),
         unit("U1", 2).sch_x(101.6).sch_y(25.4).sch_rotation(180),
         resistor("R1").resistance("10k").sch_x(76.2).sch_y(50.8).sch_mirror("y"),
-        code("blinker").source("blinker.circuit.ts").inputs(r#"{"resistor": "330"}"#),
+        code("blinker").source("blinker.circuit.ts").inputs(json(r#"{"resistor": "330"}"#)),
         trace(".U1 > .pin7", ".R1 > .pin1"),
         netlabel("OUT", ".U1 > .1"),
     ]);
-    let g = declare(sheet).unwrap();
+    let g = graph(sheet);
     let u1 = node(&g, "U1");
     assert_eq!(u1.get("type").and_then(Json::as_str), Some(part_type_for(&[]).as_str()));
     assert_eq!(u1.get("inputs").unwrap().text(), r#"{"ref":"U1","value":"LM358","symbol":"Amplifier_Operational:LM358","library":"opamps.kicad_sym","pins":[]}"#, "the pins are the library's");
@@ -125,7 +131,6 @@ fn a_library_part_names_its_symbol_by_ref_places_each_unit_mirrors_and_a_code_pa
 
 #[test]
 fn refuses_what_a_library_part_unit_or_code_part_cannot_say() {
-    let bad = |g: Group| declare(g).unwrap_err();
     assert!(bad(group("S", [part("U1").symbol("LM358").library("a.kicad_sym")])).contains("library ref"));
     assert!(bad(group("S", [part("U1").symbol("A:B")])).contains("library is the path"));
     assert!(bad(group("S", [resistor("R1").sch_x(0).sch_y(0), unit("R1", 2).sch_x(1).sch_y(1)])).contains("one unit"));
@@ -133,5 +138,41 @@ fn refuses_what_a_library_part_unit_or_code_part_cannot_say() {
     assert!(bad(group("S", [part("U1").symbol("A:B").library("a.kicad_sym"), unit("U1", 2)])).contains("give it sch_x and sch_y"));
     assert!(bad(group("S", [part("U1").symbol("A:B").library("a.kicad_sym"), unit("U1", 2).sch_x(1).sch_y(1), unit("U1", 2).sch_x(2).sch_y(1)])).contains("placed twice"));
     assert!(bad(group("S", [resistor("R1").sch_x(0).sch_y(0).sch_mirror("z")])).contains(r#"sch_mirror is "x" or "y""#));
-    assert!(bad(group("S", [code("c").source("c.ts").inputs(r#"{"source": "d.ts"}"#)])).contains("source is the file"));
+    assert!(bad(group("S", [code("c").source("c.ts").inputs(json(r#"{"source": "d.ts"}"#))])).contains("source is the file"));
+}
+
+#[test]
+fn a_netlist_circuit_lists_its_parts_pins_and_nets_and_carries_its_kicad_files() {
+    let circuit = group("Board", [
+        part("U1").value("LM358").symbol("Amplifier_Operational:LM358").pins(json(r#"[{"number": "1", "name": "OUT"}, {"number": "8", "name": "V+"}]"#)),
+        part("C1").value("100n").pins(["1", "2"]).spice(json(r#"[{"id": "c", "model": "C100N", "terminals": {"a": "1", "b": "2"}}]"#)),
+        net("VCC").pins([".U1 > .pin8", ".C1 > .1"]),
+        attachment("Board.kicad_sch").role("schematic").file("Board.kicad_sch"),
+    ]);
+    let g = graph(circuit);
+    let u1 = node(&g, "U1");
+    assert_eq!(u1.get("inputs").unwrap().text(), r#"{"ref":"U1","value":"LM358","symbol":"Amplifier_Operational:LM358","pins":[{"id":"p1","number":"1","name":"OUT"},{"id":"p2","number":"8","name":"V+"}]}"#);
+    assert_eq!(u1.get("type").and_then(Json::as_str), Some(part_type_for(&[("p1".into(), "1".into()), ("p2".into(), "8".into())]).as_str()));
+    assert!(node(&g, "C1").get("inputs").unwrap().text().contains(r#""spice":[{"id":"c","model":"C100N","terminals":{"a":"1","b":"2"}}]"#));
+    assert_eq!(node(&g, "net_VCC").text(), r#"{"id":"net_VCC","type":"eda.net","inputs":{"pins.1":{"wire":{"node":"U1","port":"p2"}},"pins.2":{"wire":{"node":"C1","port":"p1"}}},"label":"VCC"}"#);
+    assert_eq!(node(&g, "source_Board.kicad_sch").text(), r#"{"id":"source_Board.kicad_sch","type":"eda.source","inputs":{"name":"Board.kicad_sch","role":"schematic","file":"Board.kicad_sch"},"label":"Board.kicad_sch"}"#);
+    assert!(bad(group("S", [part("U1").pins(["1"]).sch_x(0).sch_y(0)])).contains("has no place on the sheet"));
+    assert!(bad(group("S", [part("U1").pins(["1"]), net("N").pins([".U1 > .2"])])).contains("U1 has no pin 2"));
+    assert!(bad(group("S", [attachment("a").role("art").file("a")])).contains("role is one of"));
+    assert!(bad(group("S", [part("C1").pins(["1"]).spice(json(r#"[{"id": "c"}]"#))])).contains("spice is a list"));
+}
+
+#[test]
+fn a_trace_path_runs_from_its_from_to_its_to() {
+    let sheet = |path: [&str; 3]| {
+        group("P", [
+            resistor("R1").sch_x(0).sch_y(0),
+            junction("J1").sch_x(5).sch_y(5),
+            resistor("R2").sch_x(10).sch_y(0),
+            trace(".R1 > .pin2", ".R2 > .pin1").path(path),
+        ])
+    };
+    let g = graph(sheet([".R1 > .pin2", ".J1", ".R2 > .pin1"]));
+    assert_eq!(node(&g, "w_2").get("inputs").unwrap().text(), r#"{"ends.1":{"wire":{"node":"J1","port":"v"}},"ends.2":{"wire":{"node":"sym_R2_1","port":"p1"}}}"#);
+    assert!(bad(sheet([".R1 > .pin1", ".J1", ".R2 > .pin1"])).contains("path is the list of selectors from"));
 }
