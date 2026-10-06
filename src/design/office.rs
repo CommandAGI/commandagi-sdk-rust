@@ -39,14 +39,17 @@
 //! sheet([cells]).name .rows .cols .frozen_rows .frozen_cols .color     a grid sheet (200 rows, 26 columns unless it says)
 //! cell().at("B4").value(…) | .formula("=…") .num_fmt .bold .italic .align .bg .color .wrap
 //! column().at("A").width(…)   row().at(3).height(…)                    a column's width or a row's height, in pixels
-//! page([blocks]).title(…)                                               the page
-//! h1 h2 h3 p bullet numbered quote (text)   todo(text).checked(true)   a text block: its text and marks
+//! page([blocks]).title .paper .font                                    the page; paper "letter" or "a4"; font "sans", "serif", "mono"
+//! h1 h2 h3 p quote (text).align(…)                                     a text block: its text and marks; align "left", "center" …
+//! bullet numbered (text)   todo(text).checked(true)                    a list item, a checklist item
 //! pre("code").lang(…)   divider()   image().src(…).alt(…)              a code block, a rule, a picture
 //! b i u s code (text)   a(text).href(…)   br()                          marks inside a text
-//! deck([slides]).name .width .height .dpi                               the deck (1280 × 720 slide units unless it says)
+//! deck([slides]).name .width .height .dpi .style                        the deck (1280 × 720 slide units unless it says);
+//!                                                                       style "plain", "ink", "editorial" or "signal"
 //! slide([elements]).layout .name .notes .background .hidden
 //! text(text).placeholder .x .y .w .h .rotation .font_size .color .bold .italic .underline .align .valign …
 //! shape().shape .x .y .w .h .fill .stroke .stroke_width .corner_radius   image().src .x .y .w .h .fit .alt
+//! every element also takes .opacity .label .locked .group
 //! ```
 //!
 //! THE TEXT OF A BLOCK IS ITS TEXT PARAMETER, never an attribute: a string, or a tuple of texts and marks
@@ -226,6 +229,16 @@ attributes! {
         corner_radius;
         /// How a deck's picture fits its box: "fill", "contain", "cover", "none".
         fit;
+        /// A page's paper: "letter" or "a4".
+        paper;
+        /// A page's typeface: "sans", "serif" or "mono".
+        font;
+        /// A deck's style: "plain", "ink", "editorial" or "signal".
+        style;
+        /// An element the editor does not move.
+        locked;
+        /// A group's name: elements with one group name select and move as one.
+        group;
     }
 }
 
@@ -503,7 +516,7 @@ fn plain_text(children: &[Child], at: &str) -> Result<String, String> {
 
 /// A `page(…)` as the page the docs editor opens, with where each block was written.
 fn read_page(root: &El) -> Result<Declared, String> {
-    only(root, &["title"])?;
+    only(root, &["title", "paper", "font"])?;
     let mut sources = Sources::new();
     sources.put("page", root);
     let mut blocks = Vec::new();
@@ -511,10 +524,12 @@ fn read_page(root: &El) -> Result<Declared, String> {
         let id = format!("block-{}", i + 1);
         sources.put(format!("block:{id}"), el);
         let block = if let Some(kind) = text_block(el.tag) {
-            only(el, if kind == "todo" { &["checked"] } else { &[] })?;
+            let aligned = ALIGNED.contains(&el.tag);
+            only(el, if kind == "todo" { &["checked"] } else if aligned { &["align"] } else { &[] })?;
             let html = inline_html(&el.children, &tag(el.tag))?;
             let checked = if kind == "todo" { Some(Json::Bool(flag(el, "checked")?.unwrap_or(false))) } else { None };
-            defined(vec![("id", Some(id.into())), ("type", Some(kind.into())), ("html", Some(html.into())), ("checked", checked)])
+            let align = if aligned { js(one_of(el, "align", &["left", "center", "right", "justify"])?) } else { None };
+            defined(vec![("id", Some(id.into())), ("type", Some(kind.into())), ("html", Some(html.into())), ("checked", checked), ("align", align)])
         } else {
             match el.tag {
                 "pre" => {
@@ -550,13 +565,23 @@ fn read_page(root: &El) -> Result<Declared, String> {
     if let Some(title) = txt(root, "title")? {
         document.set("meta", Json::obj().with("title", title));
     }
+    let setup = defined(vec![("paper", js(one_of(root, "paper", PAPERS)?)), ("font", js(one_of(root, "font", PAGE_FONTS)?))]);
+    if len(&setup) > 0 {
+        document.set("page", setup);
+    }
     Ok(Declared::Document { format: "page".into(), document, sources: sources.json() })
 }
 
 // ── Deck ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const BOX: &[&str] = &["x", "y", "w", "h", "rotation"];
-const COMMON: &[&str] = &["x", "y", "w", "h", "rotation", "placeholder", "z", "visible", "opacity", "label"];
+const COMMON: &[&str] = &["x", "y", "w", "h", "rotation", "placeholder", "z", "visible", "opacity", "label", "locked", "group"];
+/// The deck's styles: a few curated looks (the decks editor's own themes), not a theme editor.
+pub const DECK_STYLES: &[&str] = &["plain", "ink", "editorial", "signal"];
+/// The blocks that take an alignment, and the page's paper and typefaces (a few, not a font menu).
+const ALIGNED: &[&str] = &["h1", "h2", "h3", "p", "quote"];
+pub const PAPERS: &[&str] = &["letter", "a4"];
+pub const PAGE_FONTS: &[&str] = &["sans", "serif", "mono"];
 
 /// A run's style: its marks in the order they were written (`bold`, `link` …).
 type Style = Vec<(String, Json)>;
@@ -645,7 +670,7 @@ fn with_channels(mut inputs: Json, set: &str, wires: Vec<Json>) -> Json {
 /// A `deck(…)` as the deck's op graph: `doc`, then `slide-N`, then `slide-N.M` for its elements. A slide names its
 /// layout by name (`layout`); the editor binds that name to its stock layouts.
 fn read_deck(root: &El) -> Result<Json, String> {
-    only(root, &["name", "width", "height", "dpi"])?;
+    only(root, &["name", "width", "height", "dpi", "style"])?;
     let mut nodes: Vec<(String, Json)> = Vec::new();
     let mut slides = Vec::new();
     for (i, el) in root.child_elements().enumerate() {
@@ -670,6 +695,8 @@ fn read_deck(root: &El) -> Result<Json, String> {
                 ("visible", jb(flag(c, "visible")?)),
                 ("opacity", jn(num(c, "opacity")?)),
                 ("label", js(txt(c, "label")?)),
+                ("locked", jb(flag(c, "locked")?)),
+                ("group", js(txt(c, "group")?)),
             ];
             let kind = match c.tag {
                 "text" => {
@@ -734,6 +761,7 @@ fn read_deck(root: &El) -> Result<Json, String> {
         ("width", Some(num(root, "width")?.unwrap_or(1280.0).into())),
         ("height", Some(num(root, "height")?.unwrap_or(720.0).into())),
         ("dpi", jn(num(root, "dpi")?)),
+        ("style", js(one_of(root, "style", DECK_STYLES)?)),
     ]);
     nodes.push(("doc".into(), node("doc", DECK_DOC, with_channels(inputs, "slides", slides), root)));
     Ok(Json::obj()
