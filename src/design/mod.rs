@@ -39,6 +39,7 @@ pub mod element;
 pub mod fab;
 pub mod ir;
 pub mod json;
+pub mod media;
 pub mod office;
 pub mod ontology;
 pub mod pcb;
@@ -80,7 +81,7 @@ pub struct Family {
 }
 
 /// Every family a file's root may be. A root tag names one family.
-pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY, threed::FAMILY, pcb::FAMILY, office::FAMILY, ontology::FAMILY, business::FAMILY, tasks::FAMILY, records::FAMILY, twod::FAMILY];
+pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY, threed::FAMILY, pcb::FAMILY, office::FAMILY, ontology::FAMILY, business::FAMILY, tasks::FAMILY, records::FAMILY, twod::FAMILY, media::FAMILY];
 
 /// Declare a document from its root element: the family of the root's tag reads it.
 pub fn declare(root: El) -> Result<Declared, String> {
