@@ -96,8 +96,12 @@ elements! {
     delay: leaf;
     /// A song track's reverb effect.
     reverb: leaf;
-    /// A song track's equaliser.
+    /// A song track's equaliser; a video's three-band EQ (a clip's, a track's or the master's).
     eq: leaf;
+    /// A video's compressor (a clip's, a track's or the master's audio effect).
+    compressor: leaf;
+    /// A video's distortion (a clip's, a track's or the master's audio effect).
+    distortion: leaf;
 }
 
 attributes! {
@@ -169,6 +173,18 @@ attributes! {
         brightness;
         /// A clip's hue.
         hue;
+        /// The fraction of a clip's picture hidden at its top.
+        crop_top;
+        /// The fraction of a clip's picture hidden at its right.
+        crop_right;
+        /// The fraction of a clip's picture hidden at its bottom.
+        crop_bottom;
+        /// The fraction of a clip's picture hidden at its left.
+        crop_left;
+        /// A bezier keyframe's curve: `[x1, y1, x2, y2]`, as CSS's cubic-bezier.
+        bezier;
+        /// A compressor's ratio.
+        ratio;
         /// A title's text.
         text;
         /// A title's font family.
@@ -481,7 +497,53 @@ pub const MIDI_INSTRUMENTS: &[&str] = &[
     "reeseBass", "subBass", "fmBell", "musicBox", "marimba", "vibraphone", "kalimba", "harp", "clav", "brass", "flute", "choir", "glass",
     "sineLead", "pwmPad", "pluckSynth", "eightBit", "drumKit",
 ];
-pub const EASINGS: &[&str] = &["linear", "easeIn", "easeOut", "easeInOut", "hold"];
+pub const EASINGS: &[&str] = &["linear", "easeIn", "easeOut", "easeInOut", "hold", "bezier"];
+/// A transition's alignment on the cut.
+pub const TRANSITION_ALIGN: &[&str] = &["start", "center", "end"];
+pub const FILTER_MODES: &[&str] = &["lowpass", "highpass", "bandpass"];
+/// A video's audio effects (a clip's, a track's or the master's chain), by tag: each number prop, its default and bounds.
+fn video_audio_effect(t: &str) -> Option<&'static [(&'static str, f64, f64, f64)]> {
+    Some(match t {
+        "gain" => &[("gain", 1.0, 0.0, 16.0)],
+        "eq" => &[("lowGain", 0.0, -40.0, 40.0), ("midGain", 0.0, -40.0, 40.0), ("highGain", 0.0, -40.0, 40.0)],
+        "filter" => &[("freq", 1200.0, 10.0, 24000.0), ("q", 1.0, 0.0001, 100.0)],
+        "delay" => &[("time", 0.3, 0.0, 2.0), ("feedback", 0.4, 0.0, 0.95), ("mix", 0.35, 0.0, 1.0)],
+        "reverb" => &[("decay", 2.0, 0.01, 20.0), ("mix", 0.35, 0.0, 1.0)],
+        "compressor" => &[("threshold", -24.0, -100.0, 0.0), ("ratio", 4.0, 1.0, 20.0), ("attack", 0.003, 0.0, 1.0), ("release", 0.25, 0.0, 1.0)],
+        "distortion" => &[("amount", 0.4, 0.0, 1.0), ("mix", 1.0, 0.0, 1.0)],
+        _ => return None,
+    })
+}
+
+/// One audio effect element as the editor's effect: the tag's engine type (a filter is its mode) and its params.
+fn audio_effect(el: &El, ids: &mut Ids) -> Result<Json, String> {
+    let spec = video_audio_effect(el.tag).expect("an audio effect");
+    let mut allowed: Vec<&str> = spec.iter().map(|(k, ..)| *k).collect();
+    allowed.push("enabled");
+    if el.tag == "filter" {
+        allowed.push("mode");
+    }
+    refuse_unknown(el, &allowed)?;
+    let mut params = Json::obj();
+    let kind = if el.tag == "filter" {
+        let mode = txt(el, "mode", Some(FILTER_MODES))?.unwrap_or_else(|| "lowpass".into());
+        let (f, q) = match mode.as_str() {
+            "highpass" => (300.0, 1.0),
+            "bandpass" => (1500.0, 2.0),
+            _ => (1200.0, 1.0),
+        };
+        params.set("frequency", num(el, "freq", Some(10.0), Some(24000.0))?.unwrap_or(f));
+        params.set("q", num(el, "q", Some(0.0001), Some(100.0))?.unwrap_or(q));
+        mode
+    } else {
+        for (k, d, lo, hi) in spec {
+            params.set(k, num(el, k, Some(*lo), Some(*hi))?.unwrap_or(*d));
+        }
+        el.tag.to_string()
+    };
+    let id = ids.make(&format!("afx_{kind}"));
+    Ok(obj(&[("id", id.as_str().into()), ("type", kind.as_str().into()), ("enabled", flag(el, "enabled")?.unwrap_or(true).into()), ("params", params)]))
+}
 pub const TRANSITIONS: &[&str] = &[
     "none", "cut", "crossDissolve", "fadeToBlack", "fadeToWhite", "dipToColor", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "diagonalWipe",
     "barnDoors", "iris", "diamond", "clockWipe", "pixelDissolve", "pushLeft", "pushRight", "slideUp", "slideDown", "zoomIn", "zoomBlur", "glitch",
@@ -489,7 +551,7 @@ pub const TRANSITIONS: &[&str] = &[
 ];
 pub const EFFECT_TYPES: &[&str] = &[
     "brightnessContrast", "saturation", "hueRotate", "gaussianBlur", "sharpen", "pixelate", "chromaKey", "twist", "wave", "mirror", "vignette",
-    "glow", "grayscale", "sepia", "invert", "posterize", "edges", "chromaticAberration", "bulge", "duotone", "colorWheels", "mask",
+    "glow", "grayscale", "sepia", "invert", "posterize", "edges", "chromaticAberration", "bulge", "duotone", "colorWheels", "mask", "lut",
 ];
 /// A clip's intro and outro animations.
 pub const ANIM_PRESETS: &[&str] = &["fade", "slideL", "slideR", "slideU", "slideD", "pop", "rise", "spin"];
@@ -501,8 +563,11 @@ const CLIP_TRANSFORM: &[(&str, f64)] = &[("x", 0.0), ("y", 0.0), ("scaleX", 1.0)
 const CLIP_COLOR: &[&str] = &["exposure", "contrast", "saturation", "temperature", "brightness", "hue"];
 const CLIP_PROPS: &[&str] = &[
     "name", "start", "duration", "in", "out", "speed", "opacity", "volume", "blendMode", "fitMode", "x", "y", "scaleX", "scaleY", "rotation",
-    "anchorX", "anchorY", "exposure", "contrast", "saturation", "temperature", "brightness", "hue",
+    "anchorX", "anchorY", "exposure", "contrast", "saturation", "temperature", "brightness", "hue", "cropTop", "cropRight", "cropBottom",
+    "cropLeft",
 ];
+/// A clip's crop: each edge's attribute and its field.
+const CLIP_CROP: &[(&str, &str)] = &[("cropTop", "top"), ("cropRight", "right"), ("cropBottom", "bottom"), ("cropLeft", "left")];
 /// A title's text: its fields and their defaults.
 fn title_text() -> Vec<(&'static str, Json)> {
     vec![
@@ -546,6 +611,13 @@ fn common(c: &El, inputs: &mut Json) -> Result<(), String> {
     }
     inputs.set("transform", transform);
     inputs.set("color", color);
+    if CLIP_CROP.iter().any(|(k, _)| c.attr(k).is_some()) {
+        let mut crop = Json::obj();
+        for (k, edge) in CLIP_CROP {
+            crop.set(edge, num(c, k, Some(0.0), Some(0.49))?.unwrap_or(0.0));
+        }
+        inputs.set("crop", crop);
+    }
     Ok(())
 }
 
@@ -555,6 +627,7 @@ struct ClipKids {
     anim_in: Option<Json>,
     anim_out: Option<Json>,
     effects: Vec<Json>,
+    audio: Vec<Json>,
     /// Keyframe tracks: the property, and its keys `(time, key)` in time order.
     keyframes: Vec<(String, Vec<(f64, Json)>)>,
     notes: Vec<Json>,
@@ -567,17 +640,37 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
         anim_in: None,
         anim_out: None,
         effects: Vec::new(),
+        audio: Vec::new(),
         keyframes: Vec::new(),
         notes: Vec::new(),
     };
-    let (mut note_ids, mut fx_ids, mut kf_ids) = (Ids::default(), Ids::default(), Ids::default());
+    let (mut note_ids, mut fx_ids, mut kf_ids, mut afx_ids) = (Ids::default(), Ids::default(), Ids::default(), Ids::default());
     let mut add_key = |k: &mut ClipKids, el: &El, property: String, sources: &mut Sources| -> Result<(), String> {
         let time = at_least(el, "time", 0.0)?;
         let value = any(el, "value")?;
         let (Some(time), Some(value)) = (time, value) else { return Err(format!("{}: a keyframe has a time and a value", place(el))) };
         let id = kf_ids.make(&format!("kf_{clip_id}"));
         let easing = txt(el, "easing", Some(EASINGS))?.unwrap_or_else(|| "linear".into());
-        let key = obj(&[("id", id.as_str().into()), ("time", time.into()), ("value", value.into()), ("easing", easing.into())]);
+        let bezier = el.attr("bezier");
+        if bezier.is_some() && easing != "bezier" {
+            return Err(format!("{}: bezier is read with .easing(\"bezier\")", place(el)));
+        }
+        let mut key = obj(&[("id", id.as_str().into()), ("time", time.into()), ("value", value.into()), ("easing", easing.as_str().into())]);
+        if easing == "bezier" {
+            let curve: Option<Vec<f64>> = match bezier {
+                Some(Json::Arr(v)) if v.len() == 4 => v.iter().map(|x| match x {
+                    Json::Num(n) if n.is_finite() => Some(*n),
+                    _ => None,
+                }).collect(),
+                _ => None,
+            };
+            match curve {
+                Some(c) if (0.0..=1.0).contains(&c[0]) && (0.0..=1.0).contains(&c[2]) => {
+                    key.set("bezier", Json::Arr(c.into_iter().map(Json::Num).collect()));
+                }
+                _ => return Err(format!("{}: an easing \"bezier\" names its curve: .bezier([x1, y1, x2, y2]) (x1 and x2 from 0 to 1)", place(el))),
+            }
+        }
         let track = match k.keyframes.iter().position(|(p, _)| *p == property) {
             Some(i) => &mut k.keyframes[i].1,
             None => {
@@ -594,13 +687,26 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
     for el in clip.child_elements() {
         match el.tag {
             "transition" => {
-                refuse_unknown(el, &["kind", "duration"])?;
+                refuse_unknown(el, &["kind", "duration", "align", "color", "shape"])?;
                 if saw_transition {
                     return Err(format!("{}: a clip has one transition() (into it)", place(clip)));
                 }
                 saw_transition = true;
                 let kind = txt(el, "kind", Some(TRANSITIONS))?.unwrap_or_else(|| "crossDissolve".into());
                 k.transition_in = obj(&[("kind", kind.into()), ("duration", at_least(el, "duration", 0.0)?.unwrap_or(0.5).into())]);
+                let mut params = Json::obj();
+                if let Some(a) = txt(el, "align", Some(TRANSITION_ALIGN))? {
+                    params.set("align", a);
+                }
+                if let Some(c) = txt(el, "color", None)? {
+                    params.set("color", c);
+                }
+                if let Some(n) = at_least(el, "shape", 0.0)? {
+                    params.set("shape", n);
+                }
+                if !matches!(&params, Json::Obj(e) if e.is_empty()) {
+                    k.transition_in.set("params", params);
+                }
                 sources.put("transition", el);
             }
             "note" => {
@@ -636,9 +742,23 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
             "effect" => {
                 let Some(kind) = txt(el, "type", Some(EFFECT_TYPES))? else { return Err(format!("{}: an effect() names its type", place(clip))) };
                 let id = fx_ids.make(&format!("fx_{kind}"));
+                let src = if kind == "lut" {
+                    let Some(src) = txt(el, "src", None)?.filter(|s| !s.is_empty()) else {
+                        return Err("effect().type_(\"lut\"): a LUT names its .cube file (.src(\"looks/film.cube\"), relative to this file)".into());
+                    };
+                    let scheme = src.find(':').is_some_and(|i| i > 0 && src[..i].bytes().all(|b| b.is_ascii_alphabetic()));
+                    if scheme || src.starts_with('/') {
+                        return Err(format!("effect().type_(\"lut\"): src is a path relative to this file, not {src}"));
+                    }
+                    Some(src)
+                } else if el.attr("src").is_some() {
+                    return Err(format!("effect().type_(\"{kind}\"): src is read on a LUT (.type_(\"lut\"))"));
+                } else {
+                    None
+                };
                 let mut params = Json::obj();
                 for (p, v) in &el.attrs {
-                    if ["type", "enabled", "colors"].contains(&p.as_str()) {
+                    if ["type", "enabled", "colors", "src"].contains(&p.as_str()) {
                         continue;
                     }
                     match v {
@@ -657,29 +777,42 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
                 if let Some(colors) = colors {
                     fx.set("colors", colors);
                 }
+                if let Some(src) = src {
+                    fx.set("src", src);
+                }
                 k.effects.push(fx);
                 sources.put(format!("effect:{id}"), el);
                 for kf in el.child_elements() {
                     if kf.tag != "keyframe" {
                         return Err(format!("{} is not read in an effect() (its keyframes are keyframe().param(…).time(…).value(…))", tag(kf.tag)));
                     }
-                    refuse_unknown(kf, &["param", "time", "value", "easing"])?;
+                    refuse_unknown(kf, &["param", "time", "value", "easing", "bezier"])?;
                     let param = txt(kf, "param", None)?.filter(|p| !p.is_empty());
                     let Some(param) = param else { return Err(format!("{}: an effect's keyframe names its param", place(kf))) };
                     add_key(&mut k, kf, format!("effect.{id}.{param}"), sources)?;
                 }
             }
             "keyframe" => {
-                refuse_unknown(el, &["property", "time", "value", "easing"])?;
+                refuse_unknown(el, &["property", "time", "value", "easing", "bezier"])?;
                 let property = txt(el, "property", Some(ANIMATABLE))?.filter(|p| !p.is_empty());
                 let Some(property) = property else {
                     return Err(format!("{}: a keyframe names its property ({})", place(el), ANIMATABLE.join(", ")));
                 };
                 add_key(&mut k, el, property, sources)?;
             }
+            t if video_audio_effect(t).is_some() => {
+                let picture = clip.tag == "clip" && clip.attr("src").and_then(Json::as_str).and_then(media_kind) == Some("image");
+                if (clip.tag != "clip" && clip.tag != "midi") || picture {
+                    return Err(format!("{} is an audio effect: {} has no sound", tag(el.tag), place(clip)));
+                }
+                let fx = audio_effect(el, &mut afx_ids)?;
+                let id = fx.get("id").and_then(Json::as_str).unwrap_or_default().to_string();
+                k.audio.push(fx);
+                sources.put(format!("audio:{id}"), el);
+            }
             _ => {
                 return Err(format!(
-                    "{} is not read in a {} (a clip holds transition(), intro(), outro(), effect() and keyframe(); a midi() clip its note()s)",
+                    "{} is not read in a {} (a clip holds transition(), intro(), outro(), effect(), keyframe() and audio effects; a midi() clip its note()s)",
                     tag(el.tag),
                     tag(clip.tag)
                 ))
@@ -706,7 +839,16 @@ fn declare_video(root: &El) -> Result<Json, String> {
     let mut track_wires = Vec::new();
     let mut markers = Vec::new();
     let mut composite_sources = Sources::new();
+    let mut master = Vec::new();
+    let mut master_ids = Ids::default();
     for tr in root.child_elements() {
+        if video_audio_effect(tr.tag).is_some() {
+            let fx = audio_effect(tr, &mut master_ids)?;
+            let id = fx.get("id").and_then(Json::as_str).unwrap_or_default().to_string();
+            master.push(fx);
+            composite_sources.put(format!("audio:{id}"), tr);
+            continue;
+        }
         if tr.tag == "marker" {
             refuse_unknown(tr, &["name", "time", "color"])?;
             let Some(time) = at_least(tr, "time", 0.0)? else { return Err(format!("{}: a marker has a time", place(tr))) };
@@ -718,7 +860,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
             continue;
         }
         if tr.tag != "track" {
-            return Err(format!("{} is not read in a video() (it holds track() and marker())", tag(tr.tag)));
+            return Err(format!("{} is not read in a video() (it holds track(), marker() and the master's audio effects)", tag(tr.tag)));
         }
         refuse_unknown(tr, &["name", "kind", "muted", "hidden", "locked", "volume", "height"])?;
         let kind = txt(tr, "kind", Some(VIDEO_TRACK_KINDS))?.unwrap_or_else(|| "video".into());
@@ -729,7 +871,17 @@ fn declare_video(root: &El) -> Result<Json, String> {
         });
         let track_id = ids.make(&format!("track_{track_name}"));
         let mut clip_wires = Vec::new();
+        let mut track_fx = Vec::new();
+        let mut track_sources = Sources::new();
+        let mut track_fx_ids = Ids::default();
         for c in tr.child_elements() {
+            if video_audio_effect(c.tag).is_some() {
+                let fx = audio_effect(c, &mut track_fx_ids)?;
+                let id = fx.get("id").and_then(Json::as_str).unwrap_or_default().to_string();
+                track_fx.push(fx);
+                track_sources.put(format!("audio:{id}"), c);
+                continue;
+            }
             let mut sources = Sources::new();
             let mut inputs: Json;
             let clip_name: String;
@@ -869,7 +1021,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 }
                 source = Json::Null;
             } else if c.tag == "midi" {
-                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed"]).as_slice(), &["instrument", "gain"]].concat())?;
+                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "cropTop", "cropRight", "cropBottom", "cropLeft"]).as_slice(), &["instrument", "gain"]].concat())?;
                 if kind != "midi" {
                     return Err(format!("{}: a midi() clip goes on a midi track (.kind(\"midi\"))", place(c)));
                 }
@@ -886,7 +1038,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 common(c, &mut inputs)?;
                 source = Json::Null;
             } else {
-                return Err(format!("{} is not read on a track() (it holds clip(), title(), shape(), adjustment() and midi())", tag(c.tag)));
+                return Err(format!("{} is not read on a track() (it holds clip(), title(), shape(), adjustment(), midi() and audio effects)", tag(c.tag)));
             }
             if kind == "midi" && c.tag != "midi" {
                 return Err(format!("{}: a midi track holds midi() clips", place(c)));
@@ -901,6 +1053,9 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 inputs.set("animOut", a);
             }
             inputs.set("effects", Json::Arr(kids.effects));
+            if !kids.audio.is_empty() {
+                inputs.set("audioEffects", Json::Arr(kids.audio));
+            }
             inputs.set("trackers", Json::Arr(Vec::new()));
             if !kids.keyframes.is_empty() {
                 let tracks = kids.keyframes.into_iter().map(|(property, keys)| {
@@ -931,16 +1086,22 @@ fn declare_video(root: &El) -> Result<Json, String> {
             ("height", at_least(tr, "height", 16.0)?.unwrap_or(height).into()),
             ("volume", at_least(tr, "volume", 0.0)?.unwrap_or(1.0).into()),
         ]);
+        if !track_fx.is_empty() {
+            track_inputs.set("audioEffects", Json::Arr(track_fx));
+        }
         for (i, w) in clip_wires.into_iter().enumerate() {
             track_inputs.set(&format!("clips.{}", i + 1), w);
         }
-        nodes.put(&track_id, node(&track_id, "video.track", track_inputs, Some(&track_name), meta_of(tr, Sources::new(), Json::obj())));
+        nodes.put(&track_id, node(&track_id, "video.track", track_inputs, Some(&track_name), meta_of(tr, track_sources, Json::obj())));
         track_wires.push(wire(&track_id, "frames"));
     }
     let project_id = slug(&format!("proj_{name}"));
     let mut composite = obj(&[("id", project_id.as_str().into()), ("name", name.as_str().into()), ("settings", settings)]);
     if !markers.is_empty() {
         composite.set("markers", Json::Arr(markers));
+    }
+    if !master.is_empty() {
+        composite.set("masterEffects", Json::Arr(master));
     }
     composite.set("createdAt", 0i64);
     composite.set("updatedAt", 0i64);

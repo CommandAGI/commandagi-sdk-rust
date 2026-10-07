@@ -141,3 +141,44 @@ fn refuses_what_the_vocabulary_cannot_say() {
     assert_eq!(bad(song([]).time_signature("4/5")), "song(): time_signature is \"beats/unit\" (\"4/4\", \"6/8\")");
     assert_eq!(bad(song([]).tempo(json(r#"[{"atBeat": 4, "bpm": 90}]"#))), "song(): tempo is beats per minute (120), or [{ atBeat: 0, bpm: 120 }, …] sorted by beat");
 }
+
+#[test]
+fn a_video_says_crop_a_lut_transition_settings_audio_effects_and_a_bezier_key() {
+    let g = graph(
+        video([
+            track([
+                clip([
+                    transition().kind("dipToColor").duration(0.5).align("center").color("#ffffff"),
+                    effect([]).type_("lut").src("looks/a.cube").amount(0.5),
+                    filter().mode("bandpass").freq(900),
+                    gain().gain(0.5).enabled(false),
+                    keyframe().property("opacity").time(0).value(0).easing("bezier").bezier([0.4, 0.0, 0.2, 1.0]),
+                ])
+                .src("a.mp4")
+                .start(0)
+                .out(2)
+                .crop_left(0.1),
+                eq().low_gain(1),
+            ])
+            .name("V1"),
+            compressor().ratio(2),
+        ])
+        .name("C"),
+    );
+    assert_eq!(input(&g, "clip_a.mp4", "crop"), golden(r#"{"top": 0, "right": 0, "bottom": 0, "left": 0.1}"#));
+    assert_eq!(input(&g, "clip_a.mp4", "transitionIn"), golden(r##"{"kind": "dipToColor", "duration": 0.5, "params": {"align": "center", "color": "#ffffff"}}"##));
+    assert_eq!(
+        input(&g, "clip_a.mp4", "audioEffects"),
+        golden(r#"[{"id": "afx_bandpass", "type": "bandpass", "enabled": true, "params": {"frequency": 900, "q": 2}}, {"id": "afx_gain", "type": "gain", "enabled": false, "params": {"gain": 0.5}}]"#)
+    );
+    assert!(input(&g, "clip_a.mp4", "effects").contains(r#""src":"looks/a.cube""#));
+    assert!(input(&g, "clip_a.mp4", "keyframes").contains(r#""easing":"bezier","bezier":[0.4,0,0.2,1]"#));
+    assert_eq!(input(&g, "track_V1", "audioEffects"), golden(r#"[{"id": "afx_eq", "type": "eq", "enabled": true, "params": {"lowGain": 1, "midGain": 0, "highGain": 0}}]"#));
+    assert!(input(&g, "composite", "masterEffects").contains(r#""ratio":2"#));
+    let lut = bad(video([track([clip([effect([]).type_("lut")]).src("a.mp4").out(1)])]));
+    assert!(lut.contains("a LUT names its .cube file"), "{lut}");
+    let picture = bad(video([track([clip([gain()]).src("a.png").duration(1)])]));
+    assert!(picture.contains("has no sound"), "{picture}");
+    let curve = bad(video([track([clip([keyframe().property("opacity").time(0).value(0).easing("bezier")]).src("a.mp4").out(1)])]));
+    assert!(curve.contains("names its curve"), "{curve}");
+}
