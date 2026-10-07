@@ -32,7 +32,9 @@
 //! the node's own fields. The encodings are the TypeScript SDK's: a top-level group of a drawing is a `layer`; a path's
 //! `d` (absolute M L H V C Q Z); a drawn brush stroke's `[x, y]` points; a paint stroke's `[x, y, pressure, t]` points;
 //! a modifier (`blur`, `transform`, `fill` …) wraps the one node it takes; `clip` takes its content, then its mask; in a
-//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it. A value that
+//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
+//! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
+//! `stroke`, `color_overlay`, `gradient_overlay`). A value that
 //! is an object is JSON text: `.brush(json(r#"{"kind": "round", "size": 4}"#))`. PIXELS ARE NOT CODE: a pixel layer
 //! names its image file by relative path (`.src("scan.png")`). Each node carries its element's call in `meta.source`; a
 //! `mask` is not a node, so a masked node carries the mask's call in `meta.sources.mask`. A tag the vocabulary does not
@@ -108,7 +110,7 @@ elements! {
     raster: children;
     /// A photo's gradient layer.
     gradient: children;
-    /// The one layer that masks a layer, a stroke or a filter.
+    /// The one layer that masks a layer, a stroke or a filter (`.enabled(false)`: turned off).
     mask: children;
     /// A painting's line layer: `line().from(json("[0, 0]")).to(json("[40, 30]"))`.
     line: leaf;
@@ -118,6 +120,20 @@ elements! {
     gradient_fill = "gradientFill": leaf;
     /// A painting's Move of a layer's pixels (or its selected pixels).
     move_ = "move": leaf;
+    /// A painting's type layer: `text_layer([]).text("Title").x(…).y(…).size(96)`.
+    text_layer = "textLayer": children;
+    /// A painting layer's styles: `fx([drop_shadow().distance(8), stroke([]).size(3)])`.
+    fx: children;
+    /// A layer style: a shadow under the layer.
+    drop_shadow = "dropShadow": leaf;
+    /// A layer style: a shadow inside the layer's edge.
+    inner_shadow = "innerShadow": leaf;
+    /// A layer style: a glow around the layer.
+    outer_glow = "outerGlow": leaf;
+    /// A layer style: the layer's colour replaced.
+    color_overlay = "colorOverlay": leaf;
+    /// A layer style: a gradient over the layer.
+    gradient_overlay = "gradientOverlay": leaf;
     /// A photo's adjustment.
     exposure: children;
     /// A photo's adjustment.
@@ -217,6 +233,8 @@ attributes! {
         text;
         /// A text's font family.
         family;
+        /// A type layer's face.
+        font;
         /// A text's size.
         size;
         /// A text's weight.
@@ -385,6 +403,36 @@ attributes! {
         monochrome;
         /// Noise's seed.
         seed;
+        /// A develop's tint.
+        tint;
+        /// A develop's whites.
+        whites;
+        /// A develop's blacks.
+        blacks;
+        /// A develop's dehaze.
+        dehaze;
+        /// A develop's vignette.
+        vignette;
+        /// A develop's grain.
+        grain;
+        /// A develop's clarity (local contrast).
+        clarity;
+        /// A develop's tone curve.
+        curve;
+        /// A develop's sections turned off: `["light", "color", "effects"]`.
+        off;
+        /// A mask is on.
+        enabled;
+        /// A style's angle, in degrees.
+        angle;
+        /// A shadow's distance.
+        distance;
+        /// A shadow's or a glow's spread.
+        spread;
+        /// An inner shadow's choke.
+        choke;
+        /// A stroke style's position: "outside", "inside" or "center".
+        position;
         /// A nest's safe height (mm).
         safe_z_mm;
         /// A nest's overrides.
@@ -423,6 +471,9 @@ attributes! {
 }
 
 pub(crate) const FAMILY: Family = Family { module: "twod", roots: &["drawing", "painting", "photo", "nest"], declare };
+
+/// A painting layer's styles: the tags of its `fx`.
+pub const LAYER_STYLES: &[&str] = &["dropShadow", "innerShadow", "outerGlow", "stroke", "colorOverlay", "gradientOverlay"];
 
 /// A photo's adjustments: each a layer whose attributes are the adjustment.
 pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", "vibrance", "colorBalance", "blackWhite", "invert", "threshold", "posterize", "develop"];
@@ -741,6 +792,13 @@ const PAINT: StackKind = StackKind {
     layer: |el| match el.tag {
         "layer" => pixel_layer(el, "paint.layer"),
         "fill" | "group" => Ok(Some((format!("paint.{}", el.tag), attrs(el, &[])?))),
+        "textLayer" => {
+            let a = attrs(el, &[])?;
+            if a.get("text").and_then(Json::as_str).is_none() {
+                return Err(format!("{}: text is the layer's words (.text(\"Title\"))", place(el)));
+            }
+            Ok(Some(("paint.text".into(), a)))
+        }
         t if PHOTO_ADJUSTMENTS.contains(&t) => adjustment_layer(el, "paint.adjust"),
         t if PAINT_SHAPES.contains(&t) => Ok(Some(("paint.shape".into(), attrs(el, &[])?.with("shape", el.tag)))),
         _ => Ok(None),
@@ -787,8 +845,8 @@ struct Doc {
     s: Option<Scope>,
     /// Nodes that are disabled.
     disabled: Vec<String>,
-    /// A masked node's mask element: its `meta.sources.mask`.
-    masks: Vec<(String, Json)>,
+    /// What a node holds that is not a node (its mask element, its styles): its `meta.sources`.
+    sources: Vec<(String, Json)>,
 }
 
 impl Doc {
@@ -821,8 +879,8 @@ impl Doc {
                 if self.disabled.contains(id) {
                     node.set("disabled", true);
                 }
-                if let Some((_, at)) = self.masks.iter().find(|(m, _)| m == id) {
-                    let m = node.remove("meta").unwrap_or(Json::obj()).with("sources", Json::obj().with("mask", at.clone()));
+                if let Some((_, at)) = self.sources.iter().find(|(m, _)| m == id) {
+                    let m = node.remove("meta").unwrap_or(Json::obj()).with("sources", at.clone());
                     node.set("meta", m);
                 }
             }
@@ -944,8 +1002,10 @@ impl Doc {
         if masks.len() > 1 {
             return Err(format!("{} has one mask()", place(el)));
         }
-        if !entries(&attrs(m, &[])?).is_empty() {
-            return Err(format!("mask() in {} has no attributes (write them on the layer it holds)", place(el)));
+        for (k, v) in entries(&attrs(m, &[])?) {
+            if k != "enabled" || !matches!(v, Json::Bool(_)) {
+                return Err(format!("mask() in {} has one attribute, enabled (write the rest on the layer it holds)", place(el)));
+            }
         }
         let held: Vec<&El> = m.child_elements().collect();
         if held.len() != 1 {
@@ -955,16 +1015,61 @@ impl Doc {
         Ok(Some((ids[0].clone(), m)))
     }
 
-    /// Declare `el` as one node of `kind`, masked by its `mask` when it has one.
+    /// A painting layer's `fx`: its styles in order (the layer's `fx`), and where each was written.
+    fn styles_of(kind: &StackKind, el: &El) -> Result<Option<(Json, Json)>, String> {
+        let blocks: Vec<&El> = el.child_elements().filter(|c| c.tag == "fx").collect();
+        let Some(block) = blocks.first() else { return Ok(None) };
+        if kind.prefix != "paint" {
+            return Err(format!("{}: fx() (layer styles) is a painting's", place(el)));
+        }
+        if blocks.len() > 1 {
+            return Err(format!("{} has one fx()", place(el)));
+        }
+        if !entries(&attrs(block, &[])?).is_empty() {
+            return Err(format!("fx() in {} has no attributes (write them on its styles)", place(el)));
+        }
+        let mut sources = Json::obj();
+        if let Some(at) = block.source_json() {
+            sources.set("fx", at);
+        }
+        let mut fx = Vec::new();
+        for (i, c) in block.child_elements().enumerate() {
+            if !LAYER_STYLES.contains(&c.tag) {
+                return Err(format!("{} is not a layer style ({})", tag(c.tag), LAYER_STYLES.join(", ")));
+            }
+            if c.child_elements().next().is_some() {
+                return Err(format!("{} in fx() takes no children", place(c)));
+            }
+            if let Some(at) = c.source_json() {
+                sources.set(&format!("fx.{i}"), at);
+            }
+            fx.push(spread(Json::obj().with("type", c.tag), entries(&attrs(c, &[])?).to_vec()));
+        }
+        Ok(Some((Json::Arr(fx), sources)))
+    }
+
+    /// Declare `el` as one node of `kind`, masked by its `mask` when it has one, with its `fx` when it has them.
     fn add_masked(&mut self, kind: &StackKind, el: &El, node_type: &str, inputs: Json) -> Result<String, String> {
         let mask = self.mask_of(kind, el)?;
-        let inputs = match &mask {
-            Some((id, _)) => inputs.with("mask", wire(id, "out")),
+        let styles = Self::styles_of(kind, el)?;
+        let mut inputs = match &mask {
+            Some((id, m)) => {
+                let i = inputs.with("mask", wire(id, "out"));
+                if m.attr("enabled") == Some(&Json::Bool(false)) { i.with("maskEnabled", false) } else { i }
+            }
             None => inputs,
         };
+        let mut sources = Json::obj();
+        if let Some((fx, at)) = styles {
+            inputs.set("fx", fx);
+            sources = at;
+        }
         let id = self.add(el, node_type, inputs)?;
         if let Some(at) = mask.and_then(|(_, m)| m.source_json()) {
-            self.masks.push((id.clone(), at));
+            sources.set("mask", at);
+        }
+        if !entries(&sources).is_empty() {
+            self.sources.push((id.clone(), sources));
         }
         Ok(id)
     }
@@ -979,7 +1084,7 @@ impl Doc {
                 return Err(format!("{} is not read in a {} (see commandagi::design::twod)", tag(el.tag), tag(kind.root)));
             };
             let (mut stack, mut chain) = (Vec::new(), Vec::new());
-            for c in el.child_elements().filter(|c| c.tag != "mask") {
+            for c in el.child_elements().filter(|c| c.tag != "mask" && c.tag != "fx") {
                 if (kind.chain)(c)?.is_some() { &mut chain } else { &mut stack }.push(c);
             }
             let group = format!("{}.group", kind.prefix);
