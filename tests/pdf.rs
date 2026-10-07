@@ -35,6 +35,9 @@ fn a_pdf_is_its_pages_marks_and_structure() {
             bookmark([bookmark([]).title("Payment").page(2).top(500)]).title("Terms").page(2),
             label().from(1).style("r"),
             attach().src("data.csv"),
+            header().right("{file}").size(8),
+            footer().center("Page {page} of {pages}").pages("2-"),
+            bates().prefix("ACME-").digits(6).position("bottom-right"),
         ])
         .title("Signed")
         .author("Ada"),
@@ -54,7 +57,10 @@ fn a_pdf_is_its_pages_marks_and_structure() {
               "fill": [{"name": "Name", "value": "Ada Lovelace"}],
               "bookmarks": [{"title": "Terms", "page": 2, "children": [{"title": "Payment", "page": 2, "top": 500}]}],
               "labels": [{"from": 1, "style": "r"}],
-              "attachments": [{"src": "data.csv"}]}"#
+              "attachments": [{"src": "data.csv"}],
+              "header": {"right": "{file}", "size": 8},
+              "footer": {"center": "Page {page} of {pages}", "pages": "2-"},
+              "bates": {"prefix": "ACME-", "digits": 6, "position": "bottom-right"}}"#
         )
         .unwrap()
     );
@@ -66,4 +72,6 @@ fn what_it_cannot_say_is_refused() {
     assert!(bad(pdf([page([])])).contains("blank page"));
     assert!(bad(pdf([page([stamp().rect([0, 0, 10, 10])]).size("a4")])).contains("has a name"));
     assert!(bad(pdf([page([signature().rect([0, 0, 10, 10]).typed("A").image("s.png")]).size("a4")])).contains("one of typed, image or strokes"));
+    assert!(bad(pdf([page([]).size("a4"), footer().size(9)])).contains("has text in left, center or right"));
+    assert!(bad(pdf([page([]).size("a4"), bates().position("middle")])).contains("position is top-left"));
 }
