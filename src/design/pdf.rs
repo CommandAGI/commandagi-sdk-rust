@@ -19,6 +19,8 @@
 //!         page([]).size("a4"),
 //!         fill().name("Name").value("Ada Lovelace"),
 //!         bookmark([bookmark([]).title("Payment").page(2).top(500)]).title("Terms").page(2),
+//!         footer().center("Page {page} of {pages}").pages("2-"),
+//!         bates().prefix("ACME-").digits(6).position("bottom-right"),
 //!     ])
 //!     .title("Signed contract")
 //! }
@@ -26,7 +28,9 @@
 //! ```
 //!
 //! Pages and page numbers are 1-based; coordinates are PDF points from the page's lower-left corner; a colour is
-//! `[r, g, b]`, each 0..1; a `src` is a ref relative to the file's folder. Nothing adds a default. A run gives back
+//! `[r, g, b]`, each 0..1; a `src` is a ref relative to the file's folder. A header or footer is text in its `left`,
+//! `center` and `right` slots with `{page}`, `{pages}`, `{date}` and `{file}` in it, on every page or `pages`; Bates
+//! numbers run from `start`. Nothing adds a default. A run gives back
 //! `{format, document, sources}` beside an empty graph.
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
@@ -74,6 +78,12 @@ elements! {
     label: leaf;
     /// An attachment: `.src("data.csv")`.
     attach: leaf;
+    /// Text at the top of every page (or `.pages("2-")`): `.left(…)`, `.center(…)`, `.right(…)`.
+    header: leaf;
+    /// Text at the foot of every page: `.center("Page {page} of {pages}")`.
+    footer: leaf;
+    /// A Bates number on every page: `.prefix("ACME-").start(1).digits(6).position("bottom-right")`.
+    bates: leaf;
 }
 
 attributes! {
@@ -85,6 +95,7 @@ attributes! {
         strokes; from; to; arrow; points; name; label; image; typed; style; overlay;
         kind; value; options; checked; multiline; max_length; required; editable;
         page; top; bold; italic; url; prefix; start; description; mime_type;
+        left; center; right; family; margin; inset; pages; suffix; digits; position;
     }
 }
 
@@ -96,6 +107,9 @@ const PAGE_FIELDS: &[&str] = &["id", "src", "n", "rotate", "size", "width", "hei
 const BOOKMARK_FIELDS: &[&str] = &["id", "title", "page", "top", "open", "bold", "italic", "color", "url"];
 const LABEL_FIELDS: &[&str] = &["from", "style", "prefix", "start"];
 const ATTACH_FIELDS: &[&str] = &["src", "name", "description", "mimeType"];
+const BAND_FIELDS: &[&str] = &["left", "center", "right", "size", "color", "family", "margin", "inset", "pages", "start", "date"];
+const BATES_FIELDS: &[&str] = &["prefix", "suffix", "start", "digits", "position", "size", "color", "family", "margin", "inset"];
+const BATES_POSITIONS: &[&str] = &["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"];
 const TEXT_MARK: &[&str] = &["id", "author", "text", "color", "opacity", "date", "rects"];
 
 const PDF: Vocabulary = Vocabulary {
@@ -126,6 +140,9 @@ const PDF: Vocabulary = Vocabulary {
         TagRule::new("bookmark", &["pdf", "bookmark"]).key("id").required(&["title"]).attrs(BOOKMARK_FIELDS),
         TagRule::new("label", &["pdf"]).required(&["from"]).attrs(LABEL_FIELDS),
         TagRule::new("attach", &["pdf"]).required(&["src"]).attrs(ATTACH_FIELDS),
+        TagRule::new("header", &["pdf"]).attrs(BAND_FIELDS),
+        TagRule::new("footer", &["pdf"]).attrs(BAND_FIELDS),
+        TagRule::new("bates", &["pdf"]).attrs(BATES_FIELDS),
     ],
     from_tree: pdf_of,
 };
@@ -261,6 +278,39 @@ fn check_page(p: &DocTree) -> Result<(), String> {
     p.children.iter().try_for_each(check_mark)
 }
 
+fn check_band(t: &DocTree) -> Result<(), String> {
+    let w = format!("{}()", t.tag);
+    if t.tag != "bates" && !["left", "center", "right"].iter().any(|k| matches!(t.attr(k), Some(Json::Str(s)) if !s.trim().is_empty())) {
+        return Err(format!("{w}: has text in left, center or right"));
+    }
+    for k in ["left", "center", "right", "pages", "date", "prefix", "suffix"] {
+        if t.attr(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
+            return Err(format!("{w}: {k} is text"));
+        }
+    }
+    for k in ["size", "margin", "inset"] {
+        if t.attr(k).is_some() && !num(t.attr(k)).is_some_and(|n| n >= 0.0) {
+            return Err(format!("{w}: {k} is points, 0 or more"));
+        }
+    }
+    if t.attr("color").is_some_and(|v| !color(v)) {
+        return Err(format!("{w}: color is [r, g, b], each 0 to 1"));
+    }
+    if t.attr("family").is_some_and(|f| !["sans", "serif", "mono"].contains(&f.as_str().unwrap_or(""))) {
+        return Err(format!(r#"{w}: family is "sans", "serif" or "mono""#));
+    }
+    if t.attr("start").is_some() && !(is_int(t.attr("start")) && num(t.attr("start")).unwrap_or(-1.0) >= 0.0) {
+        return Err(format!("{w}: start is a whole number"));
+    }
+    if t.attr("digits").is_some() && !(is_int(t.attr("digits")) && num(t.attr("digits")).is_some_and(|d| (1.0..=15.0).contains(&d))) {
+        return Err("bates(): digits is 1 to 15".into());
+    }
+    if t.attr("position").is_some_and(|p| !BATES_POSITIONS.contains(&p.as_str().unwrap_or(""))) {
+        return Err(format!("bates(): position is {}", BATES_POSITIONS.join(", ")));
+    }
+    Ok(())
+}
+
 fn bookmark_of(t: &DocTree) -> Result<Json, String> {
     if !matches!(t.attr("title"), Some(Json::Str(_))) {
         return Err("bookmark(): title is text".into());
@@ -283,6 +333,7 @@ fn pdf_of(t: &DocTree) -> Result<Json, String> {
         }
     }
     let (mut pages, mut fills, mut bookmarks, mut labels, mut attachments) = (vec![], vec![], vec![], vec![], vec![]);
+    let mut bands: Vec<(&str, Json)> = vec![];
     for c in &t.children {
         match c.tag {
             "page" => {
@@ -330,6 +381,13 @@ fn pdf_of(t: &DocTree) -> Result<Json, String> {
                 labels.push(own(c, LABEL_FIELDS));
             }
             "attach" => attachments.push(own(c, ATTACH_FIELDS)),
+            "header" | "footer" | "bates" => {
+                if bands.iter().any(|(t, _)| *t == c.tag) {
+                    return Err(format!("pdf(): a PDF has one {}()", c.tag));
+                }
+                check_band(c)?;
+                bands.push((c.tag, own(c, if c.tag == "bates" { BATES_FIELDS } else { BAND_FIELDS })));
+            }
             _ => {}
         }
     }
@@ -337,6 +395,11 @@ fn pdf_of(t: &DocTree) -> Result<Json, String> {
     for (k, v) in [("fill", fills), ("bookmarks", bookmarks), ("labels", labels), ("attachments", attachments)] {
         if !v.is_empty() {
             out.set(k, v);
+        }
+    }
+    for tag in ["header", "footer", "bates"] {
+        if let Some((_, b)) = bands.iter().find(|(t, _)| *t == tag) {
+            out.set(tag, b.clone());
         }
     }
     Ok(out)
