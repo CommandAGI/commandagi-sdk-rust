@@ -27,15 +27,21 @@
 //! use commandagi::design::media::*;
 //!
 //! fn document() -> El {
-//!     song([track([
-//!         synth().wave("triangle"),
-//!         clip([note().pitch("C4").start(0).duration(1).velocity(0.8)]).name("Keys 1").start(0).length(4),
+//!     song([
+//!         track([
+//!             synth().wave("triangle"),
+//!             clip([note().pitch("C4").start(0).duration(1).velocity(0.8)]).name("Keys 1").start(0).length(4),
+//!         ])
+//!         .name("Keys"),
+//!         track([clip([]).src("media/tone.wav").start(4).length(2).in_(0.25).volume(0.8)]).name("Tone"),
+//!         track([sampler().src("media/tone.wav").root("A4"), clip([]).name("Bells 1").start(0).length(4)]).name("Bells"),
 //!     ])
-//!     .name("Keys")])
 //!     .name("Loop")
 //!     .tempo(120)
 //!     .time_signature("4/4")
 //!     .bars(8)
+//!     .cycle_start(0)
+//!     .cycle_end(16)
 //! }
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
@@ -43,7 +49,8 @@
 //! Attributes are snake case of the TypeScript names (`.font_size(…)` is `fontSize`; `.in_(…)` is `in`). An effect's
 //! parameters are its attributes (`effect([]).type_("vignette").amount(0.3)`). A tempo map and an effect's colours are
 //! JSON text: `.tempo(json(r#"[{"atBeat": 0, "bpm": 120}]"#))`. Media files are named by path relative to the file,
-//! never inlined. Times on a video's timeline are seconds; in a song, beats. Each node carries the call that declared
+//! never inlined. Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
+//! file, is seconds, as on a video). Each node carries the call that declared
 //! it in `meta.source`; what a node holds that is not a node (a clip's effects, transition, intro, outro and
 //! keyframes; a midi clip's notes; a video's markers) carries its call in `meta.sources`, by key. Anything the
 //! vocabulary cannot say is refused by name.
@@ -88,6 +95,8 @@ elements! {
     note: leaf;
     /// A song track's synth.
     synth: leaf;
+    /// A song track's sampler: a sound file played at the pitch of each note.
+    sampler: leaf;
     /// A song track's gain effect.
     gain: leaf;
     /// A song track's filter effect.
@@ -243,6 +252,12 @@ attributes! {
         time_signature;
         /// A song's bars.
         bars;
+        /// Where a song's cycle starts, in beats.
+        cycle_start;
+        /// Where a song's cycle ends, in beats.
+        cycle_end;
+        /// The pitch a sampler's sound file sounds at.
+        root;
         /// A song's or a track's volume in dB.
         volume_db;
         /// A song track's colour.
@@ -1208,9 +1223,32 @@ pub fn tempo_of(v: &Json) -> Option<Json> {
     }
 }
 
-/// Declare a song (`song(…)` and its tracks) as the music studio's own op graph.
+/// A sound file named by a path relative to the song (`src`), checked to be one.
+fn sound_src(el: &El) -> Result<String, String> {
+    let Some(src) = txt(el, "src", None)?.filter(|s| !s.is_empty()) else {
+        return Err(format!("{} names its sound file (.src(\"media/tone.wav\"), relative to this file)", tag(el.tag)));
+    };
+    let scheme = src.find(':').is_some_and(|i| i > 0 && src[..i].bytes().all(|b| b.is_ascii_alphabetic()));
+    if scheme || src.starts_with('/') {
+        return Err(format!("{}: src is a path relative to this file, not {src}", place(el)));
+    }
+    if media_kind(&src) != Some("audio") {
+        return Err(format!("{}: {src} is not a sound file this studio reads", place(el)));
+    }
+    Ok(src)
+}
+
+/// A file's name without its folder and extension: an audio clip's name when it gives none.
+fn stem_of(src: &str) -> String {
+    let base = src.rsplit_once('/').map_or(src, |(_, b)| b);
+    base.rsplit_once('.').map_or(base, |(s, _)| s).to_string()
+}
+
+/// Declare a song (`song(…)` and its tracks) as the music studio's own op graph. A track plays a `synth()` or a
+/// `sampler()` (an instrument: its clips hold notes), or holds audio clips (`clip([]).src(…)`: a sound file placed on
+/// the song, played by the track's player); effects follow the instrument or the player.
 fn declare_song(root: &El) -> Result<Json, String> {
-    refuse_unknown(root, &["name", "volumeDb", "tempo", "timeSignature", "bars"])?;
+    refuse_unknown(root, &["name", "volumeDb", "tempo", "timeSignature", "bars", "cycleStart", "cycleEnd"])?;
     let name = txt(root, "name", None)?.unwrap_or_else(|| "Song".into());
     let tempo = match root.attr("tempo") {
         None => tempo_of(&Json::Num(120.0)),
@@ -1233,6 +1271,16 @@ fn declare_song(root: &El) -> Result<Json, String> {
         ("timeSig", time_sig),
         ("bars", at_least(root, "bars", 1.0)?.unwrap_or(8.0).into()),
     ]);
+    match (at_least(root, "cycleStart", 0.0)?, at_least(root, "cycleEnd", 0.0)?) {
+        (None, None) => {}
+        (Some(start), Some(end)) => {
+            if !(end > start) {
+                return Err(format!("song(): cycle_end ({}) comes after cycle_start ({})", number_text(end), number_text(start)));
+            }
+            master.set("cycle", obj(&[("start", start.into()), ("end", end.into())]));
+        }
+        _ => return Err("song(): a cycle names both its cycle_start and its cycle_end (beats)".into()),
+    }
     let mut order = 0usize;
     for tr in root.child_elements() {
         if tr.tag != "track" {
@@ -1241,19 +1289,48 @@ fn declare_song(root: &El) -> Result<Json, String> {
         refuse_unknown(tr, &["name", "colorIndex", "volumeDb", "pan", "mute", "solo"])?;
         let track_name = txt(tr, "name", None)?.unwrap_or_else(|| format!("Track {}", order + 1));
         let track_id = ids.make(&format!("track_{track_name}"));
+        let children: Vec<&El> = tr.child_elements().collect();
+        let audio_track = !children.is_empty() && !children.iter().any(|el| el.tag == "synth" || el.tag == "sampler");
         let mut upstream: Option<String> = None;
         let mut clips: Vec<String> = Vec::new();
         let mut instrument: Option<String> = None;
-        for el in tr.child_elements() {
-            if el.tag == "synth" {
+        let mut player: Option<String> = None;
+        let mut note_clips = false;
+        if audio_track {
+            let id = ids.make(&format!("player_{track_name}"));
+            nodes.put(&id, node(&id, "player", obj(&[("name", track_name.as_str().into())]), None, None));
+            player = Some(id.clone());
+            upstream = Some(id);
+        }
+        for el in children {
+            if el.tag == "synth" || el.tag == "sampler" {
                 if instrument.is_some() {
-                    return Err(format!("{}: a track plays one synth()", place(tr)));
+                    return Err(format!("{}: a track plays one instrument (a synth() or a sampler())", place(tr)));
                 }
-                refuse_unknown(el, &["name", "wave", "gain", "detune", "voices", "transpose", "attack", "decay", "sustain", "release"])?;
-                let mut spec = obj(&[("kind", "synth".into()), ("wave", txt(el, "wave", Some(WAVES))?.unwrap_or_else(|| "sawtooth".into()).into())]);
-                for (k, d) in [("gain", 0.7), ("detune", 8.0), ("voices", 1.0), ("transpose", 0.0)] {
-                    spec.set(k, any(el, k)?.unwrap_or(d));
-                }
+                let mut spec = if el.tag == "synth" {
+                    refuse_unknown(el, &["name", "wave", "gain", "detune", "voices", "transpose", "attack", "decay", "sustain", "release"])?;
+                    let mut spec = obj(&[("kind", "synth".into()), ("wave", txt(el, "wave", Some(WAVES))?.unwrap_or_else(|| "sawtooth".into()).into())]);
+                    for (k, d) in [("gain", 0.7), ("detune", 8.0), ("voices", 1.0), ("transpose", 0.0)] {
+                        spec.set(k, any(el, k)?.unwrap_or(d));
+                    }
+                    spec
+                } else {
+                    refuse_unknown(el, &["name", "src", "root", "gain", "attack", "decay", "sustain", "release"])?;
+                    let base = match el.attr("root") {
+                        None => Some(69),
+                        Some(v) => pitch_of(Some(v)),
+                    };
+                    let Some(base) = base else {
+                        let given = el.attr("root").map(Json::text).unwrap_or_default();
+                        return Err(format!("sampler(): root is the pitch the file sounds at, a MIDI number (0–127) or a name (\"A4\"), not {given}"));
+                    };
+                    obj(&[
+                        ("kind", "sampler".into()),
+                        ("src", sound_src(el)?.into()),
+                        ("baseNote", base.into()),
+                        ("gain", at_least(el, "gain", 0.0)?.unwrap_or(1.0).into()),
+                    ])
+                };
                 let mut env = Json::obj();
                 for (k, d) in [("attack", 0.01), ("decay", 0.15), ("sustain", 0.6), ("release", 0.25)] {
                     env.set(k, at_least(el, k, 0.0)?.unwrap_or(d));
@@ -1266,7 +1343,7 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 upstream = Some(id);
             } else if let Some((fx_type, fx_name, fields)) = song_effect(el.tag) {
                 let Some(up) = upstream.clone() else {
-                    return Err(format!("{} comes after the track's synth() (the chain runs synth → effects → track)", tag(el.tag)));
+                    return Err(format!("{} comes after the track's instrument (the chain runs instrument → effects → track)", tag(el.tag)));
                 };
                 let allowed: Vec<&str> = std::iter::once("name").chain(fields.iter().map(|(k, _)| *k)).collect();
                 refuse_unknown(el, &allowed)?;
@@ -1282,7 +1359,29 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 let inputs = obj(&[("name", txt(el, "name", None)?.unwrap_or_else(|| fx_name.into()).into()), ("spec", spec), ("audio", wire(&up, "audio"))]);
                 nodes.put(&fid, node(&fid, fx_type, inputs, None, meta_of(el, Sources::new(), Json::obj())));
                 upstream = Some(fid);
+            } else if el.tag == "clip" && player.is_some() && el.attr("src").is_some() {
+                refuse_unknown(el, &["name", "src", "start", "length", "in", "volume", "loop"])?;
+                if el.child_elements().next().is_some() {
+                    return Err(format!("{}: an audio clip holds no notes (notes go in a clip on a track with a synth() or a sampler())", place(el)));
+                }
+                let src = sound_src(el)?;
+                let clip_name = txt(el, "name", None)?.unwrap_or_else(|| stem_of(&src));
+                let cid = ids.make(&format!("clip_{clip_name}"));
+                let inputs = obj(&[
+                    ("name", clip_name.as_str().into()),
+                    ("src", src.into()),
+                    ("start", at_least(el, "start", 0.0)?.unwrap_or(0.0).into()),
+                    ("length", at_least(el, "length", 0.0)?.unwrap_or(4.0).into()),
+                    ("offsetSeconds", at_least(el, "in", 0.0)?.unwrap_or(0.0).into()),
+                    ("gain", at_least(el, "volume", 0.0)?.unwrap_or(1.0).into()),
+                    ("loop", flag(el, "loop")?.unwrap_or(false).into()),
+                ]);
+                nodes.put(&cid, node(&cid, "sample", inputs, None, meta_of(el, Sources::new(), Json::obj())));
+                clips.push(cid);
             } else if el.tag == "clip" {
+                if el.attr("src").is_some() {
+                    return Err(format!("{}: a track that plays an instrument holds clips of notes; an audio clip (src) goes on a track without one", place(tr)));
+                }
                 refuse_unknown(el, &["name", "start", "length", "loop"])?;
                 let clip_name = txt(el, "name", None)?.unwrap_or_else(|| format!("{track_name} {}", clips.len() + 1));
                 let cid = ids.make(&format!("clip_{clip_name}"));
@@ -1316,18 +1415,26 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 ]);
                 nodes.put(&cid, node(&cid, "midiClip", inputs, None, meta_of(el, sources, Json::obj())));
                 clips.push(cid);
+                note_clips = true;
             } else {
-                return Err(format!("{} is not read on a track() (it holds synth(), effects (gain, filter, delay, reverb, eq) and clip())", tag(el.tag)));
+                return Err(format!("{} is not read on a track() (it holds a synth() or a sampler(), effects (gain, filter, delay, reverb, eq) and clip())", tag(el.tag)));
             }
         }
-        if !clips.is_empty() && instrument.is_none() {
-            return Err(format!("{}: its clips need a synth() to play them", place(tr)));
-        }
-        if let Some(inst) = &instrument {
-            if let Some(Json::Obj(fields)) = nodes.get_mut(inst) {
+        let (holder, port) = match (&instrument, &player) {
+            (Some(inst), _) => (inst.clone(), "midi"),
+            (None, Some(p)) => {
+                if note_clips {
+                    return Err(format!("{}: its clips need a synth() or a sampler() to play them", place(tr)));
+                }
+                (p.clone(), "audio")
+            }
+            (None, None) => (String::new(), ""),
+        };
+        if !holder.is_empty() {
+            if let Some(Json::Obj(fields)) = nodes.get_mut(&holder) {
                 if let Some((_, inputs)) = fields.iter_mut().find(|(k, _)| k == "inputs") {
                     for (i, c) in clips.iter().enumerate() {
-                        inputs.set(&format!("midi.{}", i + 1), wire(c, "midi"));
+                        inputs.set(&format!("{port}.{}", i + 1), wire(c, port));
                     }
                 }
             }
