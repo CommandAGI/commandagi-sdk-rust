@@ -49,7 +49,12 @@
 //! slide([elements]).layout .name .notes .background .hidden
 //! text(text).placeholder .x .y .w .h .rotation .font_size .color .bold .italic .underline .align .valign …
 //! shape().shape .x .y .w .h .fill .stroke .stroke_width .corner_radius   image().src .x .y .w .h .fit .alt
-//! every element also takes .opacity .label .locked .group
+//! every element also takes .opacity .label .locked; a text also takes .columns .gutter .inset
+//! group([elements]).name                                               elements that select and move as one; nests
+//! master([parts]).background                                           how the master differs from the stock one:
+//! text_style().role .font_size .color .bold .italic .font_family .line_height .align   a role's text style
+//! layout([placeholders]).name   placeholder().name .role .x .y .w .h .valign .prompt .font_size .color …
+//!                                                                       its own elements, text styles and layouts
 //! ```
 //!
 //! THE TEXT OF A BLOCK IS ITS TEXT PARAMETER, never an attribute: a string, or a tuple of texts and marks
@@ -124,6 +129,16 @@ elements! {
     text: text;
     /// A shape: `shape().shape("ellipse").x(…).y(…).w(…).h(…)`.
     shape: leaf;
+    /// Elements (and groups) of a slide that select and move as one: `group([…]).name("Group 1")`.
+    group: children;
+    /// How the deck's master differs from the stock one: its own elements, its text styles and its layouts.
+    master: children;
+    /// The master's text style of a role: `text_style().role("title").color("#1d4ed8")`.
+    text_style = "textStyle": leaf;
+    /// A layout of the master, by its name: its placeholders.
+    layout: children;
+    /// A placeholder of a layout, by its name: what differs from the stock one.
+    placeholder: leaf;
 }
 
 attributes! {
@@ -237,8 +252,16 @@ attributes! {
         style;
         /// An element the editor does not move.
         locked;
-        /// A group's name: elements with one group name select and move as one.
-        group;
+        /// The role a placeholder plays, or a text style is for: "title", "subtitle", "body" …
+        role;
+        /// A placeholder's prompt ("Click to add a title"), shown only in the editor.
+        prompt;
+        /// A text box's columns.
+        columns;
+        /// The space between a text box's columns, in slide units.
+        gutter;
+        /// The space between a text box's edges and its text, in slide units.
+        inset;
     }
 }
 
@@ -575,7 +598,12 @@ fn read_page(root: &El) -> Result<Declared, String> {
 // ── Deck ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const BOX: &[&str] = &["x", "y", "w", "h", "rotation"];
-const COMMON: &[&str] = &["x", "y", "w", "h", "rotation", "placeholder", "z", "visible", "opacity", "label", "locked", "group"];
+const COMMON: &[&str] = &["x", "y", "w", "h", "rotation", "placeholder", "z", "visible", "opacity", "label", "locked"];
+/// A text frame's columns, the gutter between them and the inset from its edges, in slide units.
+const TEXT_FRAME: &[&str] = &["columns", "gutter", "inset"];
+const ROLES: &[&str] = &["title", "subtitle", "body", "image", "caption", "footer", "slideNumber"];
+const TEXT_STYLE: &[&str] = &["fontSize", "color", "bold", "italic", "fontFamily", "lineHeight", "align"];
+const TEXT_ALIGN: &[&str] = &["left", "center", "right", "justify"];
 /// The deck's styles: a few curated looks (the decks editor's own themes), not a theme editor.
 pub const DECK_STYLES: &[&str] = &["plain", "ink", "editorial", "signal"];
 /// The blocks that take an alignment, and the page's paper and typefaces (a few, not a font menu).
@@ -667,84 +695,221 @@ fn with_channels(mut inputs: Json, set: &str, wires: Vec<Json>) -> Json {
     inputs
 }
 
+fn node_with(id: &str, kind: &str, inputs: Json, el: &El, sources: Sources) -> Json {
+    let mut n = Json::obj().with("id", id).with("type", kind).with("inputs", inputs);
+    if let Some(mut m) = meta(el) {
+        if !sources.is_empty() {
+            m.set("sources", sources.json());
+        }
+        n.set("meta", m);
+    }
+    n
+}
+
+/// A text style's attributes as the deck's params (`fontSize` is `fontSizePx`).
+fn text_style_of(el: &El) -> Result<Vec<(&'static str, Option<Json>)>, String> {
+    Ok(vec![
+        ("fontSizePx", jn(num(el, "fontSize")?)),
+        ("color", js(txt(el, "color")?)),
+        ("bold", jb(flag(el, "bold")?)),
+        ("italic", jb(flag(el, "italic")?)),
+        ("fontFamily", js(txt(el, "fontFamily")?)),
+        ("lineHeight", jn(num(el, "lineHeight")?)),
+        ("align", js(one_of(el, "align", TEXT_ALIGN)?)),
+    ])
+}
+
+/// One element of a slide or a master (a text, a shape, an image) as the node it declares.
+fn read_element(c: &El, eid: &str, k: usize, at: &str, groups: &[String]) -> Result<Json, String> {
+    let mut b = Vec::new();
+    for p in BOX {
+        b.push((*p, jn(num(c, p)?)));
+    }
+    let b = defined(b);
+    let placeholder = txt(c, "placeholder")?;
+    let mut common = vec![
+        ("box", (len(&b) > 0).then(|| b.clone())),
+        ("placeholder", js(placeholder.clone())),
+        ("z", jn(num(c, "z")?)),
+        ("visible", jb(flag(c, "visible")?)),
+        ("opacity", jn(num(c, "opacity")?)),
+        ("label", js(txt(c, "label")?)),
+        ("locked", jb(flag(c, "locked")?)),
+        ("groups", (!groups.is_empty()).then(|| Json::Arr(groups.iter().map(|g| Json::from(g.as_str())).collect()))),
+    ];
+    let kind = match c.tag {
+        "text" => {
+            only(c, &[COMMON, &["fontSize", "color", "bold", "italic", "underline", "align", "valign", "fontFamily", "lineHeight", "overflow"], TEXT_FRAME].concat())?;
+            let columns = num(c, "columns")?;
+            if columns.is_some_and(|n| n.fract() != 0.0 || n < 1.0) {
+                return Err(format!("{}: columns is a whole number from 1", place(c)));
+            }
+            common.extend([
+                ("text", Some(rich_text(&c.children, &format!("text() of {at}"))?)),
+                ("fontSizePx", jn(num(c, "fontSize")?)),
+                ("color", js(txt(c, "color")?)),
+                ("bold", jb(flag(c, "bold")?)),
+                ("italic", jb(flag(c, "italic")?)),
+                ("underline", jb(flag(c, "underline")?)),
+                ("align", js(one_of(c, "align", TEXT_ALIGN)?)),
+                ("valign", js(one_of(c, "valign", &["top", "middle", "bottom"])?)),
+                ("fontFamily", js(txt(c, "fontFamily")?)),
+                ("lineHeight", jn(num(c, "lineHeight")?)),
+                ("overflow", js(one_of(c, "overflow", &["visible", "clip", "ellipsis"])?)),
+                ("columns", jn(columns)),
+                ("gutter", jn(num(c, "gutter")?)),
+                ("inset", jn(num(c, "inset")?)),
+            ]);
+            DECK_TEXT
+        }
+        "shape" => {
+            only(c, &[COMMON, &["shape", "fill", "stroke", "strokeWidth", "cornerRadius"]].concat())?;
+            common.extend([
+                ("shape", Some(one_of(c, "shape", &["rect", "ellipse", "triangle", "line"])?.unwrap_or_else(|| "rect".into()).into())),
+                ("fill", js(txt(c, "fill")?)),
+                ("stroke", js(txt(c, "stroke")?)),
+                ("strokeWidth", jn(num(c, "strokeWidth")?)),
+                ("cornerRadius", jn(num(c, "cornerRadius")?)),
+            ]);
+            DECK_SHAPE
+        }
+        "image" => {
+            only(c, &[COMMON, &["src", "fit", "alt"]].concat())?;
+            common.extend([
+                ("src", Some(txt(c, "src")?.unwrap_or_default().into())),
+                ("fit", js(one_of(c, "fit", &["fill", "contain", "cover", "none"])?)),
+                ("alt", js(txt(c, "alt")?)),
+            ]);
+            DECK_IMAGE
+        }
+        _ => return Err(format!("{} is not an element of {at} (text, shape, image, group)", tag(c.tag))),
+    };
+    let placed = placeholder.is_some_and(|p| !p.is_empty());
+    if !placed && ["x", "y", "w", "h"].iter().any(|p| b.get(p).is_none()) {
+        return Err(format!("the {} {k} of {at} needs x, y, w and h (or a placeholder to take them from)", tag(c.tag)));
+    }
+    Ok(node(eid, kind, defined(common), c))
+}
+
+/// The elements of a slide or a master in paint order, each naming the groups around it (outermost first); where
+/// each group was written goes in `sources` (`group:<name>`).
+fn read_elements<'a>(children: impl Iterator<Item = &'a El>, owner: &str, at: &str, nodes: &mut Vec<(String, Json)>, sources: &mut Sources) -> Result<Vec<Json>, String> {
+    fn walk<'a>(kids: Vec<&'a El>, groups: &mut Vec<String>, owner: &str, at: &str, names: &mut Vec<String>, nodes: &mut Vec<(String, Json)>, sources: &mut Sources, wires: &mut Vec<Json>) -> Result<(), String> {
+        for c in kids {
+            if c.tag == "group" {
+                only(c, &["name"])?;
+                let name = txt(c, "name")?.filter(|n| !n.is_empty()).ok_or_else(|| format!("a group() of {at} needs a name"))?;
+                if names.contains(&name) {
+                    return Err(format!("two groups of {at} are called {name}"));
+                }
+                names.push(name.clone());
+                if c.child_elements().next().is_none() {
+                    return Err(format!("the group \"{name}\" of {at} holds no element"));
+                }
+                sources.put(format!("group:{name}"), c);
+                groups.push(name);
+                walk(c.child_elements().collect(), groups, owner, at, names, nodes, sources, wires)?;
+                groups.pop();
+                continue;
+            }
+            let eid = format!("{owner}.{}", wires.len() + 1);
+            nodes.push((eid.clone(), read_element(c, &eid, wires.len() + 1, at, groups)?));
+            wires.push(wire(&eid, "out"));
+        }
+        Ok(())
+    }
+    let mut wires = Vec::new();
+    walk(children.collect(), &mut Vec::new(), owner, at, &mut Vec::new(), nodes, sources, &mut wires)?;
+    Ok(wires)
+}
+
+/// A `master(…)`: its background, its text styles by role, its layouts' placeholders and its own elements.
+fn read_master(el: &El, nodes: &mut Vec<(String, Json)>) -> Result<(), String> {
+    only(el, &["background"])?;
+    let mut sources = Sources::new();
+    let mut styles: Vec<(String, Json)> = Vec::new();
+    let mut layouts: Vec<String> = Vec::new();
+    let mut decoration = Vec::new();
+    for c in el.child_elements() {
+        match c.tag {
+            "textStyle" => {
+                only(c, &[&["role"][..], TEXT_STYLE].concat())?;
+                let role = one_of(c, "role", ROLES)?.ok_or_else(|| format!("a text_style() needs a role ({})", ROLES.join(", ")))?;
+                if styles.iter().any(|(r, _)| *r == role) {
+                    return Err(format!("two text styles of the master are for {role}"));
+                }
+                sources.put(format!("textStyle:{role}"), c);
+                styles.push((role, defined(text_style_of(c)?)));
+            }
+            "layout" => {
+                only(c, &["name"])?;
+                let name = txt(c, "name")?.filter(|n| !n.is_empty()).ok_or("a layout() needs a name")?;
+                if layouts.contains(&name) {
+                    return Err(format!("two layouts are called {name}"));
+                }
+                layouts.push(name.clone());
+                let id = format!("master.layout-{}", layouts.len());
+                let mut own = Sources::new();
+                let mut seen: Vec<String> = Vec::new();
+                let mut placeholders = Vec::new();
+                for p in c.child_elements() {
+                    if p.tag != "placeholder" {
+                        return Err(format!("{} is not read in a layout() (it holds placeholder()s)", tag(p.tag)));
+                    }
+                    only(p, &[&["name", "role", "x", "y", "w", "h", "valign", "prompt"][..], TEXT_STYLE].concat())?;
+                    let pname = txt(p, "name")?.filter(|n| !n.is_empty()).ok_or_else(|| format!("a placeholder() of the layout {name} needs a name"))?;
+                    if seen.contains(&pname) {
+                        return Err(format!("two placeholders of the layout {name} are called {pname}"));
+                    }
+                    seen.push(pname.clone());
+                    own.put(format!("placeholder:{pname}"), p);
+                    let bx = defined(vec![("x", jn(num(p, "x")?)), ("y", jn(num(p, "y")?)), ("w", jn(num(p, "w")?)), ("h", jn(num(p, "h")?))]);
+                    let mut fields = vec![("name", Some(Json::from(pname.as_str()))), ("role", js(one_of(p, "role", ROLES)?)), ("box", (len(&bx) > 0).then(|| bx.clone()))];
+                    fields.extend(text_style_of(p)?);
+                    fields.extend([("valign", js(one_of(p, "valign", &["top", "middle", "bottom"])?)), ("prompt", js(txt(p, "prompt")?))]);
+                    placeholders.push(defined(fields));
+                }
+                let inputs = Json::obj().with("name", name.as_str()).with("placeholders", Json::Arr(placeholders));
+                nodes.push((id.clone(), node_with(&id, "deck.layout", inputs, c, own)));
+            }
+            _ => decoration.push(c),
+        }
+    }
+    let wires = read_elements(decoration.into_iter(), "master", "the master", nodes, &mut sources)?;
+    let inputs = defined(vec![("background", js(txt(el, "background")?)), ("textStyles", (!styles.is_empty()).then(|| Json::Obj(styles)))]);
+    let mut n = Json::obj().with("id", "master").with("type", "deck.master").with("inputs", with_channels(inputs, "elements", wires));
+    if let Some(mut m) = meta(el) {
+        m.set("sources", sources.json());
+        n.set("meta", m);
+    }
+    nodes.push(("master".into(), n));
+    Ok(())
+}
+
 /// A `deck(…)` as the deck's op graph: `doc`, then `slide-N`, then `slide-N.M` for its elements. A slide names its
-/// layout by name (`layout`); the editor binds that name to its stock layouts.
+/// layout by name (`layout`); the editor binds that name to its layouts. A `master(…)` says how the deck's master and
+/// layouts differ from the stock ones.
 fn read_deck(root: &El) -> Result<Json, String> {
     only(root, &["name", "width", "height", "dpi", "style"])?;
     let mut nodes: Vec<(String, Json)> = Vec::new();
     let mut slides = Vec::new();
-    for (i, el) in root.child_elements().enumerate() {
+    let mut mastered = false;
+    for el in root.child_elements() {
+        if el.tag == "master" {
+            if mastered {
+                return Err("a deck() has one master()".into());
+            }
+            mastered = true;
+            read_master(el, &mut nodes)?;
+            continue;
+        }
         if el.tag != "slide" {
-            return Err(format!("{} is not read in a deck() (it holds slide()s)", tag(el.tag)));
+            return Err(format!("{} is not read in a deck() (it holds a master() and slide()s)", tag(el.tag)));
         }
         only(el, &["layout", "name", "notes", "background", "hidden"])?;
-        let id = format!("slide-{}", i + 1);
-        let mut elements = Vec::new();
-        for (k, c) in el.child_elements().enumerate() {
-            let eid = format!("{id}.{}", k + 1);
-            let mut b = Vec::new();
-            for p in BOX {
-                b.push((*p, jn(num(c, p)?)));
-            }
-            let b = defined(b);
-            let placeholder = txt(c, "placeholder")?;
-            let mut common = vec![
-                ("box", (len(&b) > 0).then(|| b.clone())),
-                ("placeholder", js(placeholder.clone())),
-                ("z", jn(num(c, "z")?)),
-                ("visible", jb(flag(c, "visible")?)),
-                ("opacity", jn(num(c, "opacity")?)),
-                ("label", js(txt(c, "label")?)),
-                ("locked", jb(flag(c, "locked")?)),
-                ("group", js(txt(c, "group")?)),
-            ];
-            let kind = match c.tag {
-                "text" => {
-                    only(c, &[COMMON, &["fontSize", "color", "bold", "italic", "underline", "align", "valign", "fontFamily", "lineHeight", "overflow"]].concat())?;
-                    common.extend([
-                        ("text", Some(rich_text(&c.children, &format!("text() of {id}"))?)),
-                        ("fontSizePx", jn(num(c, "fontSize")?)),
-                        ("color", js(txt(c, "color")?)),
-                        ("bold", jb(flag(c, "bold")?)),
-                        ("italic", jb(flag(c, "italic")?)),
-                        ("underline", jb(flag(c, "underline")?)),
-                        ("align", js(one_of(c, "align", &["left", "center", "right", "justify"])?)),
-                        ("valign", js(one_of(c, "valign", &["top", "middle", "bottom"])?)),
-                        ("fontFamily", js(txt(c, "fontFamily")?)),
-                        ("lineHeight", jn(num(c, "lineHeight")?)),
-                        ("overflow", js(one_of(c, "overflow", &["visible", "clip", "ellipsis"])?)),
-                    ]);
-                    DECK_TEXT
-                }
-                "shape" => {
-                    only(c, &[COMMON, &["shape", "fill", "stroke", "strokeWidth", "cornerRadius"]].concat())?;
-                    common.extend([
-                        ("shape", Some(one_of(c, "shape", &["rect", "ellipse", "triangle", "line"])?.unwrap_or_else(|| "rect".into()).into())),
-                        ("fill", js(txt(c, "fill")?)),
-                        ("stroke", js(txt(c, "stroke")?)),
-                        ("strokeWidth", jn(num(c, "strokeWidth")?)),
-                        ("cornerRadius", jn(num(c, "cornerRadius")?)),
-                    ]);
-                    DECK_SHAPE
-                }
-                "image" => {
-                    only(c, &[COMMON, &["src", "fit", "alt"]].concat())?;
-                    common.extend([
-                        ("src", Some(txt(c, "src")?.unwrap_or_default().into())),
-                        ("fit", js(one_of(c, "fit", &["fill", "contain", "cover", "none"])?)),
-                        ("alt", js(txt(c, "alt")?)),
-                    ]);
-                    DECK_IMAGE
-                }
-                _ => return Err(format!("{} is not an element of a slide() (text, shape, image)", tag(c.tag))),
-            };
-            let placed = placeholder.is_some_and(|p| !p.is_empty());
-            if !placed && ["x", "y", "w", "h"].iter().any(|p| b.get(p).is_none()) {
-                return Err(format!("the {} {} of {id} needs x, y, w and h (or a placeholder to take them from)", tag(c.tag), k + 1));
-            }
-            nodes.push((eid.clone(), node(&eid, kind, defined(common), c)));
-            elements.push(wire(&eid, "out"));
-        }
+        let id = format!("slide-{}", slides.len() + 1);
+        let mut sources = Sources::new();
+        let elements = read_elements(el.child_elements(), &id, &id, &mut nodes, &mut sources)?;
         let inputs = defined(vec![
             ("layout", Some(txt(el, "layout")?.unwrap_or_else(|| "Title and body".into()).into())),
             ("name", js(txt(el, "name")?)),
@@ -752,7 +917,7 @@ fn read_deck(root: &El) -> Result<Json, String> {
             ("background", js(txt(el, "background")?)),
             ("hidden", jb(flag(el, "hidden")?)),
         ]);
-        nodes.push((id.clone(), node(&id, DECK_SLIDE, with_channels(inputs, "elements", elements), el)));
+        nodes.push((id.clone(), node_with(&id, DECK_SLIDE, with_channels(inputs, "elements", elements), el, sources)));
         slides.push(wire(&id, "out"));
     }
     let name = txt(root, "name")?.unwrap_or_else(|| "Deck".into());
