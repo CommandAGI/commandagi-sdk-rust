@@ -110,6 +110,40 @@ fn a_paint_documents_strokes_chain_onto_their_layer_and_carry_its_fields() {
 }
 
 #[test]
+fn a_paintings_bucket_gradient_and_move_chain_on_a_layer_and_a_shape_is_a_layer() {
+    let selection = r#"[{"rect": [10, 10, 40, 30], "feather": 4}, {"op": "subtract", "polygon": [[20, 20], [30, 20], [25, 30]]}]"#;
+    let g = graph(
+        painting([
+            layer([
+                stroke([]).points([[1, 2, 1, 0]]).color([0, 0, 0, 1]).selection(json(selection)),
+                bucket().x(5).y(6).tolerance(20).contiguous(true).color([1, 0, 0, 1]),
+                gradient_fill().shape("linear").from([0, 0]).to([100, 0]).stops(json(r#"[{"at": 0, "color": [0, 0, 0, 1]}, {"at": 1, "color": [1, 1, 1, 1]}]"#)),
+                move_().dx(12).dy(-3).selection(json(r#"[{"wand": [5, 6], "tolerance": 32, "contiguous": false}]"#)),
+            ])
+            .name("Paint"),
+            rect().name("Rectangle 1").x(4).y(5).w(30).h(20).fill([0, 0, 1, 1]).stroke([0, 0, 0, 1]).stroke_width(2),
+            line().name("Line 1").from([0, 0]).to([10, 10]).stroke([1, 0, 0, 1]).stroke_width(3),
+        ])
+        .width(100)
+        .height(80),
+    );
+    assert_eq!(node(&g, "paint.stroke").get("inputs").unwrap().get("selection").unwrap().text(), golden(selection));
+    assert_eq!(
+        inputs(&g, "paint.bucket"),
+        golden(&format!(
+            r#"{{"name": "Paint", "visible": true, "opacity": 1, "blend": "normal", "x": 5, "y": 6, "tolerance": 20, "contiguous": true, "color": [1, 0, 0, 1], "src": {}}}"#,
+            w("paint.stroke")
+        ))
+    );
+    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.1").unwrap().text(), golden(&w("paint.move")));
+    assert_eq!(
+        inputs(&g, "paint.shape"),
+        golden(r#"{"name": "Rectangle 1", "x": 4, "y": 5, "w": 30, "h": 20, "fill": [0, 0, 1, 1], "stroke": [0, 0, 0, 1], "strokeWidth": 2, "shape": "rect"}"#)
+    );
+    assert_eq!(node(&g, "paint.shape_2").get("inputs").unwrap().get("shape").unwrap().text(), golden(r#""line""#));
+}
+
+#[test]
 fn a_photos_adjustments_are_tags_and_a_rasters_children_its_filters() {
     let g = graph(
         photo([raster([gaussian_blur([]).radius(3)]).name("Photo").src("Harbour.png"), exposure([]).name("Exposure").ev(0.35).offset(0).gamma(1)])
@@ -182,7 +216,7 @@ fn every_node_carries_the_call_it_came_from() {
 fn refuses_by_name_what_the_vocabulary_cannot_say() {
     assert_eq!(bad(painting([layer([]).src("data:image/png;base64,AAAA")])), "layer(): src names an image file by relative path (\"scan.png\"); pixels are not written in code");
     assert_eq!(bad(painting([stroke([]).points(Vec::<i32>::new())])), "stroke() is painted on a layer: write it inside one");
-    assert_eq!(bad(painting([layer([stroke([]).opacity(1)])])), "stroke(): opacity is the layer's (write it on the layer the stroke is painted on)");
+    assert_eq!(bad(painting([layer([stroke([]).opacity(1)])])), "stroke(): opacity is the layer's (write it on the layer it is painted on)");
     assert_eq!(bad(drawing([rect()])), "rect() is inside a layer() (a drawing's children are its layers)");
     assert_eq!(bad(drawing([layer([layer([])])])), "layer(): a layer() is a child of the drawing(); inside it, group with group()");
     assert_eq!(bad(drawing([layer([blur([])])])), "blur() wraps the one node it changes");

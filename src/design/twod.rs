@@ -110,6 +110,14 @@ elements! {
     gradient: children;
     /// The one layer that masks a layer, a stroke or a filter.
     mask: children;
+    /// A painting's line layer: `line().from(json("[0, 0]")).to(json("[40, 30]"))`.
+    line: leaf;
+    /// A painting's Paint Bucket on a layer: `bucket().x(…).y(…).tolerance(32).color(…)`.
+    bucket: leaf;
+    /// A painting's Gradient on a layer.
+    gradient_fill = "gradientFill": leaf;
+    /// A painting's Move of a layer's pixels (or its selected pixels).
+    move_ = "move": leaf;
     /// A photo's adjustment.
     exposure: children;
     /// A photo's adjustment.
@@ -265,6 +273,10 @@ attributes! {
         texture;
         /// A bucket fill's tolerance.
         tolerance;
+        /// A bucket fill or a magic wand reaches only the like pixels joined to the seed.
+        contiguous;
+        /// The region an operation of a painting changed: `json(r#"[{"rect": [10, 10, 40, 30], "feather": 4}]"#)`.
+        selection;
         /// A colour.
         color;
         /// Brightness.
@@ -684,7 +696,8 @@ const COMMON: &[&str] = &["name", "visible", "opacity", "blend", "clip", "locked
 struct StackKind {
     root: &'static str,
     prefix: &'static str,
-    chain_type: &'static str,
+    /// A chain member's node type.
+    chain_type: fn(&El) -> String,
     /// A layer's tag → its node type and inputs; none when the tag is not a layer.
     layer: fn(&El) -> Result<Option<(String, Json)>, String>,
     /// A chain member's tag (a stroke, a filter) → its own inputs; none when the tag is not one.
@@ -716,23 +729,29 @@ fn adjustment_layer(el: &El, node_type: &str) -> Result<Option<(String, Json)>, 
     Ok(Some((node_type.into(), common.with("adjustment", adjustment))))
 }
 
+/// What a painting chains on a pixel layer besides its strokes: the Paint Bucket, the Gradient, the Move tool.
+pub const PAINT_CHAIN: &[&str] = &["stroke", "bucket", "gradientFill", "move"];
+/// A painting's shape layers.
+pub const PAINT_SHAPES: &[&str] = &["rect", "ellipse", "polygon", "line"];
+
 const PAINT: StackKind = StackKind {
     root: "painting",
     prefix: "paint",
-    chain_type: "paint.stroke",
+    chain_type: |el| format!("paint.{}", el.tag),
     layer: |el| match el.tag {
         "layer" => pixel_layer(el, "paint.layer"),
         "fill" | "group" => Ok(Some((format!("paint.{}", el.tag), attrs(el, &[])?))),
         t if PHOTO_ADJUSTMENTS.contains(&t) => adjustment_layer(el, "paint.adjust"),
+        t if PAINT_SHAPES.contains(&t) => Ok(Some(("paint.shape".into(), attrs(el, &[])?.with("shape", el.tag)))),
         _ => Ok(None),
     },
     chain: |el| {
-        if el.tag != "stroke" {
+        if !PAINT_CHAIN.contains(&el.tag) {
             return Ok(None);
         }
         let mut a = attrs(el, &[])?;
-        common_refused(el, &a, "write it on the layer the stroke is painted on")?;
-        if let Some(points) = a.get("points") {
+        common_refused(el, &a, "write it on the layer it is painted on")?;
+        if let (true, Some(points)) = (el.tag == "stroke", a.get("points")) {
             let points = stroke_points(points, &format!("{} points", place(el)))?;
             a.set("points", points);
         }
@@ -743,7 +762,7 @@ const PAINT: StackKind = StackKind {
 const PHOTO: StackKind = StackKind {
     root: "photo",
     prefix: "photo",
-    chain_type: "photo.filter",
+    chain_type: |_| "photo.filter".into(),
     layer: |el| match el.tag {
         "raster" => pixel_layer(el, "photo.raster"),
         "fill" | "gradient" | "group" => Ok(Some((format!("photo.{}", el.tag), attrs(el, &[])?))),
@@ -979,7 +998,7 @@ impl Doc {
             for c in chain {
                 let own = (kind.chain)(c)?.expect("a chain member");
                 let inputs = spread(carried.clone(), entries(&own).to_vec()).with("src", wire(&top, "out"));
-                top = self.add_masked(kind, c, kind.chain_type, inputs)?;
+                top = self.add_masked(kind, c, &(kind.chain_type)(c), inputs)?;
             }
             slots.push(top);
         }
