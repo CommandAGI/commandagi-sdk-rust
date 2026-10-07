@@ -124,6 +124,29 @@ fn a_song_declares_the_chain_synth_effects_track_master() {
 }
 
 #[test]
+fn a_song_holds_audio_clips_a_sampler_and_a_cycle() {
+    let g = graph(
+        song([
+            track([gain().gain(0.5), clip([]).src("media/tone.wav").start(2).length(3).in_(0.25).volume(0.8), clip([]).src("media/tone.wav").name("Again").start(8)]).name("Tone"),
+            track([sampler().src("media/tone.wav").root("C5").release(1), clip([note().pitch("E5")])]).name("Bells"),
+        ])
+        .cycle_start(4)
+        .cycle_end(12),
+    );
+    assert_eq!(input(&g, "master", "cycle"), golden(r#"{"start": 4, "end": 12}"#));
+    assert_eq!(input(&g, "player_Tone", "audio.2"), golden(r#"{"wire": {"node": "clip_Again", "port": "audio"}}"#));
+    assert_eq!(input(&g, "fx_Tone_gain", "audio"), golden(r#"{"wire": {"node": "player_Tone", "port": "audio"}}"#));
+    assert_eq!(
+        node(&g, "clip_tone").get("inputs").unwrap().text(),
+        golden(r#"{"name": "tone", "src": "media/tone.wav", "start": 2, "length": 3, "offsetSeconds": 0.25, "gain": 0.8, "loop": false}"#)
+    );
+    assert_eq!(
+        input(&g, "inst_Bells", "spec"),
+        golden(r#"{"kind": "sampler", "src": "media/tone.wav", "baseNote": 72, "gain": 1, "env": {"attack": 0.01, "decay": 0.15, "sustain": 0.6, "release": 1}}"#)
+    );
+}
+
+#[test]
 fn refuses_what_the_vocabulary_cannot_say() {
     let video_track = |children: Vec<El>| bad(video([track(children)]));
     assert_eq!(video_track(vec![clip([]).src("data:video/mp4;base64,AAAA").duration(1)]), "clip().src(\"data:video/mp4;base64,AAAA\"): src is a path relative to this file, not data:video/mp4;base64,AAAA");
@@ -135,9 +158,15 @@ fn refuses_what_the_vocabulary_cannot_say() {
     assert_eq!(video_track(vec![clip([effect([]).type_("glow").amount("x")]).src("a.mp4").duration(1)]), "effect().type_(\"glow\"): amount is a number, not \"x\"");
     assert_eq!(video_track(vec![title([]).text("T").duration(1).opacity(2)]), "title().text(\"T\"): opacity is at most 1, not 2");
     let song_track = |children: Vec<El>| bad(song([track(children)]));
-    assert_eq!(song_track(vec![clip([])]), "track(): its clips need a synth() to play them");
+    assert_eq!(song_track(vec![clip([])]), "track(): its clips need a synth() or a sampler() to play them");
     assert_eq!(song_track(vec![synth(), clip([note().pitch("H2")])]), "note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not \"H2\"");
-    assert_eq!(song_track(vec![reverb()]), "reverb() comes after the track's synth() (the chain runs synth → effects → track)");
+    assert_eq!(song_track(vec![clip([]).src("/abs/tone.wav")]), "clip().src(\"/abs/tone.wav\"): src is a path relative to this file, not /abs/tone.wav");
+    assert_eq!(song_track(vec![clip([]).src("take.mp4")]), "clip().src(\"take.mp4\"): take.mp4 is not a sound file this studio reads");
+    assert_eq!(song_track(vec![synth(), clip([]).src("tone.wav")]), "track(): a track that plays an instrument holds clips of notes; an audio clip (src) goes on a track without one");
+    assert_eq!(song_track(vec![sampler().src("a.wav").root("Q")]), "sampler(): root is the pitch the file sounds at, a MIDI number (0–127) or a name (\"A4\"), not \"Q\"");
+    assert_eq!(song_track(vec![sampler()]), "sampler() names its sound file (.src(\"media/tone.wav\"), relative to this file)");
+    assert_eq!(bad(song([]).cycle_start(4)), "song(): a cycle names both its cycle_start and its cycle_end (beats)");
+    assert_eq!(bad(song([]).cycle_start(4).cycle_end(4)), "song(): cycle_end (4) comes after cycle_start (4)");
     assert_eq!(bad(song([]).time_signature("4/5")), "song(): time_signature is \"beats/unit\" (\"4/4\", \"6/8\")");
     assert_eq!(bad(song([]).tempo(json(r#"[{"atBeat": 4, "bpm": 90}]"#))), "song(): tempo is beats per minute (120), or [{ atBeat: 0, bpm: 120 }, …] sorted by beat");
 }
