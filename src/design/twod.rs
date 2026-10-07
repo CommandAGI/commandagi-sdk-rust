@@ -29,7 +29,8 @@
 //!
 //! ONE RULE FOR EVERY TAG: an element is one node, its attributes are the node's inputs (`.stroke_width(2)` is
 //! `strokeWidth`), and its children are the nodes it takes, in order. `.id(…)`, `.label(…)` and `.disabled(true)` set
-//! the node's own fields. The encodings are the TypeScript SDK's: a top-level group of a drawing is a `layer`; a path's
+//! the node's own fields. The encodings are the TypeScript SDK's: a drawing is its first artboard, and each
+//! `artboard([layer([…])])` after its layers is another; a top-level group of a drawing is a `layer`; a path's
 //! `d` (absolute M L H V C Q Z); a drawn brush stroke's `[x, y]` points; a paint stroke's `[x, y, pressure, t]` points;
 //! a modifier (`blur`, `transform`, `fill` …) wraps the one node it takes; `clip` takes its content, then its mask; in a
 //! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it. A value that
@@ -48,8 +49,10 @@ use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
-    /// A drawing: its layers.
+    /// A drawing: its layers, then its other artboards (the drawing is the first).
     drawing: children;
+    /// Another artboard of a drawing: its layers, `artboard([layer([…])]).name("Back").width(400).height(300)`.
+    artboard: children;
     /// A paint document: its layer stack, bottom first.
     painting: children;
     /// A photo: its layer stack, bottom first.
@@ -795,6 +798,10 @@ impl Doc {
 
     /// The graph: `{id, nodes, outputs, meta}`, with the fields written after each node was added.
     fn build(&mut self, output: &str) -> Json {
+        self.build_all(&[output.to_string()])
+    }
+
+    fn build_all(&mut self, outputs: &[String]) -> Json {
         let g = self.s.take().expect("a scope").build();
         let mut nodes = g.get("nodes").cloned().unwrap_or(Json::obj());
         if let Json::Obj(entries) = &mut nodes {
@@ -811,7 +818,7 @@ impl Doc {
         Json::obj()
             .with("id", g.get("id").cloned().unwrap_or(Json::Null))
             .with("nodes", nodes)
-            .with("outputs", Json::Arr(vec![output.into()]))
+            .with("outputs", Json::Arr(outputs.iter().map(|o| o.as_str().into()).collect()))
             .with("meta", g.get("meta").cloned().unwrap_or(Json::obj()))
     }
 
@@ -906,14 +913,78 @@ impl Doc {
             }
         }
         self.s = Some(Scope::new(&format!("draw:{}", slug(&own.map(str::to_string).unwrap_or_else(unnamed))), m.clone()));
-        let layers = root.child_elements().map(|c| self.drawn(c, true)).collect::<Result<Vec<_>, _>>()?;
+        // The drawing is its first artboard: its layers are its own; each artboard() after them is another.
+        let children: Vec<&El> = root.child_elements().collect();
+        if let Some(first) = children.iter().position(|c| c.tag == "artboard") {
+            if children[first..].iter().any(|c| c.tag != "artboard") {
+                return Err("drawing(): its layers come before its artboard()s (the drawing is the first artboard)".into());
+            }
+        }
+        let layers = children.iter().filter(|c| c.tag != "artboard").map(|c| self.drawn(c, true)).collect::<Result<Vec<_>, _>>()?;
         let mut inputs = Vec::new();
         if let Some(bg) = m.get("background") {
             inputs.push(("background".to_string(), bg.clone()));
         }
         inputs.extend(wires("layers", &layers));
         let comp = self.scope().add("composite", inputs, Some("composite"), Some("Output"), meta(root))?;
-        Ok(self.build(&comp))
+        let boards: Vec<&El> = children.iter().copied().filter(|c| c.tag == "artboard").collect();
+        if boards.is_empty() {
+            return Ok(self.build(&comp));
+        }
+        let fields = |from: &Json| {
+            let mut f = Vec::new();
+            for k in ["width", "height", "background"] {
+                if let Some(v) = from.get(k) {
+                    f.push((k.to_string(), v.clone()));
+                }
+            }
+            f
+        };
+        let page = |id: &str, name: &str, f: Vec<(String, Json)>| {
+            let mut p = Json::obj().with("id", id).with("name", name);
+            for (k, v) in f {
+                p.set(&k, v);
+            }
+            p.with("compositeId", id)
+        };
+        let mut pages = vec![page("composite", own.unwrap_or("Artboard 1"), fields(&m))];
+        let mut outputs = vec![comp];
+        for (i, b) in boards.iter().enumerate() {
+            let a = attrs(b, &["name", "width", "height", "background"])?;
+            if let Some((k, _)) = entries(&a).first() {
+                return Err(format!("{}: {} is not read (an artboard has name, width, height, background)", place(b), rust_name(k)));
+            }
+            let name = b.attr("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(|| format!("Artboard {}", i + 2));
+            let mut own_fields = Json::obj();
+            for k in ["width", "height", "background"] {
+                if let Some(v) = b.attr(k) {
+                    plain(v, &format!("{} {k}", place(b)))?;
+                    own_fields.set(k, v.clone());
+                }
+            }
+            let mut board_layers = Vec::new();
+            for c in b.child_elements() {
+                if c.tag == "artboard" {
+                    return Err(format!("{}: an artboard() is a child of the drawing(), not of another artboard", place(b)));
+                }
+                board_layers.push(self.drawn(c, true)?);
+            }
+            let id = match b.attr("id") {
+                None => None,
+                Some(Json::Str(s)) => Some(s.clone()).filter(|s| !s.is_empty()),
+                Some(_) => return Err(format!("{}: id is a string", place(b))),
+            };
+            let mut inputs = Vec::new();
+            if let Some(bg) = own_fields.get("background") {
+                inputs.push(("background".to_string(), bg.clone()));
+            }
+            inputs.extend(wires("layers", &board_layers));
+            let nid = self.scope().add("composite", inputs, id.as_deref(), Some(&name), meta(b))?;
+            pages.push(page(&nid, &name, fields(&own_fields)));
+            outputs.push(nid);
+        }
+        self.scope().meta.set("pages", Json::Arr(pages));
+        Ok(self.build_all(&outputs))
     }
 
     /// A layer's (or a stroke's, or a filter's) `mask`: the one stack layer it holds, declared outside the stack and
