@@ -23,9 +23,9 @@ fn a_pdf_is_its_pages_marks_and_structure() {
             page([]).src("Contract.pdf").n(1),
             page([
                 highlight().rects([[72, 700, 300, 712]]).author("Ada").text("Check"),
-                note([reply().text("Because.").author("Bob")]).at([500, 700]).text("Why?"),
+                note([reply().text("Because.").author("Bob"), reply().text("Resolved").author("Ada").state("Completed")]).at([500, 700]).text("Why?"),
                 redact().rect([72, 500, 300, 520]),
-                field().kind("text").name("Name").rect([72, 100, 300, 120]),
+                field().kind("text").name("Name").rect([72, 100, 300, 120]).required(true).read_only(true).tooltip("Your name").default_("Ada"),
             ])
             .src("Contract.pdf")
             .n(3)
@@ -47,9 +47,9 @@ fn a_pdf_is_its_pages_marks_and_structure() {
                 {"src": "Contract.pdf", "n": 1},
                 {"src": "Contract.pdf", "n": 3, "rotate": 90, "marks": [
                     {"type": "highlight", "rects": [[72, 700, 300, 712]], "author": "Ada", "text": "Check"},
-                    {"type": "note", "at": [500, 700], "text": "Why?", "replies": [{"text": "Because.", "author": "Bob"}]},
+                    {"type": "note", "at": [500, 700], "text": "Why?", "replies": [{"text": "Because.", "author": "Bob"}, {"text": "Resolved", "author": "Ada", "state": "Completed"}]},
                     {"type": "redact", "rect": [72, 500, 300, 520]},
-                    {"type": "field", "kind": "text", "name": "Name", "rect": [72, 100, 300, 120]}]},
+                    {"type": "field", "kind": "text", "name": "Name", "rect": [72, 100, 300, 120], "required": true, "readOnly": true, "tooltip": "Your name", "default": "Ada"}]},
                 {"size": "a4"}],
               "fill": [{"name": "Name", "value": "Ada Lovelace"}],
               "bookmarks": [{"title": "Terms", "page": 2, "children": [{"title": "Payment", "page": 2, "top": 500}]}],
@@ -65,5 +65,6 @@ fn what_it_cannot_say_is_refused() {
     assert!(bad(pdf([page([]).src("a.pdf")])).contains("n is the page's number"));
     assert!(bad(pdf([page([])])).contains("blank page"));
     assert!(bad(pdf([page([stamp().rect([0, 0, 10, 10])]).size("a4")])).contains("has a name"));
+    assert!(bad(pdf([page([note([reply().text("x").state("Done")]).at([1, 1])]).size("a4")])).contains("state is"));
     assert!(bad(pdf([page([signature().rect([0, 0, 10, 10]).typed("A").image("s.png")]).size("a4")])).contains("one of typed, image or strokes"));
 }

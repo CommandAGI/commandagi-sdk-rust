@@ -46,7 +46,7 @@ elements! {
     squiggly: leaf;
     /// A sticky note at `.at([x, y])`, holding its replies.
     note: children;
-    /// A reply in a note's thread: `.text(…)`.
+    /// A reply in a note's thread: `.text(…)`; `.state("Completed")` resolves the thread.
     reply: leaf;
     /// A text box: `.rect([...]).text(…)`.
     textbox: leaf;
@@ -83,7 +83,7 @@ attributes! {
         id; src; n; rotate; size; width; height;
         text; color; opacity; date; rects; at; icon; open; rect; text_color; border; fill; align;
         strokes; from; to; arrow; points; name; label; image; typed; style; overlay;
-        kind; value; options; checked; multiline; max_length; required; editable;
+        kind; value; options; checked; multiline; max_length; required; read_only; tooltip; default_; editable; state;
         page; top; bold; italic; url; prefix; start; description; mime_type;
     }
 }
@@ -96,6 +96,8 @@ const PAGE_FIELDS: &[&str] = &["id", "src", "n", "rotate", "size", "width", "hei
 const BOOKMARK_FIELDS: &[&str] = &["id", "title", "page", "top", "open", "bold", "italic", "color", "url"];
 const LABEL_FIELDS: &[&str] = &["from", "style", "prefix", "start"];
 const ATTACH_FIELDS: &[&str] = &["src", "name", "description", "mimeType"];
+/// A review state a reply sets on its thread: "Completed" is resolved, "None" reopens it.
+pub const REVIEW_STATES: &[&str] = &["Accepted", "Rejected", "Cancelled", "Completed", "None"];
 const TEXT_MARK: &[&str] = &["id", "author", "text", "color", "opacity", "date", "rects"];
 
 const PDF: Vocabulary = Vocabulary {
@@ -120,8 +122,8 @@ const PDF: Vocabulary = Vocabulary {
         TagRule::new("stamp", &["page"]).key("id").required(&["rect"]).attrs(&["id", "author", "text", "color", "opacity", "date", "rect", "name", "label", "image"]),
         TagRule::new("signature", &["page"]).key("id").required(&["rect"]).attrs(&["id", "author", "rect", "typed", "style", "image", "strokes", "color", "width"]),
         TagRule::new("redact", &["page"]).key("id").required(&["rect"]).attrs(&["id", "rect", "fill", "overlay"]),
-        TagRule::new("field", &["page"]).key("id").required(&["kind", "name"]).attrs(&["id", "kind", "name", "rect", "rects", "value", "options", "checked", "multiline", "maxLength", "required", "editable", "size"]),
-        TagRule::new("reply", &["note"]).required(&["text"]).attrs(&["text", "author", "date"]),
+        TagRule::new("field", &["page"]).key("id").required(&["kind", "name"]).attrs(&["id", "kind", "name", "rect", "rects", "value", "options", "checked", "multiline", "maxLength", "required", "readOnly", "tooltip", "default", "editable", "size"]),
+        TagRule::new("reply", &["note"]).required(&["text"]).attrs(&["text", "author", "date", "state"]),
         TagRule::new("fill", &["pdf"]).key("name").required(&["name", "value"]).attrs(&["name", "value"]),
         TagRule::new("bookmark", &["pdf", "bookmark"]).key("id").required(&["title"]).attrs(BOOKMARK_FIELDS),
         TagRule::new("label", &["pdf"]).required(&["from"]).attrs(LABEL_FIELDS),
@@ -224,9 +226,22 @@ fn check_mark(c: &DocTree) -> Result<(), String> {
     if c.tag == "stamp" && !["name", "image", "label"].iter().any(|k| c.attr(k).is_some()) {
         return Err("stamp(): has a name (Approved, Draft …), a label or an image".into());
     }
-    for k in ["text", "author", "name", "label", "image", "typed", "overlay"] {
+    for k in ["text", "author", "name", "label", "image", "typed", "overlay", "tooltip"] {
         if c.attr(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
             return Err(format!("{w}: {k} is text"));
+        }
+    }
+    for k in ["required", "readOnly", "multiline", "checked", "editable"] {
+        if c.attr(k).is_some_and(|v| !matches!(v, Json::Bool(_))) {
+            return Err(format!("{w}: {k} is true or false"));
+        }
+    }
+    if c.attr("default").is_some_and(|v| !matches!(v, Json::Str(_)) && !matches!(v, Json::Arr(a) if a.iter().all(|x| matches!(x, Json::Str(_))))) {
+        return Err(format!("{w}: default is text, or a list of texts"));
+    }
+    for r in c.children.iter().filter(|r| r.tag == "reply") {
+        if r.attr("state").is_some_and(|s| !REVIEW_STATES.contains(&s.as_str().unwrap_or(""))) {
+            return Err(r#"reply(): state is "Accepted", "Rejected", "Cancelled", "Completed" or "None""#.into());
         }
     }
     Ok(())
