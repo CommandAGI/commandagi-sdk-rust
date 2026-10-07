@@ -230,3 +230,30 @@ fn refuses_by_name_what_the_vocabulary_cannot_say() {
     assert_eq!(bad(photo([gaussian_blur([])])), "gaussian_blur() is painted on a layer: write it inside one");
     assert_eq!(bad(photo([layer([])])), "layer() is not read in a photo() (see commandagi::design::twod)");
 }
+
+#[test]
+fn a_drawing_is_its_first_artboard_and_each_artboard_after_its_layers_is_another() {
+    let g = graph(
+        drawing([
+            layer([rect().x(1).y(2).w(3).h(4)]).name("Front"),
+            artboard([layer([ellipse().cx(5).cy(6).rx(7).ry(7)]).name("Text")]).name("Back").width(400).height(300).background("#eeeeee"),
+            artboard([]).width(200).height(100),
+        ])
+        .name("Card")
+        .width(400)
+        .height(300)
+        .background("#ffffff"),
+    );
+    assert_eq!(g.get("outputs").unwrap().text(), golden(r#"["composite", "Back", "Artboard_3"]"#));
+    assert_eq!(
+        g.get("meta").unwrap().get("pages").unwrap().text(),
+        golden(
+            r##"[{"id": "composite", "name": "Card", "width": 400, "height": 300, "background": "#ffffff", "compositeId": "composite"},
+                {"id": "Back", "name": "Back", "width": 400, "height": 300, "background": "#eeeeee", "compositeId": "Back"},
+                {"id": "Artboard_3", "name": "Artboard 3", "width": 200, "height": 100, "compositeId": "Artboard_3"}]"##
+        )
+    );
+    assert_eq!(inputs(&g, "Back"), golden(&format!(r##"{{"background": "#eeeeee", "layers.1": {}}}"##, w("group_2"))));
+    assert!(graph(drawing([layer([])])).get("meta").unwrap().get("pages").is_none());
+    assert_eq!(bad(drawing([artboard([]), layer([])])), "drawing(): its layers come before its artboard()s (the drawing is the first artboard)");
+}
