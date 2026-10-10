@@ -47,10 +47,12 @@ pub mod pdf;
 pub mod postal;
 pub(crate) mod read;
 pub mod records;
+pub mod schema;
 pub mod schematic;
 pub mod source;
 pub mod tasks;
 pub mod threed;
+pub mod threed_props;
 pub mod twod;
 
 pub use element::{fragment, json, Child, El, Text, TextPart, Value};

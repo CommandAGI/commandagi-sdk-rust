@@ -49,12 +49,21 @@
 //! (`presentation.order`). Every node carries the call it came from in `meta.source`; a sketch's entities and the
 //! bodies are listed by key in `meta.sources`. Units are millimetres and radians, as stored. A field the methods do not
 //! name is written `.with_attr("field", value)`. Anything else is refused by name, never guessed.
+//!
+//! A feature element is checked against its type's schema (`threed_schema.json`, generated from the `Feature` types;
+//! the same fields are typed in [`super::threed_props`], `ExtrudeProps` …): the feature `{type: <tag>, id, name: <its
+//! id when absent>, suppressed, …its fields}`, a sketch with the `sketch` its children make. A wrong field is refused
+//! with the sentence the TypeScript reader and the op panel give: `extrude().id("e1"): distance: must be greater than 0
+//! (got -1)`. A `feature().type_(…)` of an unknown type is not checked.
 
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::ir::slug;
+use super::schema::{describe_issue, validate};
 use super::source::Sources;
 use super::{Declared, Family};
+pub use super::threed_props::THREED_FEATURES;
 pub use super::{fragment, json, El, Json, Value};
+use std::sync::OnceLock;
 
 elements! {
     /// A part: the document, its elements.
@@ -86,7 +95,7 @@ elements! {
     cylinder: leaf;
     sphere: leaf;
     cone: leaf;
-    makehuman: leaf;
+    make_human = "makeHuman": leaf;
     linear_pattern = "linearPattern": leaf;
     circular_pattern = "circularPattern": leaf;
     path_pattern = "pathPattern": leaf;
@@ -174,15 +183,23 @@ attributes! {
 
 pub(crate) const FAMILY: Family = Family { module: "threed", roots: &["part", "assembly"], declare };
 
-/// The feature types a 3D document holds, by tag (`packages/domain/3d-core/types.ts` Feature).
-pub const THREED_FEATURES: &[&str] = &[
-    "sketch", "extrude", "revolve", "sweep", "loft", "fillet", "chamfer", "shell", "box", "import", "externalPart",
-    "cylinder", "sphere", "cone", "makehuman", "linearPattern", "circularPattern", "pathPattern", "mirror",
-    "datumPlane", "draft", "hole", "thread", "rib", "coil", "combine", "offsetFaces", "thicken", "split", "scale",
-    "dome", "wrapText", "deleteFace", "fullRound", "sheetFlange", "unfold", "copyBody", "transform", "subdivBody",
-    "meshBody", "meshModifier", "pointCloud", "gaussianSplat", "skeleton", "volume", "molecule", "graph", "generate",
-    "pcbTrace", "copperPour", "generateVia", "platedHole", "code",
-];
+/// The schema of the 3D features (`roots`: tag → definition, `$defs`), generated from the `Feature` types.
+pub fn threed_schema() -> &'static Json {
+    static SCHEMA: OnceLock<Json> = OnceLock::new();
+    SCHEMA.get_or_init(|| Json::parse(include_str!("threed_schema.json")).expect("threed_schema.json is JSON"))
+}
+
+/// Refuses a feature whose fields do not fit its type's schema, with every issue.
+fn check_feature(el: &El, feature: &Json) -> Result<(), String> {
+    let schema = threed_schema();
+    let Some(def) = feature.get("type").and_then(|t| schema.get("roots")?.get(t.as_str()?)).and_then(Json::as_str) else { return Ok(()) };
+    let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
+    let issues = validate(&Json::obj().with("$ref", format!("#/$defs/{def}")), feature, &defs, "")?;
+    if issues.is_empty() {
+        return Ok(());
+    }
+    Err(format!("{}: {}", at(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")))
+}
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
     "feature", "part", "assembly", "parameter", "plane", "body", "slot", "point", "constraint", "projection", "line", "circle", "arc",
@@ -558,7 +575,17 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
             let (sketch, s) = sketch_of(el)?;
             inputs.push(("sketch".into(), sketch));
             sources = s;
-        } else {
+        }
+        if !generic {
+            let mut feature = vec![("type".to_string(), Json::from(kind.as_str())), ("id".to_string(), Json::from(id.as_str()))];
+            feature.push(("name".into(), label.clone().unwrap_or_else(|| Json::from(id.as_str()))));
+            if let Some(s) = &suppressed {
+                feature.push(("suppressed".into(), s.clone()));
+            }
+            feature.extend(inputs.iter().cloned());
+            check_feature(el, &Json::Obj(feature))?;
+        }
+        if el.tag != "sketch" {
             no_children(el)?;
             if el.tag == "code" {
                 // A code feature's `inputs` are ports of its node, beside `source` and `consumes` (the document graph's rule).

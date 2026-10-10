@@ -43,7 +43,7 @@ fn a_part_declares_the_documents_graph() {
         .name("Sketch1")
         .plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#)),
         extrude().id("extrude1").name("Extrude1").profile(json(r#"{"sketch": "sketch1"}"#)).distance(6).operation("new"),
-        fillet().id("fillet1").name("Fillet1").radius(1).edges(json("[]")).consumes(["extrude1"]).suppressed(true),
+        fillet().id("fillet1").name("Fillet1").radius(1).edges(json(r#"[{"kind": "edge", "signature": {"point": [20, 0, 6]}}]"#)).consumes(["extrude1"]).suppressed(true),
         body().id("extrude1").material("aluminium-6061"),
         slot().name("environment").value(json(r#"{"gravity": [0, 0, -9.81]}"#)),
     ])
@@ -61,7 +61,7 @@ fn a_part_declares_the_documents_graph() {
         with_meta(r#"{"id":"extrude1","type":"extrude","label":"Extrude1","inputs":{"profile":{"sketch":"sketch1"},"distance":6,"operation":"new"}}"#, Json::obj().with("source", site(l0 + 13, 9)))
     );
     let fillet = node(&g, "fillet1").clone().with("meta", Json::Null);
-    assert_eq!(fillet.text(), r#"{"id":"fillet1","type":"fillet","label":"Fillet1","disabled":true,"inputs":{"radius":1,"edges":[],"consumes":["extrude1"]},"meta":null}"#);
+    assert_eq!(fillet.text(), r#"{"id":"fillet1","type":"fillet","label":"Fillet1","disabled":true,"inputs":{"radius":1,"edges":[{"kind":"edge","signature":{"point":[20,0,6]}}],"consumes":["extrude1"]},"meta":null}"#);
     let sketch1 = node(&g, "sketch1");
     let sk = sketch1.get("inputs").and_then(|i| i.get("sketch")).unwrap();
     assert_eq!(sk.get("pointOrder").unwrap().text(), r#"["p1","p2","p3"]"#);
@@ -114,8 +114,8 @@ fn a_subset_of_the_built_in_planes_an_id_with_a_slash_and_a_feature_of_an_unknow
     assert!(planes(&graph(part([]).name("P").builtin_planes(Vec::<&str>::new()))).is_empty());
     let xy = plane().id("XY").name("XY").origin([0, 0, 0]).normal([0, 0, 1]).x_axis([1, 0, 0]).builtin("XY");
     assert_eq!(planes(&graph(part([xy]).name("P").builtin_planes(["plane_xz"]))), ["XY", "plane_xz"]);
-    let g = graph(part([cylinder().id("fan/bore").radius(2), feature().type_("rotate").id("r1").name("rotate_y_30").axis([0, 1, 0]).angle(30)]).name("P"));
-    assert_eq!(node(&g, "fan/bore").get("inputs").unwrap().text(), r#"{"radius":2}"#);
+    let g = graph(part([cylinder().id("fan/bore").center([0, 0, 0]).axis([0, 0, 1]).radius(2).height(5).operation("cut"), feature().type_("rotate").id("r1").name("rotate_y_30").axis([0, 1, 0]).angle(30)]).name("P"));
+    assert_eq!(node(&g, "fan/bore").get("inputs").unwrap().text(), r#"{"center":[0,0,0],"axis":[0,0,1],"radius":2,"height":5,"operation":"cut"}"#);
     let mut r1 = node(&g, "r1").clone();
     r1.remove("meta");
     assert_eq!(r1.text(), r#"{"id":"r1","type":"rotate","label":"rotate_y_30","inputs":{"axis":[0,1,0],"angle":30}}"#);
@@ -126,5 +126,56 @@ fn a_subset_of_the_built_in_planes_an_id_with_a_slash_and_a_feature_of_an_unknow
 fn a_code_features_inputs_are_ports_of_its_node() {
     let g = graph(part([code().id("bracket").source("bracket.3d.py").inputs(json(r#"{"width": 40}"#)).consumes(["base"])]).name("P"));
     assert_eq!(node(&g, "bracket").get("inputs").unwrap().text(), r#"{"source":"bracket.3d.py","consumes":["base"],"width":40}"#);
-    assert!(bad(part([code().id("c").source("a.py").distance(3)]).name("P")).ends_with("a code feature has source, inputs and consumes, not distance"));
+    assert_eq!(bad(part([code().id("c").source("a.py").distance(3)]).name("P")), r#"code().id("c"): distance: is not one of its fields"#);
+}
+
+#[test]
+fn a_feature_element_whose_fields_do_not_fit_its_type_is_refused_with_the_op_panels_sentence_for_each() {
+    let read = |children: Vec<El>| bad(part(children).name("P"));
+    let profile = || json(r#"{"sketch": "s1"}"#);
+    assert_eq!(read(vec![extrude().id("e1").profile(profile()).distance(-1).operation("new")]), r#"extrude().id("e1"): distance: must be greater than 0 (got -1)"#);
+    assert_eq!(
+        read(vec![extrude().id("e1").profile(profile()).distance(5).operation("glue").with_attr("colour", "red")]),
+        r#"extrude().id("e1"): operation: must be one of new, add, cut, intersect (got "glue"); colour: is not one of its fields"#
+    );
+    assert_eq!(read(vec![extrude().id("e1").distance(5).operation("new")]), r#"extrude().id("e1"): profile: is required"#);
+    let s1 = sketch([circle().id("c").center("p").radius("big"), point().id("p").x(0).y(0)]).id("s1").plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#));
+    assert_eq!(read(vec![s1]), r#"sketch().id("s1"): sketch/segments/c/radius: must be number (got "string")"#);
+    // A large array kept in a file beside the document stands for the array.
+    let positions = json(r#"{"$file": "P.assets/m/positions.f64", "mime": "application/octet-stream", "encoding": "f64le", "len": 9}"#);
+    assert!(declare(part([point_cloud().id("pc").positions(positions)]).name("P")).is_ok());
+    assert!(THREED_FEATURES.contains(&"makeHuman") && !THREED_FEATURES.contains(&"makehuman"));
+}
+
+#[test]
+fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_reader_takes() {
+    use commandagi::design::threed_props::*;
+    let schema = threed_schema();
+    let Some(Json::Obj(roots)) = schema.get("roots") else { panic!("no roots") };
+    assert_eq!(roots.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), THREED_FEATURES);
+    // This crate reads no `pattern` (it has no regex engine): the schema it carries has none.
+    assert!(!include_str!("../src/design/threed_schema.json").contains(r#""pattern""#));
+    let s = SketchProps { id: "s1".into(), name: None, plane: PlaneRef::Datum(PlaneRefDatum { plane: "plane_xy".into() }), suppressed: None, consumes: None }
+        .el([SketchPointProps { pin: None, id: "p".into(), x: 0.0, y: 0.0, construction: None, fixed: None, from: None }.el()]);
+    let props = ExtrudeProps {
+        id: "e1".into(),
+        name: Some("Extrude1".into()),
+        profile: ProfileRef { sketch: "s1".into(), regions: None },
+        distance: 6.0,
+        symmetric: None,
+        reverse: None,
+        distance2: None,
+        draft_angle: None,
+        through: None,
+        up_to_face: None,
+        operation: BooleanMode::New,
+        suppressed: None,
+        consumes: None,
+    };
+    let (e, line) = (props.el(), line!());
+    let g = graph(part([s, e]).name("P"));
+    let mut n = node(&g, "e1").clone();
+    // The element's site is the `.el()` call's.
+    assert_eq!(n.remove("meta").unwrap().text(), Json::obj().with("source", site(line, 28)).text());
+    assert_eq!(n.text(), r#"{"id":"e1","type":"extrude","label":"Extrude1","inputs":{"profile":{"sketch":"s1"},"distance":6,"operation":"new"}}"#);
 }
