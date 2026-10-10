@@ -79,6 +79,9 @@ fn a_device_definitions_channels_are_channel_elements() {
               "channels": [{"id": "joints", "dir": "duplex", "medium": "records", "format": "servo-bus", "transport": "serial", "limits": {"j1": [-90, 90]}, "minIntervalMs": 20}]}"#)
     );
     assert!(bad(device([]).name("A").channels(json("[]"))).contains("each channel as a channel() element"));
+    // A G-code channel's rapid rate: what the G-code simulator moves a G0 at.
+    let (_, cnc, _) = document(device([channel().id("gcode").dir("duplex").medium("records").format("gcode-chat").rapid_mm_per_min(1000)]).name("Router"));
+    assert_eq!(cnc, j(r#"{"name": "Router", "channels": [{"id": "gcode", "dir": "duplex", "medium": "records", "format": "gcode-chat", "rapidMmPerMin": 1000}]}"#));
 }
 
 #[test]

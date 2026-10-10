@@ -105,6 +105,8 @@ attributes! {
         id; type_; label; dir; medium; format; transport; interface; manufacturer; model_number = "model_number";
         product_url = "product_url"; price_usd = "price_usd"; record_hz = "record_hz"; spec_check = "spec_check";
         limits; min_interval_ms; verbs; units; unit; rate; baud; dialect; encoding; conversion; parameters; params; editor;
+        /// A G-code channel's rapid rate (mm/min): what the simulator moves a G0 at.
+        rapid_mm_per_min;
         notes; status; suggest; speed; source; title; value; rank;
         // A dashboard's, a param's, a pane's and a region's.
         focus; accept; default; required; axis; ratio; side; tab; open; collapsed; selected; path; view; world; param;
