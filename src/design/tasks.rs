@@ -16,10 +16,30 @@
 //!
 //! The rule of the ontology's files: a record is an element and its fields are the element's attributes. A task's
 //! subtasks are `subtask().ref_(…)` children (each its own file, by path from this one), in order; a project's views
-//! are `view()` children. Times (`start_at`, `due_at`, `closed_at`, `created_at`, `updated_at`) are epoch milliseconds
-//! in the document and may be written as a date (`"2026-10-20"`, UTC midnight) or a UTC time
-//! (`"2026-10-20T14:30:00Z"`). Nothing adds a default. A run gives back `{format, document, sources}` beside an empty
-//! graph; `sources` names each element's site by its path (`""`, `subtask#Ship it/Draft.task.rs`, `view#board`).
+//! are `view()` children. Times (`start_at`, `due_at`, `closed_at`, `expires`, `approved_at`, `created_at`,
+//! `updated_at`) are epoch milliseconds in the document and may be written as a date (`"2026-10-20"`, UTC midnight) or a
+//! UTC time (`"2026-10-20T14:30:00Z"`). Nothing adds a default. A run gives back `{format, document, sources}` beside an
+//! empty graph; `sources` names each element's site by its path (`""`, `subtask#Ship it/Draft.task.rs`, `view#board`).
+//!
+//! A proposal is a task with status `proposed`: `sketch().ref_(…)` names the file that shows what it will do, and each
+//! `asks()` has the shape of one standing grant (`world`, `units`, `channels`, `verbs`; or `folder` and `files`; or
+//! `folder`, `venues`, `symbols`, `max_qty`, `max_notional`, `per_day`; each with `hours` and `note`):
+//!
+//! ```
+//! use commandagi::design::tasks::*;
+//!
+//! fn document() -> El {
+//!     task([
+//!         sketch().ref_("../worlds/shop-sim/runs/cut/run.json"),
+//!         asks().world("../worlds/shop/world.tsx").units(["cnc-1"]).channels(["gcode"]).verbs(["open", "arm", "run"]).hours(4),
+//!     ])
+//!     .id("cut")
+//!     .title("Cut the bracket")
+//!     .status("proposed")
+//!     .expires("2026-10-11T18:00:00Z")
+//! }
+//! # commandagi::design::declare(document()).unwrap();
+//! ```
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, fn_name, rust_name};
@@ -27,8 +47,12 @@ use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
-    /// A task: its subtasks.
+    /// A task: its sketch, its asks and its subtasks.
     task: children;
+    /// A proposal's sketch: the file that shows what it will do, by its path from this file.
+    sketch: leaf;
+    /// One thing a proposal asks for, the shape of one standing grant.
+    asks: leaf;
     /// A subtask: the file of a task, by its path from this file: `subtask().ref_("Ship it/Draft.task.rs")`.
     subtask: leaf;
     /// A project: its views.
@@ -41,9 +65,10 @@ attributes! {
     /// The fields of a task, a project and a view, chained on their elements.
     pub trait TasksAttrs {
         id; title; status; priority; glyph; assignees; projects; blocked_by; labels; start_at; due_at; closed_at; thread_id;
-        created_by; readme; created_at; updated_at;
-        /// A subtask's file, by its path from this file.
+        created_by; readme; created_at; updated_at; expires; approved_by; approved_at; grants;
+        /// A subtask's or a sketch's file, by its path from this file.
         ref_;
+        world; units; channels; verbs; folder; files; venues; symbols; max_qty; max_notional; per_day; hours; note;
         name; default_view_id; subprojects; archived;
         mode; group_by; filter; lane_order;
     }
@@ -51,17 +76,21 @@ attributes! {
 
 pub(crate) const FAMILY: Family = Family { module: "tasks", roots: &["task", "project"], declare };
 
-/// The fields of a task's body (packages/domain/core/src/task.ts `TaskDoc`), but its subtasks.
+/// The fields of a task's body (packages/domain/core/src/task.ts `TaskDoc`), but its sketch, its asks and its subtasks.
 pub const TASK_FIELDS: &[&str] = &[
     "id", "title", "status", "priority", "glyph", "assignees", "projects", "blockedBy", "labels", "startAt", "dueAt", "closedAt", "threadId",
-    "createdBy", "readme", "createdAt", "updatedAt",
+    "createdBy", "readme", "expires", "approvedBy", "approvedAt", "grants", "createdAt", "updatedAt",
+];
+/// The fields of one `asks()`: the shape of one standing grant (a world's units, a folder's files, a folder's venues).
+pub const ASK_FIELDS: &[&str] = &[
+    "world", "units", "channels", "verbs", "folder", "files", "venues", "symbols", "maxQty", "maxNotional", "perDay", "hours", "note",
 ];
 /// The fields of a project's body (`ProjectDoc`), but its views.
 pub const PROJECT_FIELDS: &[&str] = &["id", "name", "glyph", "defaultViewId", "subprojects", "archived", "readme", "createdAt", "updatedAt"];
 /// The fields of a project's view (`TaskView`).
 pub const VIEW_FIELDS: &[&str] = &["id", "name", "mode", "groupBy", "filter", "laneOrder"];
 /// The fields that are times: epoch milliseconds in the document, a date or a UTC time in code.
-pub const TIME_FIELDS: &[&str] = &["startAt", "dueAt", "closedAt", "createdAt", "updatedAt"];
+pub const TIME_FIELDS: &[&str] = &["startAt", "dueAt", "closedAt", "expires", "approvedAt", "createdAt", "updatedAt"];
 
 const TASK: Vocabulary = Vocabulary {
     format: "task",
@@ -69,6 +98,8 @@ const TASK: Vocabulary = Vocabulary {
     root: "task",
     tags: &[
         TagRule::new("task", &[]).required(&["id"]).attrs(TASK_FIELDS),
+        TagRule::new("sketch", &["task"]).single().required(&["ref"]).attrs(&["ref"]),
+        TagRule::new("asks", &["task"]).attrs(ASK_FIELDS),
         TagRule::new("subtask", &["task"]).key("ref").required(&["ref"]).attrs(&["ref"]),
     ],
     from_tree: task_of,
@@ -200,6 +231,21 @@ fn task_of(t: &DocTree) -> Result<Json, String> {
         }
     }
     let mut out = fields_of(t)?;
+    if let Some(s) = t.single("sketch") {
+        match s.attr("ref") {
+            Some(r @ Json::Str(text)) if !text.is_empty() => {
+                out.set("sketch", r.clone());
+            }
+            other => {
+                let said = other.map(Json::text).unwrap_or_else(|| "undefined".into());
+                return Err(format!("sketch(): ref_ is a path to the file that shows the work, not {said}"));
+            }
+        }
+    }
+    let asks: Vec<Json> = t.children.iter().filter(|c| c.tag == "asks").map(DocTree::record).collect();
+    if !asks.is_empty() {
+        out.set("asks", Json::Arr(asks));
+    }
     if !subtasks.is_empty() {
         out.set("subtasks", Json::Arr(subtasks));
     }
