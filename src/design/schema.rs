@@ -93,11 +93,11 @@ fn kind_of(v: &Json) -> &'static str {
 
 fn type_matches(t: &str, v: &Json) -> bool {
     match t {
-        "string" => matches!(v, Json::Str(_)),
+        // Large data (an array, the bytes of a data URL) may be an ordinary file the document names (docs/formats.md).
+        "string" => matches!(v, Json::Str(_)) || is_file_ref(v),
         "number" => matches!(v, Json::Num(n) if n.is_finite()),
         "integer" => matches!(v, Json::Num(n) if is_integer(*n)),
         "boolean" => matches!(v, Json::Bool(_)),
-        // A large array may be an ordinary file the document names (docs/formats.md § data that is not JSON).
         "array" => matches!(v, Json::Arr(_)) || is_file_ref(v),
         "object" => matches!(v, Json::Obj(_)),
         "null" => matches!(v, Json::Null),
