@@ -1111,13 +1111,15 @@ impl BoxProps {
     }
 }
 
-/// Source format of the embedded file content.
+/// Source format of the embedded file content: STEP, IGES, or an OpenCASCADE BRep (a FreeCAD document's shape).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImportPropsFormat {
     /// `"step"`
     Step,
     /// `"iges"`
     Iges,
+    /// `"brep"`
+    Brep,
 }
 
 impl ToJson for ImportPropsFormat {
@@ -1125,6 +1127,7 @@ impl ToJson for ImportPropsFormat {
         Json::from(match self {
             ImportPropsFormat::Step => "step",
             ImportPropsFormat::Iges => "iges",
+            ImportPropsFormat::Brep => "brep",
         })
     }
 }
@@ -1135,9 +1138,9 @@ pub struct ImportProps {
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// Source format of the embedded file content.
+    /// Source format of the embedded file content: STEP, IGES, or an OpenCASCADE BRep (a FreeCAD document's shape).
     pub format: ImportPropsFormat,
-    /// Raw STEP/IGES file content.
+    /// Raw STEP/IGES/BRep file content.
     pub data: String,
     pub operation: BooleanMode,
     pub suppressed: Option<bool>,

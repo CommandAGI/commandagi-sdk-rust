@@ -76,6 +76,35 @@ fn times_read_as_javascripts_date_parse_reads_them() {
 }
 
 #[test]
+fn a_proposal_its_sketch_and_its_asks() {
+    let root = task([
+        sketch().ref_("../worlds/shop-sim/runs/cut/run.json"),
+        asks().world("../worlds/shop/world.tsx").units(["cnc-1"]).channels(["gcode"]).verbs(["open", "arm", "run"]).hours(4),
+        asks().folder("..").venues(["sim"]).max_qty(2).max_notional(500).per_day(3).note("paper first"),
+    ])
+    .id("cut")
+    .title("Cut the bracket")
+    .status("proposed")
+    .assignees(["agent:claude"])
+    .expires("2026-10-20")
+    .approved_by("person:ada")
+    .approved_at("2026-10-20T14:30:00Z")
+    .grants(["g-0123456789ab"]);
+    let (_, doc, sources) = document(root);
+    assert_eq!(
+        doc,
+        j(r#"{"id": "cut", "title": "Cut the bracket", "status": "proposed", "assignees": ["agent:claude"], "expires": 1792454400000,
+              "approvedBy": "person:ada", "approvedAt": 1792506600000, "grants": ["g-0123456789ab"],
+              "sketch": "../worlds/shop-sim/runs/cut/run.json",
+              "asks": [{"world": "../worlds/shop/world.tsx", "units": ["cnc-1"], "channels": ["gcode"], "verbs": ["open", "arm", "run"], "hours": 4},
+                       {"folder": "..", "venues": ["sim"], "maxQty": 2, "maxNotional": 500, "perDay": 3, "note": "paper first"}]}"#)
+    );
+    assert!(sources.get("sketch").is_some() && sources.get("asks@1").is_some());
+    assert!(bad(task([sketch().ref_("a"), sketch().ref_("b")]).id("a")).contains("task() has one sketch()"));
+    assert!(bad(task([asks().world("w/world.tsx").with_attr("reach", 3)]).id("a")).contains("reach is not read"));
+}
+
+#[test]
 fn a_projects_views_are_view_children() {
     let root = project([
         view().id("board").name("Board").mode("board").group_by("status"),
