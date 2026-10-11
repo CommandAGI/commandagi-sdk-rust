@@ -1,5 +1,5 @@
 //! A VIDEO OR A SONG IN RUST — the media editors' own documents, declared as the nodes the CommandAGI video editor
-//! (`.vid.rs`: `video.source`, `video.clip`, `video.track`, `video.composite`) and music studio (`.mus.rs`: `midiClip`,
+//! (`.vid.rs`: `video.source`, `video.instance`, `video.clip`, `video.track`, `video.composite`) and music studio (`.mus.rs`: `midiClip`,
 //! `instrument`, `fx.*`, `track`, `master`) store and edit. The same nodes, node for node, as the TypeScript SDK's
 //! `media.ts` and the Python SDK's `commandagi.design.media`:
 //!
@@ -13,6 +13,11 @@
 //!             title([]).text("Hello").start(0).duration(2).font_size(72),
 //!         ])
 //!         .name("V1"),
+//!         track([
+//!             composition([]).src("Intro.vid.rs").start(3).in_(0).out(2),
+//!             artboard([]).src("Poster.draw.tsx").start(5).duration(2).fit("contain"),
+//!         ])
+//!         .name("V2"),
 //!         track([clip([]).src("media/tone.wav").start(0).in_(0.5).out(2.5).volume(0.8)]).name("A1").kind("audio"),
 //!     ])
 //!     .name("Balcony")
@@ -49,7 +54,10 @@
 //! Attributes are snake case of the TypeScript names (`.font_size(…)` is `fontSize`; `.in_(…)` is `in`). An effect's
 //! parameters are its attributes (`effect([]).type_("vignette").amount(0.3)`). A tempo map and an effect's colours are
 //! JSON text: `.tempo(json(r#"[{"atBeat": 0, "bpm": 120}]"#))`. Media files are named by path relative to the file,
-//! never inlined. Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
+//! never inlined. So are a nested composition (`composition([]).src("Intro.vid.rs")`: another video's code, a
+//! `video.instance` node whose frames are its clip's source; `.inputs(json(…))` are the values it gives that video's
+//! parameters) and an artboard (`artboard([]).src("Poster.draw.tsx")`: a drawing's page, drawn live; `.view(…)` names
+//! the page, else the first). Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
 //! file, is seconds, as on a video). Each node carries the call that declared
 //! it in `meta.source`; what a node holds that is not a node (a clip's effects, transition, intro, outro and
 //! keyframes; a midi clip's notes; a video's markers) carries its call in `meta.sources`, by key. Anything the
@@ -71,6 +79,10 @@ elements! {
     track: children;
     /// A clip: of a media file on a video track (its transition, intro, outro, effects and keyframes), or of notes in a song.
     clip: children;
+    /// A nested composition on a video track: another video's code by path, drawn live (its transition, intro, outro, effects and keyframes).
+    composition: children;
+    /// An artboard on a video track: a drawing's page by path, drawn live (its transition, intro, outro, effects and keyframes).
+    artboard: children;
     /// A title on a video track: its keyframes and effects.
     title: children;
     /// A sticker on a video track.
@@ -138,8 +150,16 @@ attributes! {
         locked;
         /// A track's or a clip's volume.
         volume;
-        /// A clip's media file, by its path relative to this file.
+        /// A clip's media file, a composition's video or an artboard's drawing, by its path relative to this file.
         src;
+        /// A composition's input values: the parameters of its video by name, `json(r#"{"hue": 30}"#)`.
+        inputs;
+        /// The page of an artboard's drawing (its id or index; the first when not given).
+        view;
+        /// How an artboard's page fills the clip's box: "fill", "contain", "cover", "none".
+        fit;
+        /// What an artboard's drawing is drawn as: "auto", "vector", "raster".
+        representation;
         /// Where a clip or a note starts.
         start;
         /// How long a clip, a note, a transition or an animation lasts.
@@ -600,6 +620,76 @@ fn title_text() -> Vec<(&'static str, Json)> {
 }
 const TITLE_FIELDS: &[&str] = &["text", "fontFamily", "fontSize", "color", "bold", "italic", "align", "background", "strokeColor", "strokeWidth"];
 
+/// A `composition`'s file: another video's code.
+pub fn is_composition_file(src: &str) -> bool {
+    code_of(src, "vid")
+}
+/// An `artboard`'s file: a drawing's code.
+pub fn is_artboard_file(src: &str) -> bool {
+    code_of(src, "draw")
+}
+fn code_of(src: &str, kind: &str) -> bool {
+    let lower = src.to_lowercase();
+    ["tsx", "jsx", "py", "rs"].iter().any(|ext| lower.ends_with(&format!(".{kind}.{ext}")))
+}
+/// How an artboard's page fills the clip's box.
+pub const ARTBOARD_FITS: &[&str] = &["fill", "contain", "cover", "none"];
+/// What an artboard's drawing is drawn as.
+pub const ARTBOARD_REPRESENTATIONS: &[&str] = &["auto", "vector", "raster"];
+/// An artboard's fit and representation when not written.
+pub const ARTBOARD_FIT: &str = "contain";
+pub const ARTBOARD_REPRESENTATION: &str = "auto";
+/// The `video.instance` port that holds a nested composition's ref.
+pub const INSTANCE_REF: &str = "__instance";
+
+/// A `composition`'s or an `artboard`'s file: a path relative to this file, of the kind it names.
+fn document_src(el: &El, is_kind: fn(&str) -> bool, what: &str) -> Result<String, String> {
+    let Some(src) = txt(el, "src", None)?.filter(|s| !s.is_empty()) else {
+        return Err(format!("{} names {what} (.src(…), relative to this file)", tag(el.tag)));
+    };
+    let scheme = src.find(':').is_some_and(|i| i > 0 && src[..i].bytes().all(|b| b.is_ascii_alphabetic()));
+    if scheme || src.starts_with('/') {
+        return Err(format!("{}: src is a path relative to this file, not {src}", place(el)));
+    }
+    if !is_kind(&src) {
+        return Err(format!("{}: {src} is not {what}", place(el)));
+    }
+    Ok(src)
+}
+
+/// A nested composition's input values: its parameters by name, each a number.
+fn input_values(el: &El) -> Result<Vec<(String, Json)>, String> {
+    match el.attr("inputs") {
+        None => Ok(Vec::new()),
+        Some(Json::Obj(e)) if e.iter().all(|(_, v)| matches!(v, Json::Num(n) if n.is_finite())) => {
+            if e.iter().any(|(k, _)| k == INSTANCE_REF) {
+                return Err(format!("{}: {INSTANCE_REF} is not a parameter", place(el)));
+            }
+            Ok(e.clone())
+        }
+        Some(v) => Err(format!("{}: inputs is {{ parameter: number }}, not {}", place(el), v.text())),
+    }
+}
+
+/// A clip's length: out − in at its speed, or its duration.
+fn clip_length(c: &El, in_point: f64, speed: f64, picture: bool) -> Result<f64, String> {
+    let out = at_least(c, "out", 0.0)?;
+    let duration = at_least(c, "duration", 0.0)?;
+    if out.is_some() && duration.is_some() {
+        return Err(format!("{}: give out or duration, not both", place(c)));
+    }
+    if let Some(out) = out {
+        if picture {
+            return Err(format!("{}: a picture has no out (give its duration)", place(c)));
+        }
+        if out <= in_point {
+            return Err(format!("{}: out ({}) is after in ({})", place(c), number_text(out), number_text(in_point)));
+        }
+        return Ok((out - in_point) / speed);
+    }
+    duration.ok_or_else(|| format!("{}: give its {} in seconds", place(c), if picture { "duration" } else { "out (or duration)" }))
+}
+
 /// The clip props a clip with no media leaves out (`in`, `out`, `speed`, and `volume` unless it is kept).
 fn clip_props_without(left_out: &[&str]) -> Vec<&'static str> {
     CLIP_PROPS.iter().copied().filter(|p| !left_out.contains(p)).collect()
@@ -900,7 +990,8 @@ fn declare_video(root: &El) -> Result<Json, String> {
             let mut sources = Sources::new();
             let mut inputs: Json;
             let clip_name: String;
-            let source: Json;
+            let mut source: Json;
+            let mut nested: Option<(String, Vec<(String, Json)>)> = None;
             let start = |c: &El| at_least(c, "start", 0.0).map(|s| s.unwrap_or(0.0));
             let duration_given = |c: &El| -> Result<f64, String> {
                 at_least(c, "duration", 0.0)?.ok_or_else(|| format!("{}: give its duration in seconds", place(c)))
@@ -939,24 +1030,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 clip_name = txt(c, "name", None)?.unwrap_or(file_name);
                 let speed = at_least(c, "speed", 0.01)?.unwrap_or(1.0);
                 let in_point = at_least(c, "in", 0.0)?.unwrap_or(0.0);
-                let out = at_least(c, "out", 0.0)?;
-                let mut duration = at_least(c, "duration", 0.0)?;
-                if out.is_some() && duration.is_some() {
-                    return Err(format!("{}: give out or duration, not both", place(c)));
-                }
-                if let Some(out) = out {
-                    if mk == "image" {
-                        return Err(format!("{}: a picture has no out (give its duration)", place(c)));
-                    }
-                    if out <= in_point {
-                        return Err(format!("{}: out ({}) is after in ({})", place(c), number_text(out), number_text(in_point)));
-                    }
-                    duration = Some((out - in_point) / speed);
-                }
-                let Some(duration) = duration else {
-                    let what = if mk == "image" { "duration" } else { "out (or duration)" };
-                    return Err(format!("{}: give its {what} in seconds", place(c)));
-                };
+                let duration = clip_length(c, in_point, speed, mk == "image")?;
                 inputs = obj(&[
                     ("kind", mk.into()),
                     ("assetId", asset_id.as_str().into()),
@@ -968,6 +1042,56 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 ]);
                 common(c, &mut inputs)?;
                 source = wire(&source_id, "media");
+            } else if c.tag == "composition" {
+                // Another video, drawn live from its own code: a `video.instance` node (made below, once the clip has its id).
+                refuse_unknown(c, &[&["src", "inputs"][..], CLIP_PROPS].concat())?;
+                if kind != "video" {
+                    return Err(format!("{}: a composition goes on a video track", place(c)));
+                }
+                let src = document_src(c, is_composition_file, "another video's code (a .vid.tsx, .vid.py or .vid.rs)")?;
+                clip_name = txt(c, "name", None)?.unwrap_or_else(|| src.rsplit('/').next().unwrap_or(&src).to_string());
+                let speed = at_least(c, "speed", 0.01)?.unwrap_or(1.0);
+                let in_point = at_least(c, "in", 0.0)?.unwrap_or(0.0);
+                let duration = clip_length(c, in_point, speed, false)?;
+                inputs = obj(&[
+                    ("kind", "video".into()),
+                    ("name", clip_name.as_str().into()),
+                    ("start", start(c)?.into()),
+                    ("duration", duration.into()),
+                    ("inPoint", in_point.into()),
+                    ("speed", speed.into()),
+                ]);
+                common(c, &mut inputs)?;
+                nested = Some((src, input_values(c)?));
+                source = Json::Null;
+            } else if c.tag == "artboard" {
+                // A drawing's page, drawn live: the clip keeps the reference, never the drawing.
+                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation"]].concat())?;
+                if kind != "video" {
+                    return Err(format!("{}: an artboard goes on a video track", place(c)));
+                }
+                let src = document_src(c, is_artboard_file, "a drawing's code (a .draw.tsx, .draw.py or .draw.rs)")?;
+                clip_name = txt(c, "name", None)?.unwrap_or_else(|| src.rsplit('/').next().unwrap_or(&src).to_string());
+                let duration = duration_given(c)?;
+                let view = txt(c, "view", None)?;
+                let representation = txt(c, "representation", Some(ARTBOARD_REPRESENTATIONS))?.unwrap_or_else(|| ARTBOARD_REPRESENTATION.into());
+                let mut reference = obj(&[("locator", src.as_str().into()), ("fileKind", "drawing".into()), ("representation", representation.into())]);
+                if let Some(view) = view {
+                    reference.set("view", view);
+                }
+                inputs = obj(&[
+                    ("kind", "renderable".into()),
+                    ("name", clip_name.as_str().into()),
+                    ("start", start(c)?.into()),
+                    ("duration", duration.into()),
+                    ("inPoint", Json::Num(0.0)),
+                    ("speed", Json::Num(1.0)),
+                ]);
+                common(c, &mut inputs)?;
+                inputs.set("volume", 1i64);
+                let fit = txt(c, "fit", Some(ARTBOARD_FITS))?.unwrap_or_else(|| ARTBOARD_FIT.into());
+                inputs.set("renderable", obj(&[("ref", reference), ("fit", fit.into())]));
+                source = Json::Null;
             } else if c.tag == "title" {
                 refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), TITLE_FIELDS, &["typewriter"]].concat())?;
                 if kind != "video" {
@@ -1053,12 +1177,21 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 common(c, &mut inputs)?;
                 source = Json::Null;
             } else {
-                return Err(format!("{} is not read on a track() (it holds clip(), title(), shape(), adjustment(), midi() and audio effects)", tag(c.tag)));
+                return Err(format!("{} is not read on a track() (it holds clip(), composition(), artboard(), title(), shape(), adjustment(), midi() and audio effects)", tag(c.tag)));
             }
             if kind == "midi" && c.tag != "midi" {
                 return Err(format!("{}: a midi track holds midi() clips", place(c)));
             }
             let clip_id = ids.make(&format!("clip_{clip_name}"));
+            if let Some((src, values)) = nested {
+                let comp_id = ids.make(&format!("comp_{clip_name}"));
+                let mut inst = Json::obj().with(INSTANCE_REF, obj(&[("path", src.as_str().into()), ("name", clip_name.as_str().into())]));
+                for (k, v) in values {
+                    inst.set(&k, v);
+                }
+                nodes.put(&comp_id, node(&comp_id, "video.instance", inst, Some(&clip_name), None));
+                source = wire(&comp_id, "frames");
+            }
             let kids = clip_children(c, &clip_id, &mut sources)?;
             inputs.set("transitionIn", kids.transition_in);
             if let Some(a) = kids.anim_in {
