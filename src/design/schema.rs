@@ -221,6 +221,108 @@ pub fn validate(schema: &Json, value: &Json, defs: &Json, path: &str) -> Result<
     Ok(out)
 }
 
+/// Whether a value can be what `s` (resolved) describes, by its JSON kind alone.
+fn kind_fits(s: &Json, value: &Json) -> bool {
+    match s.get("type") {
+        Some(Json::Str(t)) => type_matches(t, value),
+        Some(Json::Arr(ts)) => ts.is_empty() || ts.iter().filter_map(Json::as_str).any(|t| type_matches(t, value)),
+        _ => true,
+    }
+}
+
+/// `value` with every absent required field that declares a `default` filled with that default, at every depth (the
+/// TypeScript SDK's `withDefaults`). A reader calls it before [`validate`], so a file that leaves out a defaulted field
+/// reads as if it had written the default. A field with no default, and an optional field, stay absent. A value that
+/// is not the shape the schema describes comes back as it was, for [`validate`] to name.
+pub fn with_defaults(schema: &Json, value: &Json, defs: &Json) -> Result<Json, String> {
+    let s = resolve(schema, defs)?;
+    if let Some(Json::Arr(options)) = s.get("anyOf").or_else(|| s.get("oneOf")) {
+        let mut named = None;
+        for o in options {
+            let r = resolve(o, defs)?;
+            if let Some(Json::Obj(props)) = r.get("properties") {
+                if props.iter().any(|(k, p)| p.get("const").is_some_and(|c| value.get(k) == Some(c))) {
+                    named = Some(o);
+                    break;
+                }
+            }
+        }
+        let candidates: Vec<&Json> = match named {
+            Some(o) => vec![o],
+            None => {
+                let mut fits = Vec::new();
+                for o in options {
+                    if kind_fits(&resolve(o, defs)?, value) {
+                        fits.push(o);
+                    }
+                }
+                fits
+            }
+        };
+        if candidates.len() == 1 {
+            return with_defaults(candidates[0], value, defs);
+        }
+        for o in candidates {
+            let filled = with_defaults(o, value, defs)?;
+            if validate(o, &filled, defs, "")?.is_empty() {
+                return Ok(filled);
+            }
+        }
+        return Ok(value.clone());
+    }
+    match value {
+        Json::Arr(items) => {
+            let prefix = match s.get("prefixItems") {
+                Some(Json::Arr(p)) => p.as_slice(),
+                _ => &[],
+            };
+            let all = s.get("items");
+            if prefix.is_empty() && all.is_none() {
+                return Ok(value.clone());
+            }
+            let mut out = Vec::with_capacity(items.len());
+            for (i, item) in items.iter().enumerate() {
+                out.push(match prefix.get(i).or(all) {
+                    Some(item_schema) => with_defaults(item_schema, item, defs)?,
+                    None => item.clone(),
+                });
+            }
+            Ok(Json::Arr(out))
+        }
+        Json::Obj(entries) if !is_file_ref(value) && kind_fits(&s, value) => {
+            let props = s.get("properties");
+            let extra = match s.get("additionalProperties") {
+                Some(a @ Json::Obj(_)) => Some(a),
+                _ => None,
+            };
+            if props.is_none() && extra.is_none() {
+                return Ok(value.clone());
+            }
+            let mut out = Vec::with_capacity(entries.len());
+            for (k, v) in entries {
+                out.push((k.clone(), match props.and_then(|p| p.get(k)).or(extra) {
+                    Some(p) => with_defaults(p, v, defs)?,
+                    None => v.clone(),
+                }));
+            }
+            if let Some(Json::Arr(required)) = s.get("required") {
+                for k in required.iter().filter_map(Json::as_str) {
+                    if value.get(k).is_some() {
+                        continue;
+                    }
+                    if let Some(p) = props.and_then(|p| p.get(k)) {
+                        if let Some(d) = resolve(p, defs)?.get("default") {
+                            out.push((k.to_string(), d.clone()));
+                        }
+                    }
+                }
+            }
+            Ok(Json::Obj(out))
+        }
+        _ => Ok(value.clone()),
+    }
+}
+
 /// A value as JavaScript's `JSON.stringify` writes it.
 fn show(v: &Json) -> String {
     v.text()

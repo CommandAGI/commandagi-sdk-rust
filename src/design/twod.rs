@@ -53,7 +53,7 @@
 use super::element::{attributes, elements, rust_name};
 use super::ir::{channels, slug, wire, Scope};
 use super::read::{call, tag};
-use super::schema::{describe_issue, validate};
+use super::schema::{describe_issue, validate, with_defaults};
 use super::source::meta;
 use super::{Declared, Family};
 use std::sync::OnceLock;
@@ -523,13 +523,15 @@ pub fn twod_schema() -> &'static Json {
     SCHEMA.get_or_init(|| Json::parse(include_str!("twod_schema.json")).expect("twod_schema.json is JSON"))
 }
 
-/// `el` with `fields`, checked against its tag's schema: the element as the editors hold it (`{ type, …fields }`).
+/// `el` with `fields`, checked against its tag's schema: the element as the editors hold it (`{ type, …fields }`), with
+/// each required field it leaves out at its declared default ([`with_defaults`]).
 fn checked(el: &El, fields: &Json) -> Result<Json, String> {
     let schema = twod_schema();
     let def = schema.get("roots").and_then(|r| r.get(el.tag)).and_then(Json::as_str).expect("a tag of the schema");
     let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
-    let value = spread(Json::obj().with("type", el.tag), entries(fields).to_vec());
-    let issues = validate(&Json::obj().with("$ref", format!("#/$defs/{def}")), &value, &defs, "")?;
+    let root = Json::obj().with("$ref", format!("#/$defs/{def}"));
+    let value = with_defaults(&root, &spread(Json::obj().with("type", el.tag), entries(fields).to_vec()), &defs)?;
+    let issues = validate(&root, &value, &defs, "")?;
     if issues.is_empty() {
         return Ok(value);
     }

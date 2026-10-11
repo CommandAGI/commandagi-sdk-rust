@@ -323,9 +323,15 @@ fn a_filter_is_checked_against_its_schema_in_a_photo_and_in_a_painting() {
     let in_painting = |f: El| bad(painting([layer([f])]));
     for refused in [&in_photo as &dyn Fn(El) -> String, &in_painting] {
         assert_eq!(refused(gaussian_blur([]).radius(300)), "gaussian_blur(): radius: must be at most 250 (got 300)");
-        assert_eq!(refused(gaussian_blur([])), "gaussian_blur(): radius: is required");
         assert_eq!(refused(gaussian_blur([]).radius(3).amount(1)), "gaussian_blur(): amount: is not one of its fields");
         assert_eq!(refused(noise([]).amount(0.1).monochrome("yes")), "noise(): monochrome: must be boolean (got \"string\")");
+    }
+    // A required field with a declared default may be left out: a blur with no radius is the editor's 4 px blur.
+    for doc in [photo([raster([gaussian_blur([])]).src("a.png")]), painting([layer([gaussian_blur([])])])] {
+        let g = graph(doc);
+        let Some(Json::Obj(nodes)) = g.get("nodes") else { panic!("no nodes") };
+        let filters: Vec<String> = nodes.iter().filter_map(|(_, n)| n.get("inputs")?.get("filter")).map(Json::text).collect();
+        assert_eq!(filters, [r#"{"type":"gaussianBlur","radius":4}"#]);
     }
 }
 

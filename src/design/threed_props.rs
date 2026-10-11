@@ -3,7 +3,7 @@
 // THE 3D ELEMENTS' TYPES — the Rust form of the TypeScript SDK's `threed-elements.ts`. Each feature tag has its props
 // struct (`ExtrudeProps` for `extrude`), each sketch element too (`SketchPointProps`, `LineProps` …), and `.el()`
 // makes the element, at the caller's line, with the fields under their TypeScript names. A required field is its
-// type, an optional one an `Option`; a definition is a struct (`ProfileRef { sketch, regions }`), a union an enum of
+// type; an optional one, or one with a default (the reader fills it), an `Option`; a definition is a struct (`ProfileRef { sketch, regions }`), a union an enum of
 // them (`PlaneRef::Datum(PlaneRefDatum { plane })`), a string enum an enum (`BooleanMode::New`).
 //
 // The reader checks the same fields against `threed_schema.json` and refuses a wrong one with the sentence the op
@@ -505,7 +505,7 @@ pub struct ExtrudeProps {
     /// How far the profile travels from its plane.
     /// Unit: mm.
     /// Default: `10`.
-    pub distance: f64,
+    pub distance: Option<f64>,
     /// Extrude both directions symmetrically about the sketch plane.
     pub symmetric: Option<bool>,
     /// Reverse the extrude direction.
@@ -522,7 +522,7 @@ pub struct ExtrudeProps {
     pub up_to_face: Option<TopoRef>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -537,7 +537,9 @@ impl ToJson for ExtrudeProps {
             o.set("name", v.to_json());
         }
         o.set("profile", self.profile.to_json());
-        o.set("distance", self.distance.to_json());
+        if let Some(v) = &self.distance {
+            o.set("distance", v.to_json());
+        }
         if let Some(v) = &self.symmetric {
             o.set("symmetric", v.to_json());
         }
@@ -556,7 +558,9 @@ impl ToJson for ExtrudeProps {
         if let Some(v) = &self.up_to_face {
             o.set("upToFace", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -721,12 +725,12 @@ pub struct RevolveProps {
     /// Angle in radians.
     /// Unit: rad.
     /// Default: `6.283185307179586`.
-    pub angle: f64,
+    pub angle: Option<f64>,
     /// Turn the other way.
     pub reverse: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -742,11 +746,15 @@ impl ToJson for RevolveProps {
         }
         o.set("profile", self.profile.to_json());
         o.set("axis", self.axis.to_json());
-        o.set("angle", self.angle.to_json());
+        if let Some(v) = &self.angle {
+            o.set("angle", v.to_json());
+        }
         if let Some(v) = &self.reverse {
             o.set("reverse", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -783,7 +791,7 @@ pub struct SweepProps {
     pub path: ProfileRef,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -799,7 +807,9 @@ impl ToJson for SweepProps {
         }
         o.set("profile", self.profile.to_json());
         o.set("path", self.path.to_json());
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -838,7 +848,7 @@ pub struct LoftProps {
     pub closed: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -859,7 +869,9 @@ impl ToJson for LoftProps {
         if let Some(v) = &self.closed {
             o.set("closed", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -895,7 +907,7 @@ pub struct FilletProps {
     /// The radius of the round.
     /// Unit: mm.
     /// Default: `2`.
-    pub radius: f64,
+    pub radius: Option<f64>,
     /// Optional end radius — when set and ≠ radius, the fillet varies along each edge.
     /// Unit: mm.
     pub radius2: Option<f64>,
@@ -913,7 +925,9 @@ impl ToJson for FilletProps {
             o.set("name", v.to_json());
         }
         o.set("edges", self.edges.to_json());
-        o.set("radius", self.radius.to_json());
+        if let Some(v) = &self.radius {
+            o.set("radius", v.to_json());
+        }
         if let Some(v) = &self.radius2 {
             o.set("radius2", v.to_json());
         }
@@ -952,7 +966,7 @@ pub struct ChamferProps {
     /// The bevel's distance from the edge.
     /// Unit: mm.
     /// Default: `2`.
-    pub distance: f64,
+    pub distance: Option<f64>,
     /// Second distance for an asymmetric chamfer (measured from the other face).
     /// Unit: mm.
     pub distance2: Option<f64>,
@@ -970,7 +984,9 @@ impl ToJson for ChamferProps {
             o.set("name", v.to_json());
         }
         o.set("edges", self.edges.to_json());
-        o.set("distance", self.distance.to_json());
+        if let Some(v) = &self.distance {
+            o.set("distance", v.to_json());
+        }
         if let Some(v) = &self.distance2 {
             o.set("distance2", v.to_json());
         }
@@ -1009,7 +1025,7 @@ pub struct ShellProps {
     /// The wall thickness.
     /// Unit: mm.
     /// Default: `2`.
-    pub thickness: f64,
+    pub thickness: Option<f64>,
     /// Shell outward instead of inward.
     pub outward: Option<bool>,
     pub suppressed: Option<bool>,
@@ -1026,7 +1042,9 @@ impl ToJson for ShellProps {
             o.set("name", v.to_json());
         }
         o.set("faces", self.faces.to_json());
-        o.set("thickness", self.thickness.to_json());
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
         if let Some(v) = &self.outward {
             o.set("outward", v.to_json());
         }
@@ -1063,14 +1081,14 @@ pub struct BoxProps {
     /// The centre of the box.
     /// Unit: mm.
     /// Default: `[0,0,0]`.
-    pub center: Vec3,
+    pub center: Option<Vec3>,
     /// Its size along X, Y and Z.
     /// Unit: mm.
     /// Default: `[20,20,20]`.
-    pub size: Vec3,
+    pub size: Option<Vec3>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1084,9 +1102,15 @@ impl ToJson for BoxProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("center", self.center.to_json());
-        o.set("size", self.size.to_json());
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.center {
+            o.set("center", v.to_json());
+        }
+        if let Some(v) = &self.size {
+            o.set("size", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -1142,7 +1166,9 @@ pub struct ImportProps {
     pub format: ImportPropsFormat,
     /// Raw STEP/IGES/BRep file content.
     pub data: String,
-    pub operation: BooleanMode,
+    /// How the imported solid combines with the bodies before it.
+    /// Default: `"new"`.
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1158,7 +1184,9 @@ impl ToJson for ImportProps {
         }
         o.set("format", self.format.to_json());
         o.set("data", self.data.to_json());
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -1244,11 +1272,15 @@ impl ToJson for ExternalPartPropsImporter {
 #[derive(Clone, Debug)]
 pub struct Placement {
     /// Translation in mm.
-    pub position: Vec3,
+    /// Unit: mm.
+    /// Default: `[0,0,0]`.
+    pub position: Option<Vec3>,
     /// Orientation as a quaternion [x, y, z, w].
-    pub quaternion: [f64; 4],
+    /// Default: `[0,0,0,1]`.
+    pub quaternion: Option<[f64; 4]>,
     /// Uniform scale factor (1 = identity).
-    pub scale: f64,
+    /// Default: `1`.
+    pub scale: Option<f64>,
     /// Optional per-axis scale applied before scale. This is primarily used by linked interchange assets (KiCad WRL/STEP model records carry an XYZ scale). It is additive and backward-compatible: documents that omit it retain the historic uniform-scale placement.
     pub scale_x_y_z: Option<Vec3>,
 }
@@ -1257,9 +1289,15 @@ impl ToJson for Placement {
     fn to_json(&self) -> Json {
         #[allow(unused_mut)]
         let mut o = Json::obj();
-        o.set("position", self.position.to_json());
-        o.set("quaternion", self.quaternion.to_json());
-        o.set("scale", self.scale.to_json());
+        if let Some(v) = &self.position {
+            o.set("position", v.to_json());
+        }
+        if let Some(v) = &self.quaternion {
+            o.set("quaternion", v.to_json());
+        }
+        if let Some(v) = &self.scale {
+            o.set("scale", v.to_json());
+        }
         if let Some(v) = &self.scale_x_y_z {
             o.set("scaleXYZ", v.to_json());
         }
@@ -1361,14 +1399,17 @@ pub struct ExternalPartProps {
     /// Millimetres represented by one source coordinate for unitless/scene formats. Defaults are format-aware (glTF/VRML standard metres → 1000 mm; OBJ/STL → 1 mm). KiCad WRL adapters set 2.54.
     pub unit_scale_mm: Option<f64>,
     /// Where to place the linked part's bodies in this document's space.
-    pub placement: Placement,
+    /// Default: `{"position":[0,0,0],"quaternion":[0,0,0,1],"scale":1}`.
+    pub placement: Option<Placement>,
     /// THE COMPONENT THIS BODY BELONGS TO — the placement feature whose footprint owns it.
     pub component: Option<String>,
     /// THIS BODY'S POSE IN ITS COMPONENT'S FRAME. Present exactly when component is.
     pub local_placement: Option<Placement>,
     /// THE PADS THIS PLACEMENT PRODUCES, when it is a placed electronic component.
     pub footprint: Option<ComponentFootprint>,
-    pub operation: BooleanMode,
+    /// How the linked part's bodies combine with the bodies before it.
+    /// Default: `"new"`.
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1397,7 +1438,9 @@ impl ToJson for ExternalPartProps {
         if let Some(v) = &self.unit_scale_mm {
             o.set("unitScaleMm", v.to_json());
         }
-        o.set("placement", self.placement.to_json());
+        if let Some(v) = &self.placement {
+            o.set("placement", v.to_json());
+        }
         if let Some(v) = &self.component {
             o.set("component", v.to_json());
         }
@@ -1407,7 +1450,9 @@ impl ToJson for ExternalPartProps {
         if let Some(v) = &self.footprint {
             o.set("footprint", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -1441,19 +1486,19 @@ pub struct CylinderProps {
     /// The centre of its base.
     /// Unit: mm.
     /// Default: `[0,0,0]`.
-    pub center: Vec3,
+    pub center: Option<Vec3>,
     /// The direction it rises along.
     /// Default: `[0,0,1]`.
-    pub axis: Vec3,
+    pub axis: Option<Vec3>,
     /// Unit: mm.
     /// Default: `10`.
-    pub radius: f64,
+    pub radius: Option<f64>,
     /// Unit: mm.
     /// Default: `20`.
-    pub height: f64,
+    pub height: Option<f64>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1467,11 +1512,21 @@ impl ToJson for CylinderProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("center", self.center.to_json());
-        o.set("axis", self.axis.to_json());
-        o.set("radius", self.radius.to_json());
-        o.set("height", self.height.to_json());
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.center {
+            o.set("center", v.to_json());
+        }
+        if let Some(v) = &self.axis {
+            o.set("axis", v.to_json());
+        }
+        if let Some(v) = &self.radius {
+            o.set("radius", v.to_json());
+        }
+        if let Some(v) = &self.height {
+            o.set("height", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -1504,13 +1559,13 @@ pub struct SphereProps {
     pub name: Option<String>,
     /// Unit: mm.
     /// Default: `[0,0,0]`.
-    pub center: Vec3,
+    pub center: Option<Vec3>,
     /// Unit: mm.
     /// Default: `10`.
-    pub radius: f64,
+    pub radius: Option<f64>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1524,9 +1579,15 @@ impl ToJson for SphereProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("center", self.center.to_json());
-        o.set("radius", self.radius.to_json());
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.center {
+            o.set("center", v.to_json());
+        }
+        if let Some(v) = &self.radius {
+            o.set("radius", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -1560,24 +1621,24 @@ pub struct ConeProps {
     /// The centre of its base.
     /// Unit: mm.
     /// Default: `[0,0,0]`.
-    pub center: Vec3,
+    pub center: Option<Vec3>,
     /// The direction it rises along.
     /// Default: `[0,0,1]`.
-    pub axis: Vec3,
+    pub axis: Option<Vec3>,
     /// The radius at the base.
     /// Unit: mm.
     /// Default: `10`.
-    pub radius1: f64,
+    pub radius1: Option<f64>,
     /// The radius at the top (0: a point).
     /// Unit: mm.
     /// Default: `0`.
-    pub radius2: f64,
+    pub radius2: Option<f64>,
     /// Unit: mm.
     /// Default: `20`.
-    pub height: f64,
+    pub height: Option<f64>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1591,12 +1652,24 @@ impl ToJson for ConeProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("center", self.center.to_json());
-        o.set("axis", self.axis.to_json());
-        o.set("radius1", self.radius1.to_json());
-        o.set("radius2", self.radius2.to_json());
-        o.set("height", self.height.to_json());
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.center {
+            o.set("center", v.to_json());
+        }
+        if let Some(v) = &self.axis {
+            o.set("axis", v.to_json());
+        }
+        if let Some(v) = &self.radius1 {
+            o.set("radius1", v.to_json());
+        }
+        if let Some(v) = &self.radius2 {
+            o.set("radius2", v.to_json());
+        }
+        if let Some(v) = &self.height {
+            o.set("height", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -1634,28 +1707,28 @@ pub struct MakeHumanProps {
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
     /// Default: `0.5`.
-    pub gender: f64,
+    pub gender: Option<f64>,
     /// Default: `0.5`.
-    pub age: f64,
+    pub age: Option<f64>,
     /// Default: `0.5`.
-    pub muscle: f64,
+    pub muscle: Option<f64>,
     /// Default: `0.5`.
-    pub weight: f64,
+    pub weight: Option<f64>,
     /// Default: `0.5`.
-    pub height: f64,
+    pub height: Option<f64>,
     /// Default: `0.5`.
-    pub proportions: f64,
+    pub proportions: Option<f64>,
     /// Default: `0.5`.
-    pub cupsize: f64,
+    pub cupsize: Option<f64>,
     /// Default: `0.5`.
-    pub firmness: f64,
+    pub firmness: Option<f64>,
     /// One third of the ethnicity simplex (the three sum to 1).
     /// Default: `0.3333333333333333`.
-    pub african: f64,
+    pub african: Option<f64>,
     /// Default: `0.3333333333333333`.
-    pub asian: f64,
+    pub asian: Option<f64>,
     /// Default: `0.3333333333333333`.
-    pub caucasian: f64,
+    pub caucasian: Option<f64>,
 }
 
 impl ToJson for MakeHumanProps {
@@ -1675,17 +1748,39 @@ impl ToJson for MakeHumanProps {
         if let Some(v) = &self.consumes {
             o.set("consumes", v.to_json());
         }
-        o.set("gender", self.gender.to_json());
-        o.set("age", self.age.to_json());
-        o.set("muscle", self.muscle.to_json());
-        o.set("weight", self.weight.to_json());
-        o.set("height", self.height.to_json());
-        o.set("proportions", self.proportions.to_json());
-        o.set("cupsize", self.cupsize.to_json());
-        o.set("firmness", self.firmness.to_json());
-        o.set("african", self.african.to_json());
-        o.set("asian", self.asian.to_json());
-        o.set("caucasian", self.caucasian.to_json());
+        if let Some(v) = &self.gender {
+            o.set("gender", v.to_json());
+        }
+        if let Some(v) = &self.age {
+            o.set("age", v.to_json());
+        }
+        if let Some(v) = &self.muscle {
+            o.set("muscle", v.to_json());
+        }
+        if let Some(v) = &self.weight {
+            o.set("weight", v.to_json());
+        }
+        if let Some(v) = &self.height {
+            o.set("height", v.to_json());
+        }
+        if let Some(v) = &self.proportions {
+            o.set("proportions", v.to_json());
+        }
+        if let Some(v) = &self.cupsize {
+            o.set("cupsize", v.to_json());
+        }
+        if let Some(v) = &self.firmness {
+            o.set("firmness", v.to_json());
+        }
+        if let Some(v) = &self.african {
+            o.set("african", v.to_json());
+        }
+        if let Some(v) = &self.asian {
+            o.set("asian", v.to_json());
+        }
+        if let Some(v) = &self.caucasian {
+            o.set("caucasian", v.to_json());
+        }
         o
     }
 }
@@ -1714,14 +1809,14 @@ pub struct LinearPatternProps {
     pub seed_feature: String,
     /// The direction of the copies.
     /// Default: `[1,0,0]`.
-    pub direction: Vec3,
+    pub direction: Option<Vec3>,
     /// The distance between copies.
     /// Unit: mm.
     /// Default: `20`.
-    pub spacing: f64,
+    pub spacing: Option<f64>,
     /// How many there are, the original included.
     /// Default: `3`.
-    pub count: i64,
+    pub count: Option<i64>,
     /// Optional second direction.
     pub direction2: Option<Vec3>,
     /// The distance between copies in the second direction.
@@ -1743,9 +1838,15 @@ impl ToJson for LinearPatternProps {
             o.set("name", v.to_json());
         }
         o.set("seedFeature", self.seed_feature.to_json());
-        o.set("direction", self.direction.to_json());
-        o.set("spacing", self.spacing.to_json());
-        o.set("count", self.count.to_json());
+        if let Some(v) = &self.direction {
+            o.set("direction", v.to_json());
+        }
+        if let Some(v) = &self.spacing {
+            o.set("spacing", v.to_json());
+        }
+        if let Some(v) = &self.count {
+            o.set("count", v.to_json());
+        }
         if let Some(v) = &self.direction2 {
             o.set("direction2", v.to_json());
         }
@@ -1791,7 +1892,7 @@ pub struct CircularPatternProps {
     pub axis: AxisRef,
     /// How many there are, the original included.
     /// Default: `6`.
-    pub count: i64,
+    pub count: Option<i64>,
     /// Total sweep angle in radians (default 2π).
     /// Unit: rad.
     /// Default: `6.283185307179586`.
@@ -1811,7 +1912,9 @@ impl ToJson for CircularPatternProps {
         }
         o.set("seedFeature", self.seed_feature.to_json());
         o.set("axis", self.axis.to_json());
-        o.set("count", self.count.to_json());
+        if let Some(v) = &self.count {
+            o.set("count", v.to_json());
+        }
         if let Some(v) = &self.angle {
             o.set("angle", v.to_json());
         }
@@ -1851,7 +1954,7 @@ pub struct PathPatternProps {
     pub path: ProfileRef,
     /// How many copies along the path.
     /// Default: `5`.
-    pub count: i64,
+    pub count: Option<i64>,
     /// Rotate each copy to follow the path tangent.
     pub align_to_path: Option<bool>,
     pub suppressed: Option<bool>,
@@ -1869,7 +1972,9 @@ impl ToJson for PathPatternProps {
         }
         o.set("seedFeature", self.seed_feature.to_json());
         o.set("path", self.path.to_json());
-        o.set("count", self.count.to_json());
+        if let Some(v) = &self.count {
+            o.set("count", v.to_json());
+        }
         if let Some(v) = &self.align_to_path {
             o.set("alignToPath", v.to_json());
         }
@@ -1965,7 +2070,7 @@ pub struct DatumPlaneProps {
     /// How far from the base plane, along its normal.
     /// Unit: mm.
     /// Default: `10`.
-    pub offset: f64,
+    pub offset: Option<f64>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1980,7 +2085,9 @@ impl ToJson for DatumPlaneProps {
             o.set("name", v.to_json());
         }
         o.set("base", self.base.to_json());
-        o.set("offset", self.offset.to_json());
+        if let Some(v) = &self.offset {
+            o.set("offset", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -2016,10 +2123,10 @@ pub struct DraftProps {
     /// Draft angle in radians.
     /// Unit: rad.
     /// Default: `0.08726646259971647`.
-    pub angle: f64,
+    pub angle: Option<f64>,
     /// Pull direction (the neutral/parting direction).
     /// Default: `[0,0,1]`.
-    pub pull_direction: Vec3,
+    pub pull_direction: Option<Vec3>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2034,8 +2141,12 @@ impl ToJson for DraftProps {
             o.set("name", v.to_json());
         }
         o.set("faces", self.faces.to_json());
-        o.set("angle", self.angle.to_json());
-        o.set("pullDirection", self.pull_direction.to_json());
+        if let Some(v) = &self.angle {
+            o.set("angle", v.to_json());
+        }
+        if let Some(v) = &self.pull_direction {
+            o.set("pullDirection", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -2090,16 +2201,16 @@ pub struct HoleProps {
     pub face: TopoRef,
     /// Unit: mm.
     /// Default: `6`.
-    pub diameter: f64,
+    pub diameter: Option<f64>,
     /// Unit: mm.
     /// Default: `10`.
-    pub depth: f64,
+    pub depth: Option<f64>,
     /// Through-all instead of a fixed depth.
     /// Default: `true`.
     pub through: Option<bool>,
     /// Plain, counterbored or countersunk.
     /// Default: `"simple"`.
-    pub style: HoleStyle,
+    pub style: Option<HoleStyle>,
     /// Counterbore/countersink head diameter.
     /// Unit: mm.
     /// Default: `12`.
@@ -2122,12 +2233,18 @@ impl ToJson for HoleProps {
             o.set("name", v.to_json());
         }
         o.set("face", self.face.to_json());
-        o.set("diameter", self.diameter.to_json());
-        o.set("depth", self.depth.to_json());
+        if let Some(v) = &self.diameter {
+            o.set("diameter", v.to_json());
+        }
+        if let Some(v) = &self.depth {
+            o.set("depth", v.to_json());
+        }
         if let Some(v) = &self.through {
             o.set("through", v.to_json());
         }
-        o.set("style", self.style.to_json());
+        if let Some(v) = &self.style {
+            o.set("style", v.to_json());
+        }
         if let Some(v) = &self.head_diameter {
             o.set("headDiameter", v.to_json());
         }
@@ -2232,11 +2349,11 @@ pub struct SheetFlangeProps {
     /// Flange wall length (mm).
     /// Unit: mm.
     /// Default: `15`.
-    pub length: f64,
+    pub length: Option<f64>,
     /// Bend angle in radians (π/2 = perpendicular wall).
     /// Unit: rad.
     /// Default: `1.5707963267948966`.
-    pub angle: f64,
+    pub angle: Option<f64>,
     /// Sheet thickness (mm); auto-derived from the body when omitted.
     /// Unit: mm.
     pub thickness: Option<f64>,
@@ -2257,8 +2374,12 @@ impl ToJson for SheetFlangeProps {
             o.set("name", v.to_json());
         }
         o.set("edge", self.edge.to_json());
-        o.set("length", self.length.to_json());
-        o.set("angle", self.angle.to_json());
+        if let Some(v) = &self.length {
+            o.set("length", v.to_json());
+        }
+        if let Some(v) = &self.angle {
+            o.set("angle", v.to_json());
+        }
         if let Some(v) = &self.thickness {
             o.set("thickness", v.to_json());
         }
@@ -3044,6 +3165,8 @@ impl ToJson for Sketch {
     }
 }
 
+/// Raise the letters, or cut them into the face.
+/// Default: `"emboss"`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WrapTextPropsMode {
     /// `"emboss"`
@@ -3072,8 +3195,12 @@ pub struct WrapTextProps {
     /// Baked 2D template (text or any closed regions) in u (circumference) / v.
     pub sketch: Sketch,
     /// Radial depth (mm).
-    pub depth: f64,
-    pub mode: WrapTextPropsMode,
+    /// Unit: mm.
+    /// Default: `1`.
+    pub depth: Option<f64>,
+    /// Raise the letters, or cut them into the face.
+    /// Default: `"emboss"`.
+    pub mode: Option<WrapTextPropsMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3089,8 +3216,12 @@ impl ToJson for WrapTextProps {
         }
         o.set("face", self.face.to_json());
         o.set("sketch", self.sketch.to_json());
-        o.set("depth", self.depth.to_json());
-        o.set("mode", self.mode.to_json());
+        if let Some(v) = &self.depth {
+            o.set("depth", v.to_json());
+        }
+        if let Some(v) = &self.mode {
+            o.set("mode", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -3218,7 +3349,7 @@ pub struct DomeProps {
     /// Apex height along the face normal (negative = inward dimple).
     /// Unit: mm.
     /// Default: `10`.
-    pub height: f64,
+    pub height: Option<f64>,
     /// Profile-ring count (smoothness).
     /// Default: `6`.
     pub rings: Option<i64>,
@@ -3236,7 +3367,9 @@ impl ToJson for DomeProps {
             o.set("name", v.to_json());
         }
         o.set("face", self.face.to_json());
-        o.set("height", self.height.to_json());
+        if let Some(v) = &self.height {
+            o.set("height", v.to_json());
+        }
         if let Some(v) = &self.rings {
             o.set("rings", v.to_json());
         }
@@ -3344,15 +3477,15 @@ pub struct ThreadProps {
     /// Distance between thread crests (mm).
     /// Unit: mm.
     /// Default: `1.5`.
-    pub pitch: f64,
+    pub pitch: Option<f64>,
     /// Threaded length along the axis (mm).
     /// Unit: mm.
     /// Default: `10`.
-    pub length: f64,
+    pub length: Option<f64>,
     /// Radial thread depth (mm).
     /// Unit: mm.
     /// Default: `0.9`.
-    pub depth: f64,
+    pub depth: Option<f64>,
     /// Internal (tapped hole) vs external (bolt).
     pub internal: Option<bool>,
     /// Right-handed (default) vs left-handed.
@@ -3372,9 +3505,15 @@ impl ToJson for ThreadProps {
             o.set("name", v.to_json());
         }
         o.set("face", self.face.to_json());
-        o.set("pitch", self.pitch.to_json());
-        o.set("length", self.length.to_json());
-        o.set("depth", self.depth.to_json());
+        if let Some(v) = &self.pitch {
+            o.set("pitch", v.to_json());
+        }
+        if let Some(v) = &self.length {
+            o.set("length", v.to_json());
+        }
+        if let Some(v) = &self.depth {
+            o.set("depth", v.to_json());
+        }
         if let Some(v) = &self.internal {
             o.set("internal", v.to_json());
         }
@@ -3418,16 +3557,16 @@ pub struct CoilProps {
     /// Axial advance per turn (mm).
     /// Unit: mm.
     /// Default: `8`.
-    pub pitch: f64,
+    pub pitch: Option<f64>,
     /// Number of revolutions.
     /// Default: `5`.
-    pub turns: f64,
+    pub turns: Option<f64>,
     /// Right-handed (default) vs left-handed.
     /// Default: `true`.
     pub right_handed: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3443,12 +3582,18 @@ impl ToJson for CoilProps {
         }
         o.set("profile", self.profile.to_json());
         o.set("axis", self.axis.to_json());
-        o.set("pitch", self.pitch.to_json());
-        o.set("turns", self.turns.to_json());
+        if let Some(v) = &self.pitch {
+            o.set("pitch", v.to_json());
+        }
+        if let Some(v) = &self.turns {
+            o.set("turns", v.to_json());
+        }
         if let Some(v) = &self.right_handed {
             o.set("rightHanded", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -3503,7 +3648,7 @@ pub struct CombineProps {
     pub name: Option<String>,
     /// Union fuses all bodies; subtract cuts the rest from the first; intersect keeps the overlap.
     /// Default: `"union"`.
-    pub operation: CombinePropsOperation,
+    pub operation: Option<CombinePropsOperation>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3517,7 +3662,9 @@ impl ToJson for CombineProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -3553,7 +3700,7 @@ pub struct OffsetFacesProps {
     /// How far along their normals (negative: inward).
     /// Unit: mm.
     /// Default: `1`.
-    pub distance: f64,
+    pub distance: Option<f64>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3568,7 +3715,9 @@ impl ToJson for OffsetFacesProps {
             o.set("name", v.to_json());
         }
         o.set("faces", self.faces.to_json());
-        o.set("distance", self.distance.to_json());
+        if let Some(v) = &self.distance {
+            o.set("distance", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -3602,7 +3751,7 @@ pub struct ThickenProps {
     /// Uniform offset on every body (positive grows, negative shrinks).
     /// Unit: mm.
     /// Default: `1`.
-    pub distance: f64,
+    pub distance: Option<f64>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3616,7 +3765,9 @@ impl ToJson for ThickenProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("distance", self.distance.to_json());
+        if let Some(v) = &self.distance {
+            o.set("distance", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -3695,7 +3846,7 @@ pub struct ScaleProps {
     pub name: Option<String>,
     /// Scales EVERY body in the document. It carried a `seedFeature` that the rebuild never read and the only authoring path (`scaleModel`) filled with `""` — a required field naming nothing, which reads as a promise that a scale can be aimed at one feature's body. It cannot.
     /// Default: `1`.
-    pub factor: f64,
+    pub factor: Option<f64>,
     /// Scale about this point (defaults to the origin).
     /// Unit: mm.
     pub center: Option<Vec3>,
@@ -3712,7 +3863,9 @@ impl ToJson for ScaleProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
-        o.set("factor", self.factor.to_json());
+        if let Some(v) = &self.factor {
+            o.set("factor", v.to_json());
+        }
         if let Some(v) = &self.center {
             o.set("center", v.to_json());
         }
@@ -3751,17 +3904,17 @@ pub struct RibProps {
     /// Wall thickness (mm).
     /// Unit: mm.
     /// Default: `3`.
-    pub thickness: f64,
+    pub thickness: Option<f64>,
     /// Extrude distance perpendicular to the sketch plane (mm).
     /// Unit: mm.
     /// Default: `20`.
-    pub depth: f64,
+    pub depth: Option<f64>,
     /// Thicken symmetrically about the path (default true).
     /// Default: `true`.
     pub both_sides: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"add"`.
-    pub operation: BooleanMode,
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3776,12 +3929,18 @@ impl ToJson for RibProps {
             o.set("name", v.to_json());
         }
         o.set("sketch", self.sketch.to_json());
-        o.set("thickness", self.thickness.to_json());
-        o.set("depth", self.depth.to_json());
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
+        if let Some(v) = &self.depth {
+            o.set("depth", v.to_json());
+        }
         if let Some(v) = &self.both_sides {
             o.set("bothSides", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -4118,24 +4277,41 @@ impl ToJson for SourceMaterialKind {
     }
 }
 
+/// A texture's UV transform, as three.js holds it; a field left out is three.js's own default.
 #[derive(Clone, Debug)]
 pub struct SourceTextureTransform {
-    pub offset: [f64; 2],
-    pub repeat: [f64; 2],
-    pub center: [f64; 2],
-    pub rotation: f64,
-    pub matrix_auto_update: bool,
+    /// Default: `[0,0]`.
+    pub offset: Option<[f64; 2]>,
+    /// Default: `[1,1]`.
+    pub repeat: Option<[f64; 2]>,
+    /// Default: `[0,0]`.
+    pub center: Option<[f64; 2]>,
+    /// Unit: rad.
+    /// Default: `0`.
+    pub rotation: Option<f64>,
+    /// Default: `true`.
+    pub matrix_auto_update: Option<bool>,
 }
 
 impl ToJson for SourceTextureTransform {
     fn to_json(&self) -> Json {
         #[allow(unused_mut)]
         let mut o = Json::obj();
-        o.set("offset", self.offset.to_json());
-        o.set("repeat", self.repeat.to_json());
-        o.set("center", self.center.to_json());
-        o.set("rotation", self.rotation.to_json());
-        o.set("matrixAutoUpdate", self.matrix_auto_update.to_json());
+        if let Some(v) = &self.offset {
+            o.set("offset", v.to_json());
+        }
+        if let Some(v) = &self.repeat {
+            o.set("repeat", v.to_json());
+        }
+        if let Some(v) = &self.center {
+            o.set("center", v.to_json());
+        }
+        if let Some(v) = &self.rotation {
+            o.set("rotation", v.to_json());
+        }
+        if let Some(v) = &self.matrix_auto_update {
+            o.set("matrixAutoUpdate", v.to_json());
+        }
         o
     }
 }
@@ -5457,7 +5633,9 @@ pub struct VolumeProps {
     /// Voxel spacing (mm) [sx,sy,sz].
     pub spacing: [f64; 3],
     /// World position (mm) of voxel [0,0,0]'s corner.
-    pub origin: Vec3,
+    /// Unit: mm.
+    /// Default: `[0,0,0]`.
+    pub origin: Option<Vec3>,
     /// Scalar field, length nx·ny·nz, x fastest then y then z, normalized 0..1.
     pub data: Vec<f64>,
     /// How to display it.
@@ -5482,7 +5660,9 @@ impl ToJson for VolumeProps {
         }
         o.set("dims", self.dims.to_json());
         o.set("spacing", self.spacing.to_json());
-        o.set("origin", self.origin.to_json());
+        if let Some(v) = &self.origin {
+            o.set("origin", v.to_json());
+        }
         o.set("data", self.data.to_json());
         if let Some(v) = &self.render {
             o.set("render", v.to_json());
@@ -5865,7 +6045,9 @@ pub struct PcbTraceProps {
     pub material: Option<MaterialDef>,
     /// WHICH PADS THIS RUN IS BOUND TO — L3. Written only by `bindTraceEndpoint`, which binds or REFUSES; there is no "visually coincident but unbound" state to represent.
     pub bindings: Option<Vec<TerminalBinding>>,
-    pub operation: BooleanMode,
+    /// How the copper combines with the bodies before it.
+    /// Default: `"new"`.
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -5902,7 +6084,9 @@ impl ToJson for PcbTraceProps {
         if let Some(v) = &self.bindings {
             o.set("bindings", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -5944,7 +6128,9 @@ pub struct GenerateViaProps {
     pub pad_diameter_mm: f64,
     pub conductor: ConductorElectrical,
     pub material: Option<MaterialDef>,
-    pub operation: BooleanMode,
+    /// How the copper combines with the bodies before it.
+    /// Default: `"new"`.
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -5966,7 +6152,9 @@ impl ToJson for GenerateViaProps {
         if let Some(v) = &self.material {
             o.set("material", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -6004,7 +6192,9 @@ pub struct PlatedHoleProps {
     pub pad_diameter_mm: f64,
     pub conductor: ConductorElectrical,
     pub material: Option<MaterialDef>,
-    pub operation: BooleanMode,
+    /// How the copper combines with the bodies before it.
+    /// Default: `"new"`.
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -6026,7 +6216,9 @@ impl ToJson for PlatedHoleProps {
         if let Some(v) = &self.material {
             o.set("material", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -6071,7 +6263,9 @@ pub struct CopperPourProps {
     pub material: Option<MaterialDef>,
     /// WHICH PADS THIS POUR IS BOUND TO — L3, and the same door a trace uses.
     pub bindings: Option<Vec<TerminalBinding>>,
-    pub operation: BooleanMode,
+    /// How the copper combines with the bodies before it.
+    /// Default: `"new"`.
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -6098,7 +6292,9 @@ impl ToJson for CopperPourProps {
         if let Some(v) = &self.bindings {
             o.set("bindings", v.to_json());
         }
-        o.set("operation", self.operation.to_json());
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }

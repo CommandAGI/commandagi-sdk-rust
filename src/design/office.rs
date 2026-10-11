@@ -67,7 +67,7 @@
 use super::element::{attributes, elements, rust_name, Child};
 use super::ir::{channels, wire};
 use super::read::{boolean, call, defined, len, names, number, tag, text as text_of};
-use super::schema::{describe_issue, validate};
+use super::schema::{describe_issue, validate, with_defaults};
 use super::source::{meta, Sources};
 use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
@@ -393,13 +393,14 @@ fn is_range(text: &str) -> bool {
 }
 
 /// The attributes of a chart, a pivot, a filter or a criterion, checked against the element's schema with the
-/// sentences an op panel shows.
+/// sentences an op panel shows; a required attribute left out is at its declared default ([`with_defaults`]).
 fn workbook_element(el: &El) -> Result<Json, String> {
     let schema = workbook_schema();
     let def = schema.get("roots").and_then(|r| r.get(el.tag)).and_then(Json::as_str).unwrap_or_default();
     let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
-    let props = Json::Obj(el.attrs.clone());
-    let issues = validate(&Json::obj().with("$ref", format!("#/$defs/{def}")), &props, &defs, "")?;
+    let root = Json::obj().with("$ref", format!("#/$defs/{def}"));
+    let props = with_defaults(&root, &Json::Obj(el.attrs.clone()), &defs)?;
+    let issues = validate(&root, &props, &defs, "")?;
     if !issues.is_empty() {
         return Err(format!("{}: {}", place(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")));
     }

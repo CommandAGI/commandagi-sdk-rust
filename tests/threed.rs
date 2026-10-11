@@ -148,6 +148,32 @@ fn a_feature_element_whose_fields_do_not_fit_its_type_is_refused_with_the_op_pan
 }
 
 #[test]
+fn a_required_field_with_a_declared_default_may_be_left_out() {
+    // The TypeScript and Python SDKs read the same assembly to the same inputs.
+    let read = |children: Vec<El>| declare(assembly(children).name("A")).map(|d| d.graph().unwrap());
+    let g = read(vec![
+        external_part().id("bare").path("bracket.3d.tsx"),
+        external_part().id("moved").path("bracket.3d.tsx").placement(json(r#"{"position": [10, 0, 5]}"#)).operation("add"),
+    ])
+    .unwrap();
+    let identity = r#"{"position":[0,0,0],"quaternion":[0,0,0,1],"scale":1}"#;
+    assert_eq!(node(&g, "bare").get("inputs").unwrap().text(), format!(r#"{{"path":"bracket.3d.tsx","placement":{identity},"operation":"new"}}"#));
+    // A placement that says only where: its orientation and scale are the identity's. The author's values stay.
+    assert_eq!(
+        node(&g, "moved").get("inputs").unwrap().text(),
+        r#"{"path":"bracket.3d.tsx","placement":{"position":[10,0,5],"quaternion":[0,0,0,1],"scale":1},"operation":"add"}"#
+    );
+    // An optional field stays absent: its absence is a value the kernel reads.
+    assert!(node(&g, "bare").get("inputs").unwrap().get("importer").is_none());
+    // A defaulted field the author wrote wrong is still refused, and a field with no default is still required.
+    assert_eq!(
+        read(vec![external_part().id("p").path("b.3d.tsx").placement(json(r#"{"scale": "big"}"#))]).unwrap_err(),
+        r#"external_part().id("p"): placement/scale: must be number (got "string")"#
+    );
+    assert_eq!(read(vec![import().id("i").format("step")]).unwrap_err(), r#"import().id("i"): data: is required"#);
+}
+
+#[test]
 fn a_world_body_written_by_tsx_reads_with_its_declared_fields() {
     // The element an ingest writes in a .3d.tsx (sdk/typescript threed.test.ts reads the same one).
     let world_body = |collider: &str, restitution: f64| {
@@ -188,14 +214,14 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
         id: "e1".into(),
         name: Some("Extrude1".into()),
         profile: ProfileRef { sketch: "s1".into(), regions: None },
-        distance: 6.0,
+        distance: Some(6.0),
         symmetric: None,
         reverse: None,
         distance2: None,
         draft_angle: None,
         through: None,
         up_to_face: None,
-        operation: BooleanMode::New,
+        operation: Some(BooleanMode::New),
         suppressed: None,
         consumes: None,
     };

@@ -54,11 +54,13 @@
 //! the same fields are typed in [`super::threed_props`], `ExtrudeProps` …): the feature `{type: <tag>, id, name: <its
 //! id when absent>, suppressed, …its fields}`, a sketch with the `sketch` its children make. A wrong field is refused
 //! with the sentence the TypeScript reader and the op panel give: `extrude().id("e1"): distance: must be greater than 0
-//! (got -1)`. A `feature().type_(…)` of an unknown type is not checked.
+//! (got -1)`. A `feature().type_(…)` of an unknown type is not checked. A required field that declares a default may
+//! be left out: it reads as that default (an `external_part()` without `placement` sits at the identity placement),
+//! and the node's inputs hold it.
 
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::ir::slug;
-use super::schema::{describe_issue, validate};
+use super::schema::{describe_issue, validate, with_defaults};
 use super::source::Sources;
 use super::{Declared, Family};
 pub use super::threed_props::THREED_FEATURES;
@@ -189,14 +191,17 @@ pub fn threed_schema() -> &'static Json {
     SCHEMA.get_or_init(|| Json::parse(include_str!("threed_schema.json")).expect("threed_schema.json is JSON"))
 }
 
-/// Refuses a feature whose fields do not fit its type's schema, with every issue.
-fn check_feature(el: &El, feature: &Json) -> Result<(), String> {
+/// The feature with each required field it leaves out filled with its declared default ([`with_defaults`]), checked
+/// against its type's schema; refused with every issue when it does not fit.
+fn check_feature(el: &El, feature: Json) -> Result<Json, String> {
     let schema = threed_schema();
-    let Some(def) = feature.get("type").and_then(|t| schema.get("roots")?.get(t.as_str()?)).and_then(Json::as_str) else { return Ok(()) };
+    let Some(def) = feature.get("type").and_then(|t| schema.get("roots")?.get(t.as_str()?)).and_then(Json::as_str) else { return Ok(feature) };
     let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
-    let issues = validate(&Json::obj().with("$ref", format!("#/$defs/{def}")), feature, &defs, "")?;
+    let root = Json::obj().with("$ref", format!("#/$defs/{def}"));
+    let filled = with_defaults(&root, &feature, &defs)?;
+    let issues = validate(&root, &filled, &defs, "")?;
     if issues.is_empty() {
-        return Ok(());
+        return Ok(filled);
     }
     Err(format!("{}: {}", at(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")))
 }
@@ -583,7 +588,9 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 feature.push(("suppressed".into(), s.clone()));
             }
             feature.extend(inputs.iter().cloned());
-            check_feature(el, &Json::Obj(feature))?;
+            if let Json::Obj(filled) = check_feature(el, Json::Obj(feature))? {
+                inputs = filled.into_iter().filter(|(k, _)| !matches!(k.as_str(), "type" | "id" | "name" | "suppressed")).collect();
+            }
         }
         if el.tag != "sketch" {
             no_children(el)?;
