@@ -49,6 +49,11 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
     assert_eq!(sources.get("unit#arm"), Some(&arm_site));
     assert!(sources.get("space").is_some() && sources.get("scene/body#cube").is_some(), "every element by its path: {}", sources.text());
 
+    // The world's model and the parts of it a run moves: attributes of world(), as the TypeScript SDK writes them.
+    let links = r#"[{"node": "ram", "joint": {"unit": "press-1", "channel": "axes", "name": "z", "type": "prismatic", "axis": "z", "origin_mm": [0, 0, 0], "home": 0}}]"#;
+    let (_, posed, _) = document(world([]).name("Press").kind("physical").model("press.3d.tsx").links(json(links)));
+    assert_eq!(posed, j(&format!(r#"{{"name": "Press", "kind": "physical", "model": "press.3d.tsx", "links": {links}, "units": []}}"#)));
+
     let w = |children: Vec<El>| world(children).name("W").kind("physical");
     assert!(bad(world([]).name("W")).contains("world() needs kind"));
     assert!(bad(world([]).name("W").kind("real")).contains(r#"physical" or "simulation", said explicitly, not "real""#));

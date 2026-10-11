@@ -20,7 +20,7 @@
 //!
 //! ```text
 //! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, unit().uid …,
-//!                                                                         view(), scene([body().id …])
+//!   .links?                                                               view(), scene([body().id …])
 //! device([…]).name …                                 definition.rs        channel().id.dir.medium.format.transport …
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
@@ -126,7 +126,9 @@ pub(crate) const FAMILY: Family =
 pub const NODE_GRAPH_ID: &str = "nodegraph";
 /// The fields of a unit in a world's file (packages/domain/world/worlds.js).
 pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation"];
-const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model"];
+/// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
+/// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
+const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];
 const GEO_FIELDS: &[&str] = &["id", "name", "createdAt", "updatedAt", "description", "defaultWorkspace", "metadata"];
 /// A node's attributes that are not its ports.
 const NODE_ATTRS: &[&str] = &["id", "type", "label", "x", "y", "disabled", "output", "meta", "inputs"];
