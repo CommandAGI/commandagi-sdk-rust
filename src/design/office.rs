@@ -67,10 +67,12 @@
 use super::element::{attributes, elements, rust_name, Child};
 use super::ir::{channels, wire};
 use super::read::{boolean, call, defined, len, names, number, tag, text as text_of};
+use super::schema::{describe_issue, validate};
 use super::source::{meta, Sources};
 use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 elements! {
     /// The workbook: its sheets.
@@ -83,6 +85,14 @@ elements! {
     column: leaf;
     /// A row's height in pixels: `row().at(3).height(40)`.
     row: leaf;
+    /// A chart of a range of its sheet: `chart().name("Sales").range("A1:C5").kind("bar").category("Region").series(["Q1", "Q2"])`.
+    chart: leaf;
+    /// A pivot table of a range: `pivot().name("By region").range("A1:C9").rows("Region").value("Amount").aggregate("sum")`.
+    pivot: leaf;
+    /// The sheet's filter: `filter([criterion().column("B").test("greater").value(100)]).range("A1:C20")`.
+    filter: children;
+    /// One column's test in a filter.
+    criterion: leaf;
     /// The page: its blocks.
     page: children;
     /// A heading.
@@ -162,6 +172,20 @@ attributes! {
         at;
         /// A cell's value: text, a number or true/false.
         value;
+        /// The cells a chart, a pivot table or a filter reads: an A1 range ("A1:C20").
+        range;
+        /// A chart's kind: "bar", "line", "area", "scatter", "pie".
+        kind;
+        /// The field whose values label a chart's points.
+        category;
+        /// The fields a chart draws, one series each.
+        series;
+        /// The column a filter's criterion tests, by its letters ("B").
+        column;
+        /// A criterion's test: "equals", "notEquals", "contains", "greater", "less", "blank", "notBlank".
+        test;
+        /// How a pivot table's values become one number: "sum", "count", "avg", "min", "max", "first".
+        aggregate;
         /// A cell's formula: it starts with "=".
         formula;
         /// A cell's number format: `"$#,##0"`.
@@ -353,12 +377,47 @@ fn sizes(map: &BTreeMap<u64, f64>) -> Option<Json> {
     Some(Json::Obj(map.iter().map(|(k, v)| (k.to_string(), Json::Num(*v))).collect()))
 }
 
+/// The schema of a workbook's elements besides its cells (`roots`: tag → definition, `$defs`), generated from the
+/// sheets editor's types.
+pub fn workbook_schema() -> &'static Json {
+    static SCHEMA: OnceLock<Json> = OnceLock::new();
+    SCHEMA.get_or_init(|| Json::parse(include_str!("workbook_schema.json")).expect("workbook_schema.json is JSON"))
+}
+
+/// An A1 range: one reference, or two with a colon between (`A1:C20`), in either case.
+fn is_range(text: &str) -> bool {
+    let upper = text.to_uppercase();
+    let mut ends = upper.split(':');
+    let ok = ends.next().is_some_and(|e| a1(e).is_some()) && ends.next().map_or(true, |e| a1(e).is_some());
+    ok && ends.next().is_none()
+}
+
+/// The attributes of a chart, a pivot, a filter or a criterion, checked against the element's schema with the
+/// sentences an op panel shows.
+fn workbook_element(el: &El) -> Result<Json, String> {
+    let schema = workbook_schema();
+    let def = schema.get("roots").and_then(|r| r.get(el.tag)).and_then(Json::as_str).unwrap_or_default();
+    let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
+    let props = Json::Obj(el.attrs.clone());
+    let issues = validate(&Json::obj().with("$ref", format!("#/$defs/{def}")), &props, &defs, "")?;
+    if !issues.is_empty() {
+        return Err(format!("{}: {}", place(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")));
+    }
+    if let Some(range) = props.get("range").and_then(Json::as_str) {
+        if !is_range(range) {
+            return Err(format!("{}: range is an A1 range (\"A1:C20\"), not {}", place(el), Json::from(range).text()));
+        }
+    }
+    Ok(props)
+}
+
 /// A `workbook(…)` as the workbook JSON the sheets editor opens, with where each part was written.
 fn read_workbook(root: &El) -> Result<Declared, String> {
     only(root, &["title"])?;
     let mut sources = Sources::new();
     sources.put("workbook", root);
     let mut seen: Vec<String> = Vec::new();
+    let mut named: [Vec<String>; 2] = [Vec::new(), Vec::new()];
     let mut sheets = Vec::new();
     for (i, el) in root.child_elements().enumerate() {
         if el.tag != "sheet" {
@@ -377,7 +436,56 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
         let mut row_heights: BTreeMap<u64, f64> = BTreeMap::new();
         let mut rows = num(el, "rows")?.unwrap_or(200.0);
         let mut cols = num(el, "cols")?.unwrap_or(26.0);
+        let mut charts: Vec<Json> = Vec::new();
+        let mut pivots: Vec<Json> = Vec::new();
+        let mut filter: Option<(Json, Vec<Json>)> = None;
         for c in el.child_elements() {
+            if c.tag == "chart" || c.tag == "pivot" {
+                let is_chart = c.tag == "chart";
+                let props = workbook_element(c)?;
+                let called = props.get("name").and_then(Json::as_str).unwrap_or_default().to_string();
+                let taken = &mut named[if is_chart { 0 } else { 1 }];
+                if taken.contains(&called.to_lowercase()) {
+                    return Err(format!("two {} are called {called}", if is_chart { "charts" } else { "pivot tables" }));
+                }
+                taken.push(called.to_lowercase());
+                let list = if is_chart { &mut charts } else { &mut pivots };
+                let eid = format!("{}-{}", c.tag, list.len() + 1);
+                let mut entries = vec![("id".to_string(), Json::from(eid.as_str()))];
+                if let Json::Obj(fields) = props {
+                    entries.extend(fields);
+                }
+                list.push(Json::Obj(entries));
+                sources.put(format!("{}:{id}!{eid}", c.tag), c);
+                continue;
+            }
+            if c.tag == "filter" {
+                if filter.is_some() {
+                    return Err(format!("{name} has two filters (a sheet has one)"));
+                }
+                let range = workbook_element(c)?.get("range").cloned().unwrap_or(Json::Null);
+                sources.put(format!("filter:{id}"), c);
+                let mut criteria: Vec<Json> = Vec::new();
+                for k in c.child_elements() {
+                    if k.tag != "criterion" {
+                        return Err(format!("{} is not read in a filter() (it holds criterion()s)", tag(k.tag)));
+                    }
+                    let mut props = workbook_element(k)?;
+                    let given = props.get("column").and_then(Json::as_str).unwrap_or_default().to_string();
+                    let column = given.to_uppercase();
+                    if !(1..=3).contains(&column.len()) || !column.bytes().all(|b| b.is_ascii_uppercase()) {
+                        return Err(format!("criterion(): column is a column's letters (\"B\"), not {}", Json::from(given.as_str()).text()));
+                    }
+                    if criteria.iter().any(|x| x.get("column").and_then(Json::as_str) == Some(column.as_str())) {
+                        return Err(format!("the filter of {name} has two criteria for column {column}"));
+                    }
+                    props.set("column", column.as_str());
+                    criteria.push(props);
+                    sources.put(format!("criterion:{id}!{column}"), k);
+                }
+                filter = Some((range, criteria));
+                continue;
+            }
             if c.tag == "column" || c.tag == "row" {
                 let is_column = c.tag == "column";
                 let size_prop = if is_column { "width" } else { "height" };
@@ -404,7 +512,7 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
                 continue;
             }
             if c.tag != "cell" {
-                return Err(format!("{} is not read in a sheet() (it holds cell(), column() and row())", tag(c.tag)));
+                return Err(format!("{} is not read in a sheet() (it holds cell(), column(), row(), chart(), pivot() and filter())", tag(c.tag)));
             }
             only(c, &["at", "value", "formula", "numFmt", "bold", "italic", "align", "bg", "color", "wrap"])?;
             let at = txt(c, "at")?.map(|a| a.to_uppercase());
@@ -455,6 +563,9 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
             ("colWidths", sizes(&col_widths)),
             ("rowHeights", sizes(&row_heights)),
             ("frozen", frozen),
+            ("charts", (!charts.is_empty()).then_some(Json::Arr(charts))),
+            ("pivots", (!pivots.is_empty()).then_some(Json::Arr(pivots))),
+            ("filter", filter.map(|(range, criteria)| Json::obj().with("range", range).with("criteria", Json::Arr(criteria)))),
         ]));
     }
     if sheets.is_empty() {

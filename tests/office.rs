@@ -126,3 +126,29 @@ fn refuses_what_the_documents_cannot_hold() {
     assert_eq!(bad(deck([slide([text([p("a"), b("b")])])])), "text() of slide-1: a text with paragraphs holds only p()s");
     assert_eq!(bad(deck([slide([shape().shape("star").x(0).y(0).w(1).h(1)])])), "shape(): shape is one of rect, ellipse, triangle, line");
 }
+
+#[test]
+fn a_sheets_chart_pivot_and_filter_are_checked_against_the_workbook_schema() {
+    let book = |kids: Vec<El>| workbook([sheet([vec![cell().at("A1").value("Region")], kids].concat()).name("Sales")]);
+    let (doc, sources) = document(book(vec![
+        chart().name("Sales").range("A1:C5").kind("bar").category("Region").series(["Q1", "Q2"]).at("E2"),
+        pivot().name("By region").range("A1:C5").rows("Region").value("Q1").aggregate("sum"),
+        filter([criterion().column("b").test("greater").value(100), criterion().column("A").test("notBlank")]).range("A1:C5"),
+    ]));
+    let Some(Json::Arr(sheets)) = doc.get("sheets") else { panic!("no sheets") };
+    let s = &sheets[0];
+    assert_eq!(s.get("charts").unwrap().text(), golden(r#"[{"id": "chart-1", "name": "Sales", "range": "A1:C5", "kind": "bar", "category": "Region", "series": ["Q1", "Q2"], "at": "E2"}]"#));
+    assert_eq!(s.get("pivots").unwrap().text(), golden(r#"[{"id": "pivot-1", "name": "By region", "range": "A1:C5", "rows": "Region", "value": "Q1", "aggregate": "sum"}]"#));
+    assert_eq!(s.get("filter").unwrap().text(), golden(r#"{"range": "A1:C5", "criteria": [{"column": "B", "test": "greater", "value": 100}, {"column": "A", "test": "notBlank"}]}"#));
+    for key in ["chart:sheet-1!chart-1", "pivot:sheet-1!pivot-1", "filter:sheet-1", "criterion:sheet-1!B", "criterion:sheet-1!A"] {
+        assert!(sources.get(key).is_some(), "{key} says where it was written");
+    }
+    // The same sentences as the TypeScript reader (office.test.ts).
+    let refused = bad(book(vec![chart().name("C").range("A1:C5").kind("donut").series(["Q1"])]));
+    assert!(refused.contains(r#"kind: must be one of bar, line, area, scatter, pie (got "donut")"#), "{refused}");
+    assert!(bad(book(vec![pivot().name("P").range("nowhere").rows("Region").value("Q1").aggregate("sum")])).contains(r#"range is an A1 range ("A1:C20"), not "nowhere""#));
+    assert!(bad(book(vec![pivot().name("P").range("A1:C5").rows("Region").aggregate("sum")])).contains("value: is required"));
+    assert!(bad(book(vec![chart().name("C").range("A1:B2").kind("bar").series(["Q1"]), chart().name("c").range("A1:B2").kind("bar").series(["Q1"])])).contains("two charts are called c"));
+    assert!(bad(book(vec![filter([]).range("A1:C5"), filter([]).range("A1:C5")])).contains("Sales has two filters"));
+    assert!(bad(book(vec![filter([criterion().column("B").test("blank"), criterion().column("B").test("notBlank")]).range("A1:C5")])).contains("two criteria for column B"));
+}
