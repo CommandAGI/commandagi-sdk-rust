@@ -4594,6 +4594,77 @@ impl ToJson for MeshBodyPropsSource {
     }
 }
 
+/// A regular grid of heights, read from the body's `positions`.
+#[derive(Clone, Debug)]
+pub struct WorldHeightfieldCollider {
+    /// Grid columns (west → east).
+    pub nx: i64,
+    /// Grid rows (south → north).
+    pub ny: i64,
+    /// The grid's east–west span.
+    /// Unit: mm.
+    pub size_x: f64,
+    /// The grid's south–north span.
+    /// Unit: mm.
+    pub size_y: f64,
+}
+
+impl ToJson for WorldHeightfieldCollider {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("type", "heightfield");
+        o.set("nx", self.nx.to_json());
+        o.set("ny", self.ny.to_json());
+        o.set("sizeX", self.size_x.to_json());
+        o.set("sizeY", self.size_y.to_json());
+        o
+    }
+}
+
+/// The body's exact triangle mesh, as a fixed collider.
+#[derive(Clone, Debug)]
+pub struct WorldTrimeshCollider {
+
+}
+
+impl ToJson for WorldTrimeshCollider {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("type", "trimesh");
+        o
+    }
+}
+
+/// The collider of a world body (MeshBodyFeature.worldCollider).
+#[derive(Clone, Debug)]
+pub enum WorldCollider {
+    Heightfield(WorldHeightfieldCollider),
+    Trimesh(WorldTrimeshCollider),
+}
+
+impl ToJson for WorldCollider {
+    fn to_json(&self) -> Json {
+        match self {
+            WorldCollider::Heightfield(x) => x.to_json(),
+            WorldCollider::Trimesh(x) => x.to_json(),
+        }
+    }
+}
+
+impl From<WorldHeightfieldCollider> for WorldCollider {
+    fn from(x: WorldHeightfieldCollider) -> WorldCollider {
+        WorldCollider::Heightfield(x)
+    }
+}
+
+impl From<WorldTrimeshCollider> for WorldCollider {
+    fn from(x: WorldTrimeshCollider) -> WorldCollider {
+        WorldCollider::Trimesh(x)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MeshBodyProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -4618,6 +4689,17 @@ pub struct MeshBodyProps {
     pub material_groups: Option<Vec<SourceMaterialGroup>>,
     /// Provenance for a generated body — drives ground-truth outcome capture + shows in the feature tree. `fileName` records the source file for imported bodies (GLB/OBJ/USDA/…).
     pub source: Option<MeshBodyPropsSource>,
+    /// How a world collides this body: a heightfield grid or the exact triangle mesh. Only a world body has it.
+    pub world_collider: Option<WorldCollider>,
+    /// The world body's rest centre (world mm). A heightfield's heights are taken relative to its z.
+    /// Unit: mm.
+    pub world_center: Option<[f64; 3]>,
+    /// The world body's friction coefficient.
+    pub world_friction: Option<f64>,
+    /// The world body's restitution (0: no bounce, 1: a perfect bounce).
+    pub world_restitution: Option<f64>,
+    /// Where the world body came from (the tile, the vertical datum, the ground resolution): open provenance.
+    pub world_meta: Option<Json>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -4653,6 +4735,21 @@ impl ToJson for MeshBodyProps {
         }
         if let Some(v) = &self.source {
             o.set("source", v.to_json());
+        }
+        if let Some(v) = &self.world_collider {
+            o.set("worldCollider", v.to_json());
+        }
+        if let Some(v) = &self.world_center {
+            o.set("worldCenter", v.to_json());
+        }
+        if let Some(v) = &self.world_friction {
+            o.set("worldFriction", v.to_json());
+        }
+        if let Some(v) = &self.world_restitution {
+            o.set("worldRestitution", v.to_json());
+        }
+        if let Some(v) = &self.world_meta {
+            o.set("worldMeta", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());

@@ -148,6 +148,33 @@ fn a_feature_element_whose_fields_do_not_fit_its_type_is_refused_with_the_op_pan
 }
 
 #[test]
+fn a_world_body_written_by_tsx_reads_with_its_declared_fields() {
+    // The element an ingest writes in a .3d.tsx (sdk/typescript threed.test.ts reads the same one).
+    let world_body = |collider: &str, restitution: f64| {
+        declare(
+            part([mesh_body()
+                .id("world/t")
+                .name("t")
+                .positions(json("[0, 0, 0, 1000, 0, 0, 0, 1000, 0, 1000, 1000, 0]"))
+                .indices(json("[0, 1, 2, 1, 3, 2]"))
+                .with_attr("worldCollider", json(collider))
+                .with_attr("worldCenter", json("[0, 0, 100]"))
+                .with_attr("worldFriction", 0.8)
+                .with_attr("worldRestitution", restitution)
+                .with_attr("worldMeta", json(r#"{"tile": "12/1/2", "res": 30}"#))])
+            .name("W"),
+        )
+    };
+    let g = world_body(r#"{"type": "heightfield", "nx": 2, "ny": 2, "sizeX": 1000, "sizeY": 1000}"#, 0.1).unwrap().graph().unwrap();
+    assert_eq!(node(&g, "world/t").get("inputs").unwrap().get("worldMeta").unwrap().text(), r#"{"tile":"12/1/2","res":30}"#);
+    assert!(world_body(r#"{"type": "trimesh"}"#, 0.1).is_ok());
+    assert_eq!(
+        world_body(r#"{"type": "heightfield", "nx": 1, "ny": 2, "sizeX": 1000, "sizeY": 1000}"#, 2.0).unwrap_err(),
+        r#"mesh_body().id("world/t"): worldCollider/nx: must be at least 2 (got 1); worldRestitution: must be at most 1 (got 2)"#
+    );
+}
+
+#[test]
 fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_reader_takes() {
     use commandagi::design::threed_props::*;
     let schema = threed_schema();
