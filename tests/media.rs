@@ -211,3 +211,43 @@ fn a_video_says_crop_a_lut_transition_settings_audio_effects_and_a_bezier_key() 
     let curve = bad(video([track([clip([keyframe().property("opacity").time(0).value(0).easing("bezier")]).src("a.mp4").out(1)])]));
     assert!(curve.contains("names its curve"), "{curve}");
 }
+
+#[test]
+fn a_composition_is_another_video_by_path_and_an_artboard_a_drawings_page() {
+    let g = graph(video([track([
+        composition([intro().preset("fade")]).src("parts/Intro.vid.tsx").start(1).in_(0.5).out(2.5).inputs(json(r#"{"hue": 30}"#)),
+        artboard([]).src("Poster.draw.tsx").start(3).duration(2).view("page_2").fit("cover").opacity(0.5),
+    ])
+    .name("V1")]));
+    assert_eq!(
+        node(&g, "comp_Intro.vid.tsx").text(),
+        golden(r#"{"id": "comp_Intro.vid.tsx", "type": "video.instance", "label": "Intro.vid.tsx", "inputs": {"__instance": {"path": "parts/Intro.vid.tsx", "name": "Intro.vid.tsx"}, "hue": 30}}"#)
+    );
+    assert_eq!(input(&g, "clip_Intro.vid.tsx", "source"), golden(r#"{"wire": {"node": "comp_Intro.vid.tsx", "port": "frames"}}"#));
+    assert_eq!(input(&g, "clip_Intro.vid.tsx", "kind"), r#""video""#);
+    assert_eq!(input(&g, "clip_Intro.vid.tsx", "duration"), "2");
+    assert_eq!(input(&g, "clip_Intro.vid.tsx", "inPoint"), "0.5");
+    assert!(node(&g, "clip_Intro.vid.tsx").get("inputs").unwrap().get("assetId").is_none(), "a composition is no media file");
+    let keys: Vec<String> = match node(&g, "clip_Intro.vid.tsx").get("meta").unwrap().get("sources") {
+        Some(Json::Obj(e)) => e.iter().map(|(k, _)| k.clone()).collect(),
+        _ => vec![],
+    };
+    assert_eq!(keys, ["intro"]);
+    assert_eq!(input(&g, "clip_Poster.draw.tsx", "kind"), r#""renderable""#);
+    assert_eq!(
+        input(&g, "clip_Poster.draw.tsx", "renderable"),
+        golden(r#"{"ref": {"locator": "Poster.draw.tsx", "fileKind": "drawing", "representation": "auto", "view": "page_2"}, "fit": "cover"}"#)
+    );
+    assert_eq!(input(&g, "clip_Poster.draw.tsx", "source"), "null");
+    assert_eq!(input(&g, "clip_Poster.draw.tsx", "opacity"), "0.5");
+    let on_track = |c: El| bad(video([track([c])]));
+    assert!(on_track(composition([]).src("Intro.mp4").out(1)).contains("is not another video's code"));
+    assert!(on_track(composition([]).src("/x/Intro.vid.tsx").out(1)).contains("relative to this file"));
+    assert!(on_track(composition([]).src("Intro.vid.tsx")).contains("give its out (or duration)"));
+    assert!(on_track(composition([]).src("Intro.vid.tsx").out(1).inputs(json(r#"{"hue": "red"}"#))).contains("inputs is { parameter: number }"));
+    assert!(on_track(composition([gain()]).src("Intro.vid.tsx").out(1)).contains("has no sound"));
+    assert!(on_track(artboard([]).src("Poster.png").duration(1)).contains("is not a drawing's code"));
+    assert!(on_track(artboard([]).src("Poster.draw.tsx")).contains("give its duration"));
+    assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).fit("stretch")).contains("fit is one of fill, contain, cover, none"));
+    assert!(bad(video([track([artboard([]).src("P.draw.tsx").duration(1)]).kind("audio")])).contains("an artboard goes on a video track"));
+}
