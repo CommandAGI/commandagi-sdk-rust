@@ -257,3 +257,84 @@ fn a_drawing_is_its_first_artboard_and_each_artboard_after_its_layers_is_another
     assert!(graph(drawing([layer([])])).get("meta").unwrap().get("pages").is_none());
     assert_eq!(bad(drawing([artboard([]), layer([])])), "drawing(): its layers come before its artboard()s (the drawing is the first artboard)");
 }
+
+#[test]
+fn a_link_is_a_draw_instance_node_that_names_another_drawing() {
+    let g = graph(
+        drawing([layer([
+            link().label("Badge").src("parts/Badge.draw.rs").x(40).y(60).inputs(json(r#"{"size": 48, "tone": "warm", "outlined": true}"#)),
+            link().src("cloud://global/examples/2d/Badge.draw.tsx"),
+        ])
+        .name("Badge")])
+        .width(400)
+        .height(300),
+    );
+    let child = |port: &str| node(&g, "group").get("inputs").and_then(|i| i.get(port)).and_then(|w| w.get("wire")).and_then(|w| w.get("node")).and_then(Json::as_str).unwrap().to_string();
+    let first = node(&g, &child("children.1"));
+    assert_eq!(first.get("type").and_then(Json::as_str), Some("draw.instance"));
+    assert_eq!(first.get("label").and_then(Json::as_str), Some("Badge"));
+    assert_eq!(
+        first.get("inputs").unwrap().text(),
+        golden(r#"{"__instance": {"path": "parts/Badge.draw.rs"}, "x": 40, "y": 60, "inputs": {"size": 48, "tone": "warm", "outlined": true}}"#)
+    );
+    assert_eq!(inputs(&g, &child("children.2")), golden(r#"{"__instance": {"assetPath": "cloud://global/examples/2d/Badge.draw.tsx"}}"#));
+}
+
+#[test]
+fn a_link_is_checked_against_its_schema() {
+    let refused = |l: El| bad(drawing([layer([l])]));
+    assert_eq!(refused(link()), "link(): src: is required");
+    assert_eq!(refused(link().src("a.draw.rs").x("40")), "link(): x: must be number (got \"string\")");
+    assert_eq!(refused(link().src("a.draw.rs").scale_x(2)), "link(): scaleX: is not one of its fields");
+    assert_eq!(refused(link().src("a.draw.rs").inputs(json(r#"{"size": [1]}"#))), "link(): inputs/size: does not match an allowed shape (got \"array\")");
+    assert_eq!(refused(link().src(" ")), "link(): src names a drawing by its path from this file's folder (\"parts/Badge.draw.rs\") or by an address");
+}
+
+#[test]
+fn a_paintings_filter_chains_among_its_strokes() {
+    let g = graph(
+        painting([layer([
+            stroke([]).points([[1.0, 2.0, 0.5, 0.0]]).color([0, 0, 0, 1]),
+            gaussian_blur([]).radius(3),
+            stroke([]).points([[5.0, 6.0, 0.5, 0.0]]).color([1, 0, 0, 1]),
+            noise([mask([fill([]).color([1, 1, 1, 1])])]).amount(0.1).monochrome(true).seed(7),
+        ])
+        .name("Paint")
+        .opacity(0.8)])
+        .width(100)
+        .height(80),
+    );
+    let port = |id: &str, port: &str| node(&g, id).get("inputs").and_then(|i| i.get(port)).unwrap().text();
+    assert_eq!(
+        inputs(&g, "paint.filter"),
+        golden(&format!(r#"{{"name": "Paint", "visible": true, "opacity": 0.8, "blend": "normal", "filter": {{"type": "gaussianBlur", "radius": 3}}, "src": {}}}"#, w("paint.stroke")))
+    );
+    assert_eq!(port("paint.stroke_2", "src"), golden(&w("paint.filter")));
+    assert_eq!(port("paint.filter_2", "filter"), golden(r#"{"type": "noise", "amount": 0.1, "monochrome": true, "seed": 7}"#));
+    assert_eq!(port("paint.filter_2", "mask"), golden(&w("paint.fill")));
+    assert_eq!(port("doc", "layers.1"), golden(&w("paint.filter_2")));
+    assert_eq!(bad(painting([gaussian_blur([]).radius(3)])), "gaussian_blur() is painted on a layer: write it inside one");
+    assert_eq!(bad(painting([layer([sharpen([]).amount(0.5).opacity(0.5)])])), "sharpen(): opacity is the layer's (write it on the layer it filters)");
+}
+
+#[test]
+fn a_filter_is_checked_against_its_schema_in_a_photo_and_in_a_painting() {
+    let in_photo = |f: El| bad(photo([raster([f]).src("a.png")]));
+    let in_painting = |f: El| bad(painting([layer([f])]));
+    for refused in [&in_photo as &dyn Fn(El) -> String, &in_painting] {
+        assert_eq!(refused(gaussian_blur([]).radius(300)), "gaussian_blur(): radius: must be at most 250 (got 300)");
+        assert_eq!(refused(gaussian_blur([])), "gaussian_blur(): radius: is required");
+        assert_eq!(refused(gaussian_blur([]).radius(3).amount(1)), "gaussian_blur(): amount: is not one of its fields");
+        assert_eq!(refused(noise([]).amount(0.1).monochrome("yes")), "noise(): monochrome: must be boolean (got \"string\")");
+    }
+}
+
+#[test]
+fn the_filter_tags_and_the_link_are_the_schemas_roots() {
+    let Some(Json::Obj(roots)) = twod_schema().get("roots") else { panic!("the schema has roots") };
+    let mut tags: Vec<&str> = roots.iter().map(|(k, _)| k.as_str()).collect();
+    tags.sort();
+    let mut declared: Vec<&str> = PHOTO_FILTERS.iter().copied().chain(["link"]).collect();
+    declared.sort();
+    assert_eq!(tags, declared);
+}

@@ -32,7 +32,11 @@
 //! the node's own fields. The encodings are the TypeScript SDK's: a drawing is its first artboard, and each
 //! `artboard([layer([…])])` after its layers is another; a top-level group of a drawing is a `layer`; a path's
 //! `d` (absolute M L H V C Q Z); a drawn brush stroke's `[x, y]` points; a paint stroke's `[x, y, pressure, t]` points;
-//! a modifier (`blur`, `transform`, `fill` …) wraps the one node it takes; `clip` takes its content, then its mask; in a
+//! a modifier (`blur`, `transform`, `fill` …) wraps the one node it takes; `clip` takes its content, then its mask;
+//! `link().src("parts/Badge.draw.rs").x(40).y(60)` shows another drawing's first artboard as that file draws it now
+//! (`src`: a path from this file's folder, or an address; `.inputs(json(r#"{"size": 40}"#))` gives values to the
+//! parameters that drawing declares); a painting's filter (`gaussian_blur([]).radius(3)`, the photo's filters) chains
+//! among a layer's strokes and changes what is under it; in a
 //! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
 //! `stroke`, `color_overlay`, `gradient_overlay`). A value that
@@ -41,13 +45,18 @@
 //! `mask` is not a node, so a masked node carries the mask's call in `meta.sources.mask`. A tag the vocabulary does not
 //! have is refused by name.
 //!
+//! A filter and a link are checked against their schema ([`twod_schema`], generated from the types the editors run); a
+//! wrong one is refused with every issue: `gaussian_blur(): radius: must be at most 250 (got 300)`.
+//!
 //! A root without `.name(…)` declares the document named after its file, as TypeScript does ("Drawing" with no file).
 
 use super::element::{attributes, elements, rust_name};
 use super::ir::{channels, slug, wire, Scope};
 use super::read::{call, tag};
+use super::schema::{describe_issue, validate};
 use super::source::meta;
 use super::{Declared, Family};
+use std::sync::OnceLock;
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
@@ -81,6 +90,8 @@ elements! {
     image: leaf;
     /// A raster layer of a drawing: `raster_layer().src("scan.png")`.
     raster_layer = "raster-layer": leaf;
+    /// A drawing's link to another drawing: `link().src("parts/Badge.draw.rs").x(40).y(60)`.
+    link: leaf;
     /// A drawing's modifier: the one node it changes.
     transform: children;
     /// A drawing's modifier: the one node it changes.
@@ -155,13 +166,13 @@ elements! {
     posterize: children;
     /// A photo's adjustment: the develop (light, colour, effects) in one tag.
     develop: children;
-    /// A photo's filter on a raster's own pixels.
+    /// A filter on a photo's raster or among a painting layer's strokes (its child: its mask).
     gaussian_blur = "gaussianBlur": children;
-    /// A photo's filter on a raster's own pixels.
+    /// A filter on a photo's raster or among a painting layer's strokes (its child: its mask).
     unsharp_mask = "unsharpMask": children;
-    /// A photo's filter on a raster's own pixels.
+    /// A filter on a photo's raster or among a painting layer's strokes (its child: its mask).
     sharpen: children;
-    /// A photo's filter on a raster's own pixels.
+    /// A filter on a photo's raster or among a painting layer's strokes (its child: its mask).
     noise: children;
     /// A nest's sheet.
     sheet: leaf;
@@ -260,8 +271,10 @@ attributes! {
         start_cap;
         /// A stroke's end cap.
         end_cap;
-        /// The image file, by its path relative to this file.
+        /// The image file, by its path relative to this file; a link's drawing, by that path or by an address.
         src;
+        /// A link's values for the parameters the linked drawing declares: `json(r#"{"size": 40}"#)`.
+        inputs;
         /// A transform.
         transform;
         /// A scale across.
@@ -480,7 +493,7 @@ pub const LAYER_STYLES: &[&str] = &["dropShadow", "innerShadow", "outerGlow", "s
 
 /// A photo's adjustments: each a layer whose attributes are the adjustment.
 pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", "vibrance", "colorBalance", "blackWhite", "invert", "threshold", "posterize", "develop"];
-/// A photo's filters: each on a raster's own pixels.
+/// The filters: each on a photo's raster, or among a painting layer's strokes.
 pub const PHOTO_FILTERS: &[&str] = &["gaussianBlur", "unsharpMask", "sharpen", "noise"];
 
 /// The name of a document whose root names none: the file's, as TypeScript names it ("Drawing" with no file).
@@ -501,6 +514,26 @@ fn declare(root: El) -> Result<Declared, String> {
 
 fn place(el: &El) -> String {
     call(el, &["name"])
+}
+
+/// The schema of the 2D elements that are checked when read (`roots`: tag → definition, `$defs`): the filters and the
+/// link, generated from the types the editors run.
+pub fn twod_schema() -> &'static Json {
+    static SCHEMA: OnceLock<Json> = OnceLock::new();
+    SCHEMA.get_or_init(|| Json::parse(include_str!("twod_schema.json")).expect("twod_schema.json is JSON"))
+}
+
+/// `el` with `fields`, checked against its tag's schema: the element as the editors hold it (`{ type, …fields }`).
+fn checked(el: &El, fields: &Json) -> Result<Json, String> {
+    let schema = twod_schema();
+    let def = schema.get("roots").and_then(|r| r.get(el.tag)).and_then(Json::as_str).expect("a tag of the schema");
+    let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
+    let value = spread(Json::obj().with("type", el.tag), entries(fields).to_vec());
+    let issues = validate(&Json::obj().with("$ref", format!("#/$defs/{def}")), &value, &defs, "")?;
+    if issues.is_empty() {
+        return Ok(value);
+    }
+    Err(format!("{}: {}", place(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")))
 }
 
 /// A value is plain data with finite numbers.
@@ -552,7 +585,21 @@ const DRAW_SOURCES: &[&str] = &["rect", "ellipse", "polygon", "path", "text", "b
 const DRAW_MODIFIERS: &[&str] = &["transform", "offset", "array", "mirror", "stroke", "fill", "blur", "levels", "threshold", "adjust", "crop", "bucket-fill"];
 /// Pixels a drawing places: each names its image file (`src`).
 const DRAW_PIXELS: &[&str] = &["image", "raster-layer"];
-const DRAW_LATER: &[&str] = &["sketch", "connector", "draw.instance"];
+const DRAW_LATER: &[&str] = &["sketch", "connector"];
+
+/// An address (`cloud://…`, `https://…`, a path from the site's root); anything else is a path from the file's folder.
+fn is_address(src: &str) -> bool {
+    if src.starts_with('/') {
+        return true;
+    }
+    match src.find("://") {
+        Some(i) if i > 0 => {
+            let scheme = src[..i].as_bytes();
+            scheme[0].is_ascii_alphabetic() && scheme.iter().all(|b| b.is_ascii_alphanumeric() || b"+.-".contains(b))
+        }
+        _ => false,
+    }
+}
 
 /// The tokens of an SVG path's `d`: its command letters and its numbers (`-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?`).
 fn path_tokens(d: &str) -> Vec<String> {
@@ -754,8 +801,10 @@ struct StackKind {
     chain_type: fn(&El) -> String,
     /// A layer's tag → its node type and inputs; none when the tag is not a layer.
     layer: fn(&El) -> Result<Option<(String, Json)>, String>,
-    /// A chain member's tag (a stroke, a filter) → its own inputs; none when the tag is not one.
-    chain: fn(&El) -> Result<Option<Json>, String>,
+    /// Whether a tag is a chain member's (a stroke, a bucket fill, a filter).
+    chains: fn(&El) -> bool,
+    /// A chain member's own inputs.
+    chain: fn(&El) -> Result<Json, String>,
 }
 
 fn pixel_layer(el: &El, kind: &str) -> Result<Option<(String, Json)>, String> {
@@ -783,7 +832,15 @@ fn adjustment_layer(el: &El, node_type: &str) -> Result<Option<(String, Json)>, 
     Ok(Some((node_type.into(), common.with("adjustment", adjustment))))
 }
 
-/// What a painting chains on a pixel layer besides its strokes: the Paint Bucket, the Gradient, the Move tool.
+/// A filter element as a chain member's inputs: its fields are its node's `filter`.
+fn filter_member(el: &El) -> Result<Json, String> {
+    let a = attrs(el, &[])?;
+    common_refused(el, &a, "write it on the layer it filters")?;
+    Ok(Json::obj().with("filter", checked(el, &a)?))
+}
+
+/// What is painted on a painting's pixel layer: strokes, the Paint Bucket, the Gradient, the Move tool. A filter
+/// ([`PHOTO_FILTERS`]) chains among them.
 pub const PAINT_CHAIN: &[&str] = &["stroke", "bucket", "gradientFill", "move"];
 /// A painting's shape layers.
 pub const PAINT_SHAPES: &[&str] = &["rect", "ellipse", "polygon", "line"];
@@ -791,7 +848,7 @@ pub const PAINT_SHAPES: &[&str] = &["rect", "ellipse", "polygon", "line"];
 const PAINT: StackKind = StackKind {
     root: "painting",
     prefix: "paint",
-    chain_type: |el| format!("paint.{}", el.tag),
+    chain_type: |el| if PHOTO_FILTERS.contains(&el.tag) { "paint.filter".into() } else { format!("paint.{}", el.tag) },
     layer: |el| match el.tag {
         "layer" => pixel_layer(el, "paint.layer"),
         "fill" | "group" => Ok(Some((format!("paint.{}", el.tag), attrs(el, &[])?))),
@@ -806,9 +863,10 @@ const PAINT: StackKind = StackKind {
         t if PAINT_SHAPES.contains(&t) => Ok(Some(("paint.shape".into(), attrs(el, &[])?.with("shape", el.tag)))),
         _ => Ok(None),
     },
+    chains: |el| PHOTO_FILTERS.contains(&el.tag) || PAINT_CHAIN.contains(&el.tag),
     chain: |el| {
-        if !PAINT_CHAIN.contains(&el.tag) {
-            return Ok(None);
+        if PHOTO_FILTERS.contains(&el.tag) {
+            return filter_member(el);
         }
         let mut a = attrs(el, &[])?;
         common_refused(el, &a, "write it on the layer it is painted on")?;
@@ -816,7 +874,7 @@ const PAINT: StackKind = StackKind {
             let points = stroke_points(points, &format!("{} points", place(el)))?;
             a.set("points", points);
         }
-        Ok(Some(a))
+        Ok(a)
     },
 };
 
@@ -830,14 +888,8 @@ const PHOTO: StackKind = StackKind {
         t if PHOTO_ADJUSTMENTS.contains(&t) => adjustment_layer(el, "photo.adjust"),
         _ => Ok(None),
     },
-    chain: |el| {
-        if !PHOTO_FILTERS.contains(&el.tag) {
-            return Ok(None);
-        }
-        let a = attrs(el, &[])?;
-        common_refused(el, &a, "write it on the layer it filters")?;
-        Ok(Some(Json::obj().with("filter", spread(Json::obj().with("type", el.tag), entries(&a).to_vec()))))
-    },
+    chains: |el| PHOTO_FILTERS.contains(&el.tag),
+    chain: filter_member,
 };
 
 // ── The declaration ────────────────────────────────────────────────────────────────────────────────────────────
@@ -944,6 +996,16 @@ impl Doc {
             let a = attrs(el, &["src"])?.with("__asset", asset(el.attr("src"), el)?);
             return self.add(el, t, a);
         }
+        if t == "link" {
+            let mut placed = checked(el, &attrs(el, &[])?)?;
+            placed.remove("type");
+            let Some(Json::Str(src)) = placed.remove("src") else { unreachable!("the schema requires src") };
+            if src.trim().is_empty() || src.starts_with("data:") {
+                return Err(format!("{}: src names a drawing by its path from this file's folder (\"parts/Badge.draw.rs\") or by an address", place(el)));
+            }
+            let reference = Json::obj().with(if is_address(&src) { "assetPath" } else { "path" }, src.as_str());
+            return self.add(el, "draw.instance", spread(Json::obj().with("__instance", reference), entries(&placed).to_vec()));
+        }
         if DRAW_MODIFIERS.contains(&t) {
             if kids.len() != 1 {
                 return Err(format!("{} wraps the one node it changes", place(el)));
@@ -967,7 +1029,7 @@ impl Doc {
             return self.add(el, t, a.with("content", wire(&content, "out")).with("mask", wire(&mask, "out")));
         }
         if DRAW_LATER.contains(&t) {
-            return Err(format!("{} is not declared in code yet (a drawing in code holds shapes, images, groups and modifiers)", tag(t)));
+            return Err(format!("{} is not declared in code yet (a drawing in code holds shapes, images, links, groups and modifiers)", tag(t)));
         }
         Err(format!("{} is not read in a drawing (see commandagi::design::twod)", tag(t)))
     }
@@ -1149,14 +1211,14 @@ impl Doc {
         let mut slots = Vec::new();
         for &el in children {
             let Some((layer_type, inputs)) = (kind.layer)(el)? else {
-                if (kind.chain)(el)?.is_some() {
+                if (kind.chains)(el) {
                     return Err(format!("{} is painted on a layer: write it inside one", place(el)));
                 }
                 return Err(format!("{} is not read in a {} (see commandagi::design::twod)", tag(el.tag), tag(kind.root)));
             };
             let (mut stack, mut chain) = (Vec::new(), Vec::new());
             for c in el.child_elements().filter(|c| c.tag != "mask" && c.tag != "fx") {
-                if (kind.chain)(c)?.is_some() { &mut chain } else { &mut stack }.push(c);
+                if (kind.chains)(c) { &mut chain } else { &mut stack }.push(c);
             }
             let group = format!("{}.group", kind.prefix);
             if !stack.is_empty() && layer_type != group {
@@ -1172,7 +1234,7 @@ impl Doc {
                 }
             }
             for c in chain {
-                let own = (kind.chain)(c)?.expect("a chain member");
+                let own = (kind.chain)(c)?;
                 let inputs = spread(carried.clone(), entries(&own).to_vec()).with("src", wire(&top, "out"));
                 top = self.add_masked(kind, c, &(kind.chain_type)(c), inputs)?;
             }
