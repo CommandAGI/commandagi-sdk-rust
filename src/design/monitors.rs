@@ -1,37 +1,26 @@
-//! MONITOR BLUEPRINTS IN RUST — a `.monitors.rs`: many monitors declared at once (docs/monitors.md in the CommandAGI
-//! repository). The same elements, and the same document, as the TypeScript SDK's `monitors.ts` and the Python SDK's
-//! `monitors.py`. A class of things is a function; its instances are data:
+//! MONITORS IN RUST — a `monitor.rs`: one monitor, in the folder of the thing it follows (docs/monitors.md in the
+//! CommandAGI repository). Its id is that folder's path in the account's Drive, never written in the file. The same
+//! elements, and the same document, as the TypeScript SDK's `monitors.ts` and the Python SDK's `monitors.py`. A class of
+//! things is a function; an instance is one call:
 //!
 //! ```
 //! use commandagi::design::monitors::*;
 //!
-//! fn series(id: &str, title: &str, code: &str) -> El {
-//!     monitor([source().id("fred").adapter("fred").params(json(&format!(r#"{{"series": "{code}"}}"#))).every("6h")])
-//!         .id(format!("economy/{id}"))
-//!         .title(title)
-//!         .class("economic-series")
-//!         .about(format!("fred:{code}"))
-//! }
-//!
-//! fn document() -> El {
-//!     monitors([
-//!         fragment([("cpi", "CPI, all items", "CPIAUCSL"), ("unrate", "Unemployment rate", "UNRATE")].map(|(i, t, c)| series(i, t, c))),
-//!         monitor([
-//!             source().id("dgs10").adapter("fred").params(json(r#"{"series": "DGS10"}"#)).every("6h"),
-//!             follows().monitor("economy/cpi").match_("fred.*"),
-//!         ])
-//!         .id("economy/treasury-yields")
-//!         .title("Treasury yields")
-//!         .class("interest-rate"),
+//! fn corporation(cik: &str, ticker: &str, name: &str) -> El {
+//!     monitor([
+//!         source().id("filings").adapter("sec-filings").params(json(&format!(r#"{{"cik": "{cik}"}}"#))).every("15m"),
+//!         follows().monitor("../../central-banks/fed").match_("fomc.*"),
 //!     ])
-//!     .id("economy")
+//!     .title(format!("{name} ({ticker})"))
+//!     .class("corporation")
+//!     .about(format!("cik:{cik}"))
 //! }
-//! # commandagi::design::declare(document()).unwrap();
+//! # commandagi::design::declare(corporation("0001045810", "NVDA", "NVIDIA")).unwrap();
 //! ```
 //!
-//! A follow's `match` is written `match_` (a Rust keyword). Nothing adds a default: what the file does not say, the
-//! document does not have. A monitor's `sources`, `follows` and `wakes` and the blueprint's `monitors` are always
-//! lists.
+//! A follow names the followed monitor's folder, relative to this monitor's folder. A follow's `match` is written
+//! `match_` (a Rust keyword). Nothing adds a default: what the file does not say, the document does not have. A
+//! monitor's `sources`, `follows` and `wakes` are always lists.
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, fn_name};
@@ -39,8 +28,6 @@ use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
-    /// A blueprint: its monitors.
-    monitors: children;
     /// A monitor: one thread, with its sources, its follows and its wakes.
     monitor: children;
     /// A source: an adapter of the sources catalog, its params, and how often it reads.
@@ -52,42 +39,39 @@ elements! {
 }
 
 attributes! {
-    /// The fields of a blueprint, a monitor and its parts, chained on their elements.
+    /// The fields of a monitor and its parts, chained on their elements.
     pub trait MonitorsAttrs {
-        id; title; class; about; visibility; readme;
+        id; title; class; about; readme;
         adapter; params; every; via; exit;
         monitor; match_; prompt;
     }
 }
 
-pub(crate) const FAMILY: Family = Family { module: "monitors", roots: &["monitors"], declare };
+pub(crate) const FAMILY: Family = Family { module: "monitors", roots: &["monitor"], declare };
 
-pub const BLUEPRINT_FIELDS: &[&str] = &["id", "title"];
-pub const MONITOR_FIELDS: &[&str] = &["id", "title", "class", "about", "visibility", "readme"];
+pub const MONITOR_FIELDS: &[&str] = &["title", "class", "about", "readme"];
 pub const SOURCE_FIELDS: &[&str] = &["id", "adapter", "params", "every", "via", "exit"];
 pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match"];
 pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
-pub const VISIBILITIES: &[&str] = &["public", "unlisted", "private"];
 pub const VIAS: &[&str] = &["worker", "host", "vpn"];
 /// The shortest and the longest `every` a source may have, in seconds (30s and 7d).
 pub const EVERY_BOUNDS: (u64, u64) = (30, 7 * 86_400);
 
-const MONITORS: Vocabulary = Vocabulary {
-    format: "monitors",
-    noun: "a monitor blueprint",
-    root: "monitors",
+const MONITOR: Vocabulary = Vocabulary {
+    format: "monitor",
+    noun: "a monitor",
+    root: "monitor",
     tags: &[
-        TagRule::new("monitors", &[]).required(&["id"]).attrs(BLUEPRINT_FIELDS),
-        TagRule::new("monitor", &["monitors"]).key("id").required(&["id"]).attrs(MONITOR_FIELDS),
+        TagRule::new("monitor", &[]).attrs(MONITOR_FIELDS),
         TagRule::new("source", &["monitor"]).key("id").required(&["id", "adapter", "every"]).attrs(SOURCE_FIELDS),
         TagRule::new("follows", &["monitor"]).key("monitor").required(&["monitor"]).attrs(FOLLOW_FIELDS),
         TagRule::new("wake", &["monitor"]).required(&["prompt"]).attrs(WAKE_FIELDS),
     ],
-    from_tree: monitors_of,
+    from_tree: monitor_of,
 };
 
 fn declare(root: El) -> Result<Declared, String> {
-    declare_document(&root, &MONITORS)
+    declare_document(&root, &MONITOR)
 }
 
 /// A duration (`30s`, `15m`, `6h`, `7d`) in seconds, or none when it is not one.
@@ -106,7 +90,7 @@ pub fn duration_seconds(text: &str) -> Option<u64> {
     n.parse::<u64>().ok().map(|v| v * scale)
 }
 
-/// How a message names an element: `monitor().id("economy/cpi")`.
+/// How a message names an element: `source().id("fred")`.
 fn call(t: &DocTree, key: &str) -> String {
     match t.attr(key) {
         Some(v @ Json::Str(_)) => format!("{}().{}({})", fn_name(t.tag), fn_name(key), v.text()),
@@ -170,10 +154,9 @@ fn source_of(t: &DocTree) -> Result<Json, String> {
 }
 
 fn monitor_of(t: &DocTree) -> Result<Json, String> {
-    for k in ["id", "title", "class", "about", "readme"] {
-        word(t, k, "id")?;
+    for k in MONITOR_FIELDS {
+        word(t, k, "title")?;
     }
-    one_of(t, "visibility", VISIBILITIES)?;
     let mut sources = Vec::new();
     let mut follows = Vec::new();
     let mut wakes = Vec::new();
@@ -183,8 +166,8 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
             "follows" => {
                 word(c, "monitor", "monitor")?;
                 word(c, "match", "monitor")?;
-                if c.attr("monitor").is_some() && c.attr("monitor") == t.attr("id") {
-                    return Err(format!("{} follows itself; a follow names another monitor", call(t, "id")));
+                if matches!(c.attr("monitor"), Some(Json::Str(m)) if m == "." || m == "./") {
+                    return Err(format!("{} names this monitor; a follow names another monitor's folder", call(c, "monitor")));
                 }
                 follows.push(said(c, FOLLOW_FIELDS));
             }
@@ -199,13 +182,5 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
     out.set("sources", Json::Arr(sources));
     out.set("follows", Json::Arr(follows));
     out.set("wakes", Json::Arr(wakes));
-    Ok(out)
-}
-
-fn monitors_of(t: &DocTree) -> Result<Json, String> {
-    word(t, "id", "id")?;
-    word(t, "title", "id")?;
-    let mut out = said(t, BLUEPRINT_FIELDS);
-    out.set("monitors", Json::Arr(t.children.iter().map(monitor_of).collect::<Result<Vec<_>, _>>()?));
     Ok(out)
 }
