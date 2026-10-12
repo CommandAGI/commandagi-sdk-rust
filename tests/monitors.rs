@@ -49,3 +49,48 @@ fn values_out_of_range_are_refused_by_name() {
     assert_eq!(duration_seconds("6h"), Some(21_600));
     assert_eq!(duration_seconds("0m"), None);
 }
+
+#[test]
+fn paths_and_their_fields() {
+    let one = |part: El| match document(monitor([part])).1.get("sources") {
+        Some(Json::Arr(a)) => a[0].clone(),
+        _ => panic!("sources"),
+    };
+    let s = || source().id("s").adapter("x-profile").every("1h");
+    assert_eq!(
+        one(s().via("browser").host("studio").session("../../../infra/sessions/x-web/session.tsx")),
+        j(r#"{"id": "s", "adapter": "x-profile", "every": "1h", "via": "browser", "host": "studio",
+             "session": "../../../infra/sessions/x-web/session.tsx"}"#)
+    );
+    let vm = one(s().via("vm").snapshot("x-logged-in").keep("10m").max_cost_per_day(2.5));
+    assert_eq!(vm.get("maxCostPerDay"), Some(&Json::Num(2.5)));
+    let phone = one(s().via("phone").unit("../../../worlds/fleet/world.tsx#android-01"));
+    let doc = Json::obj().with("sources", Json::Arr(vec![phone])).with("follows", Json::Arr(vec![])).with("wakes", Json::Arr(vec![]));
+    assert_eq!(
+        monitor_with_defaults(&doc),
+        j(r#"{"title": null, "class": null, "about": null, "readme": null,
+             "sources": [{"id": "s", "adapter": "x-profile", "params": {}, "every": "1h", "via": "phone", "exit": null,
+               "host": null, "mode": "poll", "retain": null, "since": null, "session": null, "snapshot": null,
+               "profile": null, "keep": null, "maxCostPerDay": null, "unit": "../../../worlds/fleet/world.tsx#android-01"}],
+             "follows": [], "wakes": []}"#)
+    );
+    let refused = |part: El, words: &str| {
+        let e = declare(monitor([part])).unwrap_err();
+        assert!(e.contains(words), "{e} should say {words}");
+    };
+    refused(s().via("vm").snapshot("x"), "costs money: it says maxCostPerDay");
+    refused(s().via("vm").max_cost_per_day(1), "launches from a snapshot: it names a session or a snapshot");
+    refused(s().via("android-vm").snapshot("x").max_cost_per_day(0), "maxCostPerDay is a price in USD");
+    refused(s().via("worker").max_cost_per_day(1), "maxCostPerDay bounds what");
+    refused(s().via("browser").profile("p").session("a/session.tsx"), "a session or a profile");
+    refused(s().via("host").profile("p"), "for via=\"browser\" only");
+    refused(s().via("vpn").exit("DE").host("h"), "host names the host that reads it");
+    refused(s().via("browser").snapshot("x"), "snapshot is what");
+    refused(s().via("vm").snapshot("x").max_cost_per_day(1).keep("5s"), "keep is a duration");
+    refused(s().via("browser").keep("10m"), "keep is how long");
+    refused(s().via("phone"), "names its phone: unit=\"<world.tsx>#<uid>\"");
+    refused(s().via("phone").unit("android-01"), "unit is \"<world.tsx ref>#<uid>\"");
+    refused(s().via("worker").unit("../w/world.tsx#a"), "unit names the phone");
+    refused(s().via("browser").mode("stream"), "mode=\"stream\" holds a connection open");
+    refused(s().via("ssh"), "via is \"worker\", \"host\", \"vpn\", \"browser\", \"vm\", \"android-vm\", \"phone\"");
+}
