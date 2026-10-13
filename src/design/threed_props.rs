@@ -519,7 +519,7 @@ pub struct ExtrudeProps {
     /// "Through all": extrude far enough to span every existing body (both ways).
     pub through: Option<bool>,
     /// "Up to face": extrude until the profile reaches this target face's plane.
-    pub up_to_face: Option<TopoRef>,
+    pub up_to_face: Option<Json>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -903,7 +903,7 @@ pub struct FilletProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// The edges to round.
-    pub edges: Vec<TopoRef>,
+    pub edges: Vec<Json>,
     /// The radius of the round.
     /// Unit: mm.
     /// Default: `2`.
@@ -962,7 +962,7 @@ pub struct ChamferProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// The edges to bevel.
-    pub edges: Vec<TopoRef>,
+    pub edges: Vec<Json>,
     /// The bevel's distance from the edge.
     /// Unit: mm.
     /// Default: `2`.
@@ -1021,7 +1021,7 @@ pub struct ShellProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// The faces to open.
-    pub faces: Vec<TopoRef>,
+    pub faces: Vec<Json>,
     /// The wall thickness.
     /// Unit: mm.
     /// Default: `2`.
@@ -2119,7 +2119,7 @@ pub struct DraftProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Faces to taper.
-    pub faces: Vec<TopoRef>,
+    pub faces: Vec<Json>,
     /// Draft angle in radians.
     /// Unit: rad.
     /// Default: `0.08726646259971647`.
@@ -2198,7 +2198,12 @@ pub struct HoleProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Planar face the hole is placed on; the hole goes inward along -normal.
-    pub face: TopoRef,
+    pub face: Json,
+    /// Where the holes are, in model coordinates: one hole at each point, moved onto the face along its normal. With neither `positions` nor `sketch`, one hole at the face's centre.
+    /// Unit: mm.
+    pub positions: Option<Vec<Vec3>>,
+    /// Where the holes are, as a sketch of points: one hole at each point of it that no segment uses, moved onto the face along its normal.
+    pub sketch: Option<String>,
     /// Unit: mm.
     /// Default: `6`.
     pub diameter: Option<f64>,
@@ -2233,6 +2238,12 @@ impl ToJson for HoleProps {
             o.set("name", v.to_json());
         }
         o.set("face", self.face.to_json());
+        if let Some(v) = &self.positions {
+            o.set("positions", v.to_json());
+        }
+        if let Some(v) = &self.sketch {
+            o.set("sketch", v.to_json());
+        }
         if let Some(v) = &self.diameter {
             o.set("diameter", v.to_json());
         }
@@ -2345,7 +2356,7 @@ pub struct SheetFlangeProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Straight boundary edge to flange from.
-    pub edge: TopoRef,
+    pub edge: Json,
     /// Flange wall length (mm).
     /// Unit: mm.
     /// Default: `15`.
@@ -3191,7 +3202,7 @@ pub struct WrapTextProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Cylindrical face to wrap onto.
-    pub face: TopoRef,
+    pub face: Json,
     /// Baked 2D template (text or any closed regions) in u (circumference) / v.
     pub sketch: Sketch,
     /// Radial depth (mm).
@@ -3253,7 +3264,7 @@ pub struct DeleteFaceProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Faces to remove; the body heals around them.
-    pub faces: Vec<TopoRef>,
+    pub faces: Vec<Json>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3299,7 +3310,7 @@ pub struct FullRoundProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Narrow strip face to replace with a rolling-ball blend.
-    pub face: TopoRef,
+    pub face: Json,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3345,7 +3356,7 @@ pub struct DomeProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Planar face to bulge.
-    pub face: TopoRef,
+    pub face: Json,
     /// Apex height along the face normal (negative = inward dimple).
     /// Unit: mm.
     /// Default: `10`.
@@ -3473,7 +3484,7 @@ pub struct ThreadProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Cylindrical face to thread.
-    pub face: TopoRef,
+    pub face: Json,
     /// Distance between thread crests (mm).
     /// Unit: mm.
     /// Default: `1.5`.
@@ -3696,7 +3707,7 @@ pub struct OffsetFacesProps {
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
     /// Faces to push/pull along their normals.
-    pub faces: Vec<TopoRef>,
+    pub faces: Vec<Json>,
     /// How far along their normals (negative: inward).
     /// Unit: mm.
     /// Default: `1`.

@@ -174,6 +174,36 @@ fn a_required_field_with_a_declared_default_may_be_left_out() {
 }
 
 #[test]
+fn a_hole_is_placed_and_faces_and_edges_are_chosen_by_a_query() {
+    // The TypeScript and Python SDKs declare the same document and refuse the same mistakes in the same words.
+    let top = r#"{"kind": "face", "select": {"normal": [0, 0, 1], "farthest": [0, 0, 1]}}"#;
+    let g = graph(
+        part([
+            box_().id("plate").center([0, 0, 4]).size([100, 60, 8]).operation("new"),
+            sketch([point().id("a").x(-30).y(0), point().id("b").x(30).y(0)]).id("places").plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#)),
+            hole().id("cbore").face(json(top)).positions(json("[[10, 20, 8], [-10, 20, 8]]")).diameter(5.5).through(true).style("counterbore").head_diameter(10).head_depth(5),
+            hole().id("pins").face(json(top)).sketch("places").diameter(3).through(true).style("simple"),
+            chamfer().id("rims").distance(0.5).edges(json(r#"[{"kind": "edge", "select": {"any": [{"createdBy": "cbore"}, {"createdBy": "pins"}], "geometry": "circle", "radius": {"max": 3}}}]"#)),
+        ])
+        .name("Plate"),
+    );
+    let inputs = |id: &str| node(&g, id).get("inputs").unwrap().clone();
+    assert_eq!(inputs("cbore").get("positions").unwrap().text(), "[[10,20,8],[-10,20,8]]");
+    assert_eq!(inputs("pins").get("sketch").unwrap().text(), r#""places""#);
+    assert_eq!(inputs("rims").get("edges").unwrap().text(), r#"[{"kind":"edge","select":{"any":[{"createdBy":"cbore"},{"createdBy":"pins"}],"geometry":"circle","radius":{"max":3}}}]"#);
+    // The order of the file says what each feature follows (the reader fills `consumes`).
+    assert!(inputs("rims").get("consumes").is_none());
+    assert_eq!(g.get("meta").unwrap().get("presentation").unwrap().text(), r#"{"order":["plate","places","cbore","pins","rims"]}"#);
+
+    let read = |el: El| declare(part([box_().id("plate").size([1, 1, 1]), el]).name("P")).map(|_| ()).unwrap_err();
+    assert_eq!(read(hole().id("h").face(json(top)).positions(json("[[1, 2]]"))), r#"hole().id("h"): positions/0: needs at least 3 items (got 2)"#);
+    assert_eq!(
+        read(fillet().id("f").edges(json(r#"[{"kind": "edge", "select": {"vertical": true}}]"#))),
+        r#"fillet().id("f"): edges/0/select/vertical: is not one of its fields"#
+    );
+}
+
+#[test]
 fn a_world_body_written_by_tsx_reads_with_its_declared_fields() {
     // The element an ingest writes in a .3d.tsx (sdk/typescript threed.test.ts reads the same one).
     let world_body = |collider: &str, restitution: f64| {
