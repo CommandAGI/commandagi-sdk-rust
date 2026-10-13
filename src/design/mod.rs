@@ -51,6 +51,7 @@ pub mod records;
 pub mod schema;
 pub mod schematic;
 pub mod source;
+pub mod standards;
 pub mod tasks;
 pub mod threed;
 pub mod threed_props;

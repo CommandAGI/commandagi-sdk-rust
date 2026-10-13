@@ -2219,6 +2219,8 @@ pub struct HoleProps {
     /// Unit: mm.
     /// Default: `4`.
     pub head_depth: Option<f64>,
+    /// A standard hole by name: a thread and a fit, "M4 close fit", "M4 normal fit", "M4 loose fit", "M4 tap" (`./hole-sizes.ts`; the sizes are the shipped tables of ISO 273 and ISO 2306). It gives `diameter`, and for a counterbore or a countersink the head. Clear it to give a diameter that is not in the table.
+    pub size: Option<String>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2250,6 +2252,9 @@ impl ToJson for HoleProps {
         }
         if let Some(v) = &self.head_depth {
             o.set("headDepth", v.to_json());
+        }
+        if let Some(v) = &self.size {
+            o.set("size", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());

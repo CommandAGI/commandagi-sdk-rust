@@ -232,3 +232,55 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
     assert_eq!(n.remove("meta").unwrap().text(), Json::obj().with("source", site(line, 28)).text());
     assert_eq!(n.text(), r#"{"id":"e1","type":"extrude","label":"Extrude1","inputs":{"profile":{"sketch":"s1"},"distance":6,"operation":"new"}}"#);
 }
+
+#[test]
+fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
+    // The TypeScript and Python SDKs read the same elements to the same nodes.
+    let engineering = r#"{"partNumber":"CA-0001","material":"6061-T6","process":"cnc-milling","finish":"anodize clear, 10 µm","vendor":{"name":"Misumi","partNumber":"HFS5-2020-300"},"cost":{"amount":12.5,"currency":"USD","source":"quote Q-118","date":"2026-10-01"}}"#;
+    let j1 = || joint().id("j1").kind("revolute").a("base").b("arm").anchor([0, 0, 40]).axis([0, 0, 1]).limits([-1.5, 1.5]).ref_a(json(r#"{"kind": "face", "point": [0, 0, 40], "direction": [0, 0, 1]}"#));
+    let g = graph(
+        part([
+            box_().id("base").center([0, 0, 0]).size([10, 10, 10]).operation("new"),
+            body().id("base").engineering(json(engineering)),
+            slot().name("dynamics").value(json(r#"{"ground": {"enabled": true}}"#)),
+            j1(),
+            joint().id("j2").kind("screw").a("arm").anchor([0, 0, 0]).pitch(2),
+            sheet().id("sheet1").views(json(r#"[{"id": "front", "view": "front"}, {"id": "top", "view": "top"}]"#)).title(json(r#"{"drawnBy": "JV"}"#)),
+        ])
+        .name("P"),
+    );
+    assert_eq!(node(&g, "bodyMeta").get("inputs").unwrap().text(), format!(r#"{{"base":{{"engineering":{engineering}}}}}"#));
+    // The joints are the `joints` port of the document's dynamics, beside what its slot holds.
+    let dynamics = node(&g, "dynamics");
+    assert_eq!(dynamics.get("type").and_then(Json::as_str), Some("3d.dynamics"));
+    assert_eq!(
+        dynamics.get("inputs").unwrap().text(),
+        r#"{"ground":{"enabled":true},"joints":[{"id":"j1","kind":"revolute","a":"base","b":"arm","anchor":[0,0,40],"axis":[0,0,1],"limits":[-1.5,1.5],"refA":{"kind":"face","point":[0,0,40],"direction":[0,0,1]}},{"id":"j2","kind":"screw","a":"arm","anchor":[0,0,0],"pitch":2}]}"#
+    );
+    assert!(dynamics.get("meta").and_then(|m| m.get("sources")).and_then(|s| s.get("joint:j1")).is_some());
+    // A sheet's fields with a default may be left out.
+    let Some(Json::Arr(sheets)) = node(&g, "drawings").get("inputs").and_then(|i| i.get("value")) else { panic!("no sheets") };
+    let s = &sheets[0];
+    assert_eq!(
+        (s.get("size").and_then(Json::as_str), s.get("scale").and_then(Json::as_f64), s.get("projection").and_then(Json::as_str)),
+        (Some("A3"), Some(1.0), Some("first-angle"))
+    );
+    assert_eq!((s.get("hiddenLines"), s.get("holeCallouts"), s.get("overallDimensions")), (Some(&Json::Bool(true)), Some(&Json::Bool(true)), Some(&Json::Bool(true))));
+    assert_eq!(s.get("title").unwrap().text(), r#"{"drawnBy":"JV"}"#);
+    let a = graph(assembly([mate().id("m1").kind("concentric").a("p1").b("p2").axis("Z")]).name("A"));
+    assert_eq!(node(&a, "assembly").get("inputs").unwrap().text(), r#"{"mates":[{"id":"m1","kind":"concentric","a":"p1","b":"p2","axis":"Z"}]}"#);
+
+    assert_eq!(
+        bad(part([joint().id("j1").kind("hinge").a("base").anchor([0, 0, 0])]).name("P")),
+        r#"joint().id("j1"): kind: must be one of fixed, revolute, prismatic, cylindrical, planar, screw, spherical, universal (got "hinge")"#
+    );
+    assert_eq!(bad(part([joint().id("j1").kind("fixed").a("base")]).name("P")), r#"joint().id("j1"): anchor: is required"#);
+    assert_eq!(
+        bad(part([body().id("base").engineering(json(r#"{"process": "magic", "cost": {"amount": 1, "source": "x", "date": "2026-10-01"}}"#))]).name("P")),
+        r#"body().id("base"): engineering/process: must be one of cnc-milling, cnc-turning, laser-cutting, waterjet-cutting, sheet-metal-bending, extrusion, casting, injection-moulding, fdm-printing, sla-printing, sls-printing, welding, grinding, manual, purchased (got "magic"); engineering/cost/currency: is required"#
+    );
+    assert_eq!(bad(part([slot().name("dynamics").value(json(r#"{"joints": []}"#))]).name("P")), r#"slot().name("dynamics"): joints are written as joint() elements"#);
+    assert!(bad(part([slot().name("drawings").value(json("[]"))]).name("P")).contains("drawings is not a slot"));
+    assert_eq!(bad(part([j1(), j1()]).name("P")), "two joint() elements are called j1");
+    assert!(bad(part([sheet().id("s").views(json("[]"))]).name("P")).starts_with(r#"sheet().id("s"): views: "#));
+}

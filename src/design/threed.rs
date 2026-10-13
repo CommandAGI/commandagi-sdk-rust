@@ -18,7 +18,7 @@
 //!         .name("Sketch1")
 //!         .plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#)),
 //!         extrude().id("extrude1").name("Extrude1").profile(json(r#"{"sketch": "sketch1"}"#)).distance(6).operation("new"),
-//!         body().id("extrude1").material("aluminium-6061"),
+//!         body().id("extrude1").engineering(json(r#"{"material": "6061-T6", "process": "cnc-milling"}"#)),
 //!     ])
 //!     .name("Mounting plate")
 //! }
@@ -39,7 +39,13 @@
 //! sketch([…]).id().name().plane(…)              a sketch: point().id().x().y(), a segment by its type (line,
 //!                                                circle, arc, spline, ellipse, ellipse_arc), constraint().id()
 //!                                                .kind().entities([…]), projection().id().ref_().feature()
-//! body().id().name().material(…).visible(…)     a body's own data (`bodyMeta[id]`)
+//! body().id().name().material(…).engineering(…) a body's own data (`bodyMeta[id]`): its name, its look (`material`)
+//!                                                and what it is (`engineering`: the material grade by its id in a
+//!                                                materials table, the process, the finish, the vendor and the cost)
+//! joint().id().kind().a().b().anchor().axis().limits() …   a joint between two bodies (`dynamics.joints`): fixed,
+//!                                                revolute, prismatic, cylindrical, planar, screw, spherical, universal
+//! mate().id().kind().a().b().axis() …            a mate between two components of an assembly (`assembly.mates`)
+//! sheet().id().size().scale().projection().views(…) …      an engineering drawing sheet of the document (`drawings`)
 //! slot().name(…).value(…)                       any other field of the document, whole
 //! ```
 //!
@@ -62,6 +68,7 @@ use super::element::{attributes, elements, fn_name, rust_name};
 use super::ir::slug;
 use super::schema::{describe_issue, validate, with_defaults};
 use super::source::Sources;
+use super::standards::sized_hole;
 use super::{Declared, Family};
 pub use super::threed_props::THREED_FEATURES;
 pub use super::{fragment, json, El, Json, Value};
@@ -80,6 +87,12 @@ elements! {
     body: leaf;
     /// Any other field of the document, whole: `slot().name("environment").value(json(…))`.
     slot: leaf;
+    /// A joint between two bodies: `joint().id("j1").kind("revolute").a("base").b("arm").anchor([0, 0, 40]).axis([0, 0, 1])`.
+    joint: leaf;
+    /// A mate between two components of an assembly: `mate().id("m1").kind("concentric").a("p1").b("p2").axis("Z")`.
+    mate: leaf;
+    /// An engineering drawing sheet: `sheet().id("sheet1").views(json(r#"[{"id": "front", "view": "front"}]"#))`.
+    sheet: leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
     feature: leaf;
     /// A sketch: its points, segments, constraints and projections.
@@ -160,26 +173,26 @@ elements! {
 attributes! {
     /// The fields of a 3D document's entities, chained on its elements (each the field of the same name).
     pub trait ThreedAttrs {
-        a; african; age; align_to_path; anchor; angle; animation; annotations; area; armatures; asian; assembly;
-        at; axis; axis_b; b; base; bend_radius; bias; bindings; body_id; bond_orders; bonds; both_sides;
+        a; actuator; african; age; align_to_path; anchor; angle; animation; annotations; area; armatures; asian; assembly;
+        at; axis; axis_b; b; base; bend_radius; bias; bindings; bodies; body_id; bond_orders; bonds; both_sides;
         break_after; builtin; builtin_planes; cap; caucasian; cell; center; centreline; chains; closed; collapsed;
         colormap; colors; comment; component; conductor; construction; consumes; control_points; count; count2;
         cupsize; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
-        draft_angle; drill_mm; dynamics; edge; edge_weights; edges; electrical; electron; elements; end; entities;
+        draft_angle; drill_mm; dynamics; edge; edge_weights; edges; electrical; electron; elements; end; engineering; entities;
         environment; fabrication; face; faces; factor; feature; file_id; file_name; firmness; fixed; focus;
-        footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; id; importer; indices;
+        footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; id; importer; indices;
         input; inputs; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
-        level; lib_id; local_placement; material; material_groups; mates; max; members; min; minor_radius; mode;
+        level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; mode;
         model_id; modifier; muscle; name; node_colors; node_groups; node_positions; node_sizes; node_types; normal;
-        normals; nucleus; nurbs; offset; operation; optimization; order; origin; outward; pad; pad_diameter_mm;
+        normals; nucleus; nurbs; offset; operation; optimization; order; origin; outward; overall_dimensions; pad; pad_diameter_mm;
         pads; paint; params; parents; part; path; pin; pitch; placement; planar; plane; point; point_size; points;
-        polygons; position; positions; profile; profiles; proportions; provenance; pull_direction; quaternion;
-        radii; radius; radius1; radius2; ref_; reference; refs; regions; render; representation; reverse;
+        polygons; position; positions; profile; profiles; projection; proportions; provenance; pull_direction; quaternion;
+        radii; radius; radius1; radius2; ref_; ref_a; ref_b; reference; refs; regions; render; representation; reverse;
         right_handed; rings; rotate_angle; rotate_axis; rotation_deg; rotations; rule; ruled; scale; scale_x_y_z;
         scales; scene_constraints; seed_feature; semantic_visibility; sh; sh_degree; side; signature; size; sketch;
         skins; source; source_materials; source_uv; spacing; spacing2; standard_parts; start; step; style;
-        subdivision; suppressed; symmetric; target; terminal; thickness; through; token; transform; translate;
-        turns; type_; u; unit; unit_scale_mm; up_to_face; uv; v; value; visible; weight; width; x; x_axis; y;
+        subdivision; suppressed; symmetric; target; terminal; thickness; through; title; token; transform; translate;
+        travel; turns; type_; u; unit; unit_scale_mm; up_to_face; uv; v; value; views; visible; weight; width; x; x_axis; y;
     }
 }
 
@@ -205,9 +218,26 @@ fn check_feature(el: &El, feature: Json) -> Result<Json, String> {
     }
     Err(format!("{}: {}", at(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")))
 }
+/// A value checked against a definition of the schema (a body's engineering data, a joint, a mate, a sheet), with each
+/// required field it leaves out filled with its declared default; refused with every issue when it does not fit.
+fn check_value(el: &El, def: &str, value: &Json, path: &str) -> Result<Json, String> {
+    let schema = threed_schema();
+    let defs = schema.get("$defs").cloned().unwrap_or_else(Json::obj);
+    let root = Json::obj().with("$ref", format!("#/$defs/{def}"));
+    let filled = with_defaults(&root, value, &defs)?;
+    let issues = validate(&root, &filled, &defs, path)?;
+    if issues.is_empty() {
+        return Ok(filled);
+    }
+    Err(format!("{}: {}", at(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")))
+}
+/// Elements that are the items of a list the document holds: the tag, the document field (its node), the port of that
+/// node that holds the list, and the definition each item is checked against (`threed_schema()` `$defs`).
+pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
+    &[("joint", "dynamics", "joints", "DynamicsJoint"), ("mate", "assembly", "mates", "Mate"), ("sheet", "drawings", "value", "DrawingSheet")];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "point", "constraint", "projection", "line", "circle", "arc",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "point", "constraint", "projection", "line", "circle", "arc",
     "spline", "ellipse", "ellipseArc", "input",
 ];
 /// A sketch's segment kinds, by tag.
@@ -222,7 +252,8 @@ pub const BUILTIN_PLANES: &[(&str, &str, [f64; 3], [f64; 3], [f64; 3], &str)] = 
 const VIEW_ATTRS: &[&str] = &["semanticVisibility"];
 const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"];
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
-const NOT_SLOTS: &[&str] = &["id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility"];
+const NOT_SLOTS: &[&str] =
+    &["id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings"];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];
 
@@ -451,6 +482,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
     let mut bodies: Vec<(String, Json)> = Vec::new();
     let mut body_sources = Sources::new();
     let mut declared: Vec<&El> = Vec::new();
+    let mut lists: Vec<(usize, Vec<Json>, Sources)> = Vec::new();
     for el in root.child_elements() {
         match el.tag {
             "parameter" => {
@@ -503,8 +535,28 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 if bodies.iter().any(|(b, _)| *b == id) {
                     return Err(format!("two body() elements are called {id}"));
                 }
-                bodies.push((id.clone(), Json::Obj(fields(el, &["id"])?)));
+                let mut body = fields(el, &["id"])?;
+                for (k, v) in body.iter_mut() {
+                    if k == "engineering" {
+                        *v = check_value(el, "PartEngineering", v, "engineering")?;
+                    }
+                }
+                bodies.push((id.clone(), Json::Obj(body)));
                 body_sources.put(id, el);
+            }
+            t if THREED_LISTS.iter().any(|l| l.0 == t) => {
+                no_children(el)?;
+                let id = id_of(el)?;
+                let kind = THREED_LISTS.iter().position(|l| l.0 == t).unwrap_or_default();
+                if !lists.iter().any(|l| l.0 == kind) {
+                    lists.push((kind, Vec::new(), Sources::new()));
+                }
+                let Some(held) = lists.iter_mut().find(|l| l.0 == kind) else { continue };
+                if held.1.iter().any(|x| x.get("id").and_then(Json::as_str) == Some(id.as_str())) {
+                    return Err(format!("two {}() elements are called {id}", fn_name(t)));
+                }
+                held.1.push(check_value(el, THREED_LISTS[kind].3, &Json::Obj(fields(el, &[])?), "")?);
+                held.2.put(format!("{t}:{id}"), el);
             }
             "slot" => {
                 no_children(el)?;
@@ -528,7 +580,12 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 }
                 let inputs = if OBJECT_SLOTS.contains(&field.as_str()) {
                     match &value {
-                        Some(v @ Json::Obj(_)) => v.clone(),
+                        Some(v @ Json::Obj(_)) => {
+                            if let Some(l) = THREED_LISTS.iter().find(|l| l.1 == field && v.get(l.2).is_some()) {
+                                return Err(format!("{}: {} are written as {}() elements", at(el), l.2, fn_name(l.0)));
+                            }
+                            v.clone()
+                        }
                         _ => return Err(format!("{}: the document's {field} is an object", at(el))),
                     }
                 } else {
@@ -580,6 +637,12 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
             let (sketch, s) = sketch_of(el)?;
             inputs.push(("sketch".into(), sketch));
             sources = s;
+        }
+        // A hole that names a standard size ("M4 close fit") has that size's diameter and head (standards.rs).
+        if el.tag == "hole" && inputs.iter().any(|(k, v)| k == "size" && matches!(v, Json::Str(_))) {
+            if let Json::Obj(sized) = sized_hole(&Json::Obj(inputs.clone())).map_err(|e| format!("{}: {e}", at(el)))? {
+                inputs = sized;
+            }
         }
         if !generic {
             let mut feature = vec![("type".to_string(), Json::from(kind.as_str())), ("id".to_string(), Json::from(id.as_str()))];
@@ -640,6 +703,28 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
         let v3 = |v: &[f64; 3]| Json::Arr(v.iter().map(|n| Json::Num(*n)).collect());
         let inputs = Json::obj().with("origin", v3(origin)).with("normal", v3(normal)).with("xAxis", v3(x_axis)).with("builtin", *builtin);
         nodes.push((id.to_string(), node(id, "plane", Some(label), inputs, None)));
+    }
+    for (kind, items, sources) in lists {
+        let (tag, field, port, _) = THREED_LISTS[kind];
+        if !nodes.iter().any(|(id, _)| id == field) {
+            claim(&mut owner, field, format!("the document's {field} ({}())", fn_name(tag)))?;
+            nodes.push((field.to_string(), node(field, &format!("3d.{field}"), None, Json::obj(), None)));
+        }
+        let Some((_, n)) = nodes.iter_mut().find(|(id, _)| id == field) else { continue };
+        let mut inputs = n.get("inputs").cloned().unwrap_or_else(Json::obj);
+        inputs.set(port, Json::Arr(items));
+        n.set("inputs", inputs);
+        if !sources.is_empty() {
+            let mut meta = n.get("meta").cloned().unwrap_or_else(Json::obj);
+            let mut all = meta.get("sources").cloned().unwrap_or_else(Json::obj);
+            if let Json::Obj(entries) = sources.json() {
+                for (k, v) in entries {
+                    all.set(&k, v);
+                }
+            }
+            meta.set("sources", all);
+            n.set("meta", meta);
+        }
     }
     if !bodies.is_empty() {
         claim(&mut owner, "bodyMeta", "the bodies (body())".into())?;
