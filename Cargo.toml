@@ -1,10 +1,13 @@
 [package]
 name = "commandagi"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 description = "The CommandAGI SDK for Rust: CommandAGI documents (a schematic sheet, …) declared as code that is their source of truth."
 license = "MIT"
 repository = "https://github.com/CommandAGI/commandagi-sdk-rust"
+readme = "README.md"
+# The source map is a crate of its own (map/, with its vendored parser): not part of this one.
+exclude = ["map/"]
 # No dependencies, no build script, no proc-macros: the local host compiles a document's `.rs` file against this crate
 # alone, offline (docs/code-sandbox.md in the CommandAGI repository).
 
