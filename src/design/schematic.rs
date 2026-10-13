@@ -45,6 +45,10 @@
 //!                                                                           its pins by number, or
 //!                                                                           json(r#"[{"number": "1", "name": "VBAT"}]"#)
 //! net(name).pins([".C1 > .pin1", ".U1 > .pin6"])                           a stored net of a netlist circuit
+//! … .no_connect(["3", "4"])                                                on any part: the pins it leaves open on
+//!                                                                           purpose, by pin NUMBER (KiCad's no-connect
+//!                                                                           marker); the electrical rule check does
+//!                                                                           not report them as pins on nothing
 //! … .spice(json(r#"[{"id", "model", "terminals"}]"#))                       on any part: the vendor SPICE packages it
 //!                                                                           binds, each formal by pin NUMBER
 //! attachment(name).role("schematic").file(path).mime(…)                     a KiCad file the circuit carries
@@ -135,6 +139,8 @@ attributes! {
         pins;
         /// The SPICE packages a part binds: `json(r#"[{"id": "q", "model": "2N3904", "terminals": {"C": "1"}}]"#)`.
         spice;
+        /// The pins a part leaves open on purpose, by pin number: `["3", "4"]`.
+        no_connect;
         /// A trace's whole path of selectors, from `from` to `to`.
         path;
         /// What an attachment is: "schematic", "project", "library" or "other".
@@ -279,6 +285,22 @@ fn spice_of(el: &El) -> Result<Option<Json>, String> {
     Ok(Some(v.clone()))
 }
 
+/// The pins a part leaves open on purpose (`.no_connect(["3", "4"])`), by pin number, as written.
+fn no_connect_of(el: &El) -> Result<Option<Json>, String> {
+    let Some(v) = el.attr("noConnect") else { return Ok(None) };
+    let ok = match v {
+        Json::Arr(list) => {
+            let numbers: Vec<&str> = list.iter().filter_map(Json::as_str).filter(|n| !n.is_empty()).collect();
+            !list.is_empty() && numbers.len() == list.len() && numbers.iter().enumerate().all(|(i, n)| !numbers[..i].contains(n))
+        }
+        _ => false,
+    };
+    if !ok {
+        return Err(format!("{}: noConnect is a list of pin numbers ([\"3\", \"4\"]), each once", el.call_text()));
+    }
+    Ok(Some(v.clone()))
+}
+
 /// Add the placement of `unit` of `part` that `el` declares (its sch_x, sch_y, sch_rotation, sch_mirror).
 fn place(s: &mut Scope, part: &mut Placed, unit: u32, el: &El, sockets: &[&str]) -> Result<(), String> {
     let (x, y, rot) = (num(el, "schX")?, num(el, "schY")?, num(el, "schRotation")?);
@@ -337,7 +359,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
     let mut later: Vec<&El> = Vec::new();
     for &el in children {
         if let Some(ideal) = ideal(el.tag) {
-            let mut allowed = [&["name", "spice"], PLACE].concat();
+            let mut allowed = [&["name", "spice", "noConnect"], PLACE].concat();
             allowed.extend(ideal.value);
             if ideal.excitation {
                 allowed.push("excitation");
@@ -376,6 +398,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             if let Some(spice) = spice_of(el)? {
                 inputs.push(("spice".into(), spice));
             }
+            if let Some(open) = no_connect_of(el)? {
+                inputs.push(("noConnect".into(), open));
+            }
             let part = s.add(&part_type_for(&pins), inputs, Some(&reference), Some(&reference), meta(el))?;
             let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: Some((ideal.pins, ideal.aliases)), pins: None };
             let sockets: Vec<&str> = pins.iter().map(|(id, _)| id.as_str()).collect();
@@ -385,7 +410,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
         }
         match el.tag {
             "part" => {
-                refuse_unknown(el, &[&["name", "symbol", "library", "value", "pins", "spice"], PLACE].concat())?;
+                refuse_unknown(el, &[&["name", "symbol", "library", "value", "pins", "spice", "noConnect"], PLACE].concat())?;
                 let reference = text(el, "name", "the part's reference (U1)")?;
                 if parts.contains_key(&reference) {
                     return Err(format!("two parts are called {reference}"));
@@ -415,6 +440,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 inputs.push(("pins".into(), Json::Arr(Vec::new())));
                 if let Some(spice) = spice_of(el)? {
                     inputs.push(("spice".into(), spice));
+                }
+                if let Some(open) = no_connect_of(el)? {
+                    inputs.push(("noConnect".into(), open));
                 }
                 let part = s.add(&part_type_for(&[]), inputs, Some(&reference), Some(&reference), meta(el))?;
                 let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: None, pins: None };
@@ -652,6 +680,9 @@ fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, Strin
     inputs.push(("pins".into(), pins_json(&pins)));
     if let Some(spice) = spice_of(el)? {
         inputs.push(("spice".into(), spice));
+    }
+    if let Some(open) = no_connect_of(el)? {
+        inputs.push(("noConnect".into(), open));
     }
     let typed: Vec<(String, String)> = pins.iter().map(|(id, n, _)| (id.clone(), n.clone())).collect();
     let id = s.add(&part_type_for(&typed), inputs, Some(reference), Some(reference), meta(el))?;
