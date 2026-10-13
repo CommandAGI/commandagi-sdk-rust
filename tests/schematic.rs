@@ -176,3 +176,17 @@ fn a_trace_path_runs_from_its_from_to_its_to() {
     assert_eq!(node(&g, "w_2").get("inputs").unwrap().text(), r#"{"ends.1":{"wire":{"node":"J1","port":"v"}},"ends.2":{"wire":{"node":"sym_R2_1","port":"p1"}}}"#);
     assert!(bad(sheet([".R1 > .pin1", ".J1", ".R2 > .pin1"])).contains("path is the list of selectors from"));
 }
+
+#[test]
+fn a_part_names_the_pins_it_leaves_open_on_purpose_by_pin_number() {
+    let g = graph(group("Open", [
+        resistor("R1").resistance("1k").sch_x(0).sch_y(0).no_connect(["2"]),
+        part("K2").symbol("station:SSR").library("station.kicad_sym").sch_x(50.8).sch_y(0).no_connect(["3", "4"]),
+        part("J1").pins(["1", "2", "3"]).no_connect(["3"]),
+    ]));
+    assert!(node(&g, "R1").get("inputs").unwrap().text().contains(r#""noConnect":["2"]"#));
+    assert_eq!(node(&g, "K2").get("inputs").unwrap().text(), r#"{"ref":"K2","symbol":"station:SSR","library":"station.kicad_sym","pins":[],"noConnect":["3","4"]}"#);
+    assert!(node(&g, "J1").get("inputs").unwrap().text().contains(r#""noConnect":["3"]"#));
+    assert!(bad(group("S", [part("K2").symbol("a:B").library("a.kicad_sym").no_connect(["3", "3"])])).contains("noConnect is a list of pin numbers"));
+    assert!(bad(group("S", [part("K2").symbol("a:B").library("a.kicad_sym").no_connect(json("[3]"))])).contains("noConnect is a list of pin numbers"));
+}
