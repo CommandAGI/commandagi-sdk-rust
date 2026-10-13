@@ -6,6 +6,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 ## Unreleased
 
+Added
+
 - `commandagi::design::threed`: `body().engineering(…)` (material grade, process, finish, vendor, cost), `joint()`
   (`fixed`, `revolute`, `prismatic`, `cylindrical`, `planar`, `screw`, `spherical`, `universal`), `mate()`, `sheet()`
   (an engineering drawing sheet) and `hole().size("M4 close fit")`, each checked against the schema as in the
@@ -13,6 +15,13 @@ promises nothing about the next one: read this file before you change the tag yo
   `spherical`; joints and mates are their own elements, not fields of the `dynamics` and `assembly` slots.
 - `commandagi::design::standards`: `material`, `mass_grams`, `hole_size`, `sized_hole`, `standard_row`: the same
   tables as the TypeScript and Python SDKs, each with where its rows were read.
+- 3D documents: a hole's `positions` and `sketch`; faces and edges chosen by a query, `{"kind", "select": {…}}`,
+  beside the pick; a part is built in the order of its elements (a feature that names no `consumes` follows every
+  body-making feature written before it).
+
+Changed
+
+- A union's refusal names the field at fault (`edges/0/select/vertical: is not one of its fields`).
 
 ## 0.5.0 (2026-10-13)
 

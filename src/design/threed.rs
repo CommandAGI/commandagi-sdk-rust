@@ -34,7 +34,18 @@
 //! plane().id().name().origin().normal().x_axis()                      a datum plane
 //! FEATURE().id().name() …fields                  a feature: the function is its type (extrude, revolve, fillet,
 //!                                                chamfer, hole, linear_pattern, box_, import, …); `.suppressed(…)`,
-//!                                                `.consumes([…])` as stored
+//!                                                `.consumes([…])` as stored. THE ORDER OF THE ELEMENTS IS THE ORDER
+//!                                                THE PART IS BUILT IN: a feature that acts on bodies (a cut, a hole,
+//!                                                a fillet, a pattern) and names no `consumes` follows every
+//!                                                body-making feature written before it
+//! faces and edges                                where a feature takes them (`.edges()`, `.faces()`, `.face()`,
+//!                                                `.edge()`): one picked by where it was, `{"kind", "signature":
+//!                                                {"point", …}}`, or the ones a query chooses when the part is built,
+//!                                                `{"kind", "select": {…}}`: normal, parallel, perpendicular, axis,
+//!                                                geometry, length, radius, area, ofFace, createdBy, inBox, farthest,
+//!                                                any, not. Every test present must hold
+//! hole().face(…).positions(…) | .sketch(…)       where the holes are: points in model coordinates, or a sketch of
+//!                                                points; with neither, the face's centre
 //! feature().type_(…).id().name() …               a feature of a type the kernel does not know
 //! sketch([…]).id().name().plane(…)              a sketch: point().id().x().y(), a segment by its type (line,
 //!                                                circle, arc, spline, ellipse, ellipse_arc), constraint().id()

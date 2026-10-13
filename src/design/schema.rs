@@ -135,6 +135,21 @@ pub fn validate(schema: &Json, value: &Json, defs: &Json, path: &str) -> Result<
                 }
             }
         }
+        // A union of objects told apart by what each must hold (a pick's `signature`, a selector's `select`): when the
+        // value holds every required field of one option only, that option says what is wrong in it.
+        if matches!(value, Json::Obj(_)) {
+            let mut holds = Vec::new();
+            for (i, o) in options.iter().enumerate() {
+                if let Some(Json::Arr(required)) = resolve(o, defs)?.get("required") {
+                    if !required.is_empty() && required.iter().all(|k| k.as_str().is_some_and(|k| value.get(k).is_some())) {
+                        holds.push(i);
+                    }
+                }
+            }
+            if holds.len() == 1 {
+                return Ok(results.swap_remove(holds[0]));
+            }
+        }
         return Ok(vec![Issue::new(path, IssueCode::AnyOf, None, Some(Json::from(kind_of(value))))]);
     }
     let types: Vec<&str> = match s.get("type") {
