@@ -4,6 +4,18 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
+## Unreleased
+
+Added
+
+- 3D documents: a hole's `positions` and `sketch`; faces and edges chosen by a query, `{"kind", "select": {…}}`,
+  beside the pick; a part is built in the order of its elements (a feature that names no `consumes` follows every
+  body-making feature written before it).
+
+Changed
+
+- A union's refusal names the field at fault (`edges/0/select/vertical: is not one of its fields`).
+
 ## 0.5.0 (2026-10-13)
 
 The first tagged release. The crate was `0.1.0` in its manifest from its first commit (2026-10-05) and through the 56
