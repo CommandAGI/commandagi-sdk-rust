@@ -105,40 +105,37 @@ pub fn hole_size(name: &str) -> Result<Json, String> {
 }
 
 /// A hole's fields with what its `size` says: the diameter, and for a counterbore or a countersink the head the
-/// tables give for that thread where the hole does not say its own. A countersink's depth follows from its diameter
-/// and angle. A `diameter` that differs from the size's is refused: leave it out, or clear `size`.
+/// tables give for that thread (a counterbore for a hexagon socket head cap screw, DIN 974-1; a countersink for a
+/// countersunk screw, DIN 74 form F, its depth from its diameter and angle). The size wins: a `diameter`,
+/// `headDiameter` or `headDepth` that differs from the size's is refused. Leave it out, or clear `size` to give your
+/// own.
 pub fn sized_hole(hole: &Json) -> Result<Json, String> {
     let Some(size) = hole.get("size").and_then(Json::as_str) else { return Ok(hole.clone()) };
     let named = hole_size(size)?;
     let diameter = named.get("diameter").and_then(Json::as_f64).unwrap_or_default();
-    if let Some(d) = hole.get("diameter").and_then(Json::as_f64) {
-        if (d - diameter).abs() > 1e-9 {
-            return Err(format!("diameter: \"{size}\" is {} mm (got {}); leave diameter out, or clear size", Json::Num(diameter).text(), Json::Num(d).text()));
-        }
-    }
-    let mut out = hole.clone();
-    out.set("diameter", diameter);
-    if named.get("fit").and_then(Json::as_str) == Some("tap") {
-        return Ok(out);
-    }
+    let mut says: Vec<(&str, f64)> = vec![("diameter", diameter)];
+    let tap = named.get("fit").and_then(Json::as_str) == Some("tap");
     let row = named.get("row");
     let style = hole.get("style").and_then(Json::as_str);
-    let given = |k: &str| hole.get(k).filter(|v| **v != Json::Null).cloned();
-    if let (Some("counterbore"), Some(bore)) = (style, row.and_then(|r| r.get("counterbore"))) {
-        out.set("headDiameter", given("headDiameter").or_else(|| bore.get("diameter").cloned()).unwrap_or(Json::Null));
-        out.set("headDepth", given("headDepth").or_else(|| bore.get("depth").cloned()).unwrap_or(Json::Null));
-    } else if let (Some("countersink"), Some(sink)) = (style, row.and_then(|r| r.get("countersink"))) {
-        let head = hole.get("headDiameter").and_then(Json::as_f64).or_else(|| sink.get("diameter").and_then(Json::as_f64)).unwrap_or_default();
-        out.set("headDiameter", head);
-        let depth = match given("headDepth") {
-            Some(d) => d,
-            None => {
-                let angle = sink.get("angleDeg").and_then(Json::as_f64).unwrap_or(90.0);
-                let depth = (head - diameter) / 2.0 / (angle * std::f64::consts::PI / 360.0).tan();
-                Json::Num((depth * 1e4 + 0.5).floor() / 1e4)
+    let num = |v: Option<&Json>, k: &str| v.and_then(|j| j.get(k)).and_then(Json::as_f64);
+    if let (false, Some("counterbore"), Some(bore)) = (tap, style, row.and_then(|r| r.get("counterbore"))) {
+        says.push(("headDiameter", num(Some(bore), "diameter").unwrap_or_default()));
+        says.push(("headDepth", num(Some(bore), "depth").unwrap_or_default()));
+    } else if let (false, Some("countersink"), Some(sink)) = (tap, style, row.and_then(|r| r.get("countersink"))) {
+        let head = num(Some(sink), "diameter").unwrap_or_default();
+        let angle = num(Some(sink), "angleDeg").unwrap_or(90.0);
+        let depth = (head - diameter) / 2.0 / (angle * std::f64::consts::PI / 360.0).tan();
+        says.push(("headDiameter", head));
+        says.push(("headDepth", (depth * 1e4 + 0.5).floor() / 1e4));
+    }
+    let mut out = hole.clone();
+    for (field, value) in says {
+        if let Some(written) = hole.get(field).and_then(Json::as_f64) {
+            if (written - value).abs() > 1e-9 {
+                return Err(format!("{field}: \"{size}\" is {} mm (got {}); leave {field} out, or clear size", Json::Num(value).text(), Json::Num(written).text()));
             }
-        };
-        out.set("headDepth", depth);
+        }
+        out.set(field, value);
     }
     Ok(out)
 }

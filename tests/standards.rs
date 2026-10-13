@@ -69,6 +69,11 @@ fn a_hole_by_name_is_the_clearance_hole_of_iso_273_or_the_tap_drill_of_iso_2306(
     assert_eq!((num(&sink, "diameter"), num(&sink, "headDiameter"), num(&sink, "headDepth")), (4.5, 9.2, 2.35));
     let tap = sized_hole(&Json::parse(r#"{"size": "M4 tap", "style": "simple"}"#).unwrap()).unwrap();
     assert_eq!(tap.text(), r#"{"size":"M4 tap","style":"simple","diameter":3.3}"#);
+    // The size gives the head too: a head that differs is refused (clear the size to give your own).
+    assert_eq!(
+        sized_hole(&Json::parse(r#"{"size": "M4 close fit", "style": "counterbore", "headDiameter": 9}"#).unwrap()).unwrap_err(),
+        r#"headDiameter: "M4 close fit" is 8 mm (got 9); leave headDiameter out, or clear size"#
+    );
 }
 
 #[test]
