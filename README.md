@@ -84,7 +84,7 @@ To build a 3D document written in Rust, print its graph (the example above) and 
 with an HTTP client of your choice. On this computer, with no account:
 
 ```bash
-npm install -g commandagi && commandagi threed install          # once
+npm install -g @commandagi/host && commandagi threed install          # once
 COMMANDAGI_THREED_TOKEN=<a long random text> commandagi threed serve --port 8091
 cargo run > plate.json
 curl -s http://127.0.0.1:8091/export -H "authorization: Bearer $COMMANDAGI_THREED_TOKEN" \
