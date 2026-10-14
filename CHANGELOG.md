@@ -4,7 +4,9 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
-## Unreleased
+## 0.5.0 (2026-10-14)
+
+The first release with the design layer. 0.5.0 was prepared on 2026-10-13 and not published; this entry holds all of it.
 
 Added
 
@@ -23,7 +25,6 @@ Changed
 
 - A union's refusal names the field at fault (`edges/0/select/vertical: is not one of its fields`).
 
-## 0.5.0 (2026-10-13)
 
 The first tagged release. The crate was `0.1.0` in its manifest from its first commit (2026-10-05) and through the 56
 commits to this one.
