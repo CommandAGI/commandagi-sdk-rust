@@ -26,6 +26,10 @@ Added
 - A circuit's checks: `check()` and `accept()` in a schematic and a board (`commandagi::design::schematic`, `pcb`),
   kept in the graph's `meta` (`checks`, `accepted`) as the TypeScript SDK's `<check>` and `<accept>`; a wrong field
   is refused by name.
+- `commandagi::design::study`: a study (`.study.rs`), the question of an analysis of a part: `study()`,
+  `material()`, `fixture()`, `load_case()`, `force()`, `pressure()`, `mesh()`, `solver()`, `criterion()`,
+  `revise()`, the same document as the TypeScript SDK's `study.ts` and the Python SDK's `commandagi.design.study`.
+  The `structural` kind; a tag of another kind and a wrong field are refused by name.
 
 Changed
 
