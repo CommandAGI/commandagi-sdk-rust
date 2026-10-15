@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- Agents (`commandagi::design::agents`): a harness (`harness.rs`: `harness().kind(…).label(…).provider(…).runs([…])`)
+  and an agent (`agent.rs`: a base names its `.harness(…)`, a fork its `.parent(…)`), the same elements as the
+  TypeScript SDK's `agents.ts`. A realtime harness says what its model takes and gives live: `.realtime(json(r#"{"in":
+  […], "out": […], "audio": {…}, "fps": …, "hz": …, "minutes": …}"#))`.
 - Test plans (`commandagi::design::testplans`): a `<name>.testplan.rs` holds the steps that test one serial-numbered
   unit, never the results: `testplan([…]).title(…).device(…)` with `condition()`, `fixture()` and `step()`, the same
   elements as the TypeScript SDK's `testplans.ts`.

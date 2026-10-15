@@ -52,6 +52,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::business` | a company, an RFC, a case |
 | `commandagi::design::tasks` | a task, a project |
 | `commandagi::design::monitors` | a monitor |
+| `commandagi::design::agents` | an agent harness, an agent |
 | `commandagi::design::records` | a contract, a product instance |
 | `commandagi::design::postal` | a letter, a postcard |
 | `commandagi::design::pdf` | a PDF |
