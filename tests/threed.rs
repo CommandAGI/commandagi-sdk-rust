@@ -236,8 +236,20 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
     let schema = threed_schema();
     let Some(Json::Obj(roots)) = schema.get("roots") else { panic!("no roots") };
     assert_eq!(roots.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), THREED_FEATURES);
-    // This crate reads no `pattern` (it has no regex engine): the schema it carries has none.
-    assert!(!include_str!("../src/design/threed_schema.json").contains(r#""pattern""#));
+    // This crate has no regex engine: it reads the two patterns its schema carries, and refuses any other.
+    use commandagi::design::schema::{describe_issue, validate};
+    let text = include_str!("../src/design/threed_schema.json");
+    let known = [r#""pattern":"\\S""#, r#""pattern":"^[A-Za-z0-9_.-]+$""#];
+    assert_eq!(text.matches(r#""pattern""#).count(), known.iter().map(|k| text.matches(k).count()).sum::<usize>());
+    let none = Json::parse("{}").unwrap();
+    let id = Json::parse(r#"{"type":"string","pattern":"^[A-Za-z0-9_.-]+$"}"#).unwrap();
+    assert!(validate(&id, &Json::from("clear-1.a_b"), &none, "id").unwrap().is_empty());
+    let wrong = validate(&id, &Json::from("a b"), &none, "id").unwrap();
+    assert_eq!(describe_issue(&wrong[0]), r#"id: has the wrong form (it must match ^[A-Za-z0-9_.-]+$) (got "a b")"#);
+    let not_blank = Json::parse(r#"{"type":"string","pattern":"\\S"}"#).unwrap();
+    assert_eq!(validate(&not_blank, &Json::from(" \t"), &none, "reason").unwrap().len(), 1);
+    assert!(validate(&not_blank, &Json::from(" x"), &none, "reason").unwrap().is_empty());
+    assert!(validate(&Json::parse(r#"{"pattern":"^x$"}"#).unwrap(), &Json::from("x"), &none, "").is_err());
     let s = SketchProps { id: "s1".into(), name: None, plane: PlaneRef::Datum(PlaneRefDatum { plane: "plane_xy".into() }), suppressed: None, consumes: None }
         .el([SketchPointProps { pin: None, id: "p".into(), x: 0.0, y: 0.0, construction: None, fixed: None, from: None }.el()]);
     let props = ExtrudeProps {

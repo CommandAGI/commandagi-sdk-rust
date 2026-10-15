@@ -5,8 +5,9 @@
 //! `distance: must be greater than 0 (got -1)`.
 //!
 //! The subset: type, enum, const, properties, required, additionalProperties, items, prefixItems, minItems, maxItems,
-//! minimum, maximum, exclusiveMinimum, exclusiveMaximum, anyOf, oneOf, `$ref` to `#/$defs/<name>`. `pattern` is not
-//! read here: no generated schema of this crate has one (a test holds that), and the crate has no regex engine.
+//! minimum, maximum, exclusiveMinimum, exclusiveMaximum, anyOf, oneOf, `$ref` to `#/$defs/<name>`, and the two
+//! `pattern`s the generated schemas use (`\S`, `^[A-Za-z0-9_.-]+$`). The crate has no regex engine: any other pattern
+//! is refused by name, never skipped.
 
 use super::json::Json;
 
@@ -27,6 +28,7 @@ pub enum IssueCode {
     MinItems,
     MaxItems,
     Additional,
+    Pattern,
     AnyOf,
 }
 
@@ -173,6 +175,11 @@ pub fn validate(schema: &Json, value: &Json, defs: &Json, path: &str) -> Result<
             out.push(Issue::new(path, IssueCode::Enum, Some(Json::Arr(allowed.clone())), Some(value.clone())));
         }
     }
+    if let (Json::Str(text), Some(Json::Str(pattern))) = (value, s.get("pattern")) {
+        if !matches_pattern(pattern, text)? {
+            out.push(Issue::new(path, IssueCode::Pattern, Some(Json::from(pattern.as_str())), Some(value.clone())));
+        }
+    }
     if let Json::Num(n) = value {
         let n = *n;
         let bounds: [(&str, IssueCode, fn(f64, f64) -> bool); 4] = [
@@ -234,6 +241,15 @@ pub fn validate(schema: &Json, value: &Json, defs: &Json, path: &str) -> Result<
         }
     }
     Ok(out)
+}
+
+/// The patterns the generated schemas use, read without a regex engine.
+fn matches_pattern(pattern: &str, text: &str) -> Result<bool, String> {
+    match pattern {
+        r"\S" => Ok(text.chars().any(|c| !c.is_whitespace())),
+        r"^[A-Za-z0-9_.-]+$" => Ok(!text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))),
+        other => Err(format!("schema pattern {other} is not one this reader knows")),
+    }
 }
 
 /// Whether a value can be what `s` (resolved) describes, by its JSON kind alone.
@@ -377,6 +393,7 @@ pub fn describe_issue(issue: &Issue) -> String {
         IssueCode::MinItems => format!("{at}needs at least {e} items{got}"),
         IssueCode::MaxItems => format!("{at}takes at most {e} items{got}"),
         IssueCode::Additional => format!("{at}is not one of its fields"),
+        IssueCode::Pattern => format!("{at}has the wrong form (it must match {e}){got}"),
         IssueCode::AnyOf => format!("{at}does not match an allowed shape{got}"),
     }
 }
