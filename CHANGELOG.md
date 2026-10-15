@@ -4,6 +4,13 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
+## 0.5.1 (2026-10-15)
+
+Changed
+
+- The README names the local 3D kernel's package: `npm install -g @commandagi/host`, then `commandagi threed
+  install`. The crate's code did not change; the version moves with the Python and TypeScript SDKs.
+
 ## 0.5.0 (2026-10-14)
 
 The first release with the design layer. 0.5.0 was prepared on 2026-10-13 and not published; this entry holds all of it.
