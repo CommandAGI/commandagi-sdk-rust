@@ -67,7 +67,7 @@ pub(crate) fn declare_circuit_checks<'a>(meta: &mut Json, elements: Vec<&'a El>)
             "check" => {
                 only(el, &["id", "kind", "severity"])?;
                 let id = id_of(el, "the check's name (erc)", &taken)?;
-                let kind = text(el, "kind", "what is checked: erc, drc", true)?.unwrap_or_default();
+                let kind = text(el, "kind", "what is checked: erc, drc, pinout, footprint", true)?.unwrap_or_default();
                 let mut c = Json::obj().with("id", id.as_str()).with("kind", kind.as_str());
                 match el.attr("severity") {
                     None => {}

@@ -56,6 +56,13 @@
 //!                                                                           (CommandAGI IPN, Manufacturer, MPN, Rating,
 //!                                                                           and attrs by their own names): the BOM and
 //!                                                                           the board's footprint carry them
+//! … .pinout_verified(…).footprint_verified(…).package_dimensions(…)        on any part: how its pinout and its pads
+//!                                                                           are known ("memory", "datasheet <url> p.
+//!                                                                           <page>, <YYYY-MM-DD>", "measured
+//!                                                                           <YYYY-MM-DD>[, <how>]") and its datasheet
+//!                                                                           package ("<n> pins, pitch <mm> mm, body
+//!                                                                           <l> x <w> mm"), read by the pinout and
+//!                                                                           footprint checks
 //! attachment(name).role("schematic").file(path).mime(…)                     a KiCad file the circuit carries
 //! check().id(…).kind("erc").severity(…)                                     a check the circuit must pass, and a
 //! accept().id(…).check(…).rule(…).refs([…]).net(…).reason(…)               finding it accepts on purpose: kept in
@@ -163,6 +170,13 @@ attributes! {
         mpn;
         /// What a part is rated for (KiCad property `Rating`): `"0.125 W"`.
         rating;
+        /// How a part's pinout is known (KiCad property `Pinout Verified`):
+        /// `"datasheet https://www.ti.com/lit/ds/symlink/sn74lvc1t45.pdf p. 3, 2026-10-15"`, `"memory"`, `"measured 2026-10-15"`.
+        pinout_verified;
+        /// How a part's pads are known (KiCad property `Footprint Verified`), as `pinout_verified` says it.
+        footprint_verified;
+        /// The datasheet's package (KiCad property `Package Dimensions`): `"6 pins, pitch 0.95 mm, body 2.9 x 1.6 mm"`.
+        package_dimensions;
         /// A part's other fields, by their KiCad names: `.attrs(json(r#"{"Tolerance": "1%"}"#))`.
         attrs;
         /// A trace's whole path of selectors, from `from` to `to`.
@@ -347,11 +361,66 @@ fn no_connect_of(el: &El) -> Result<Option<Json>, String> {
 /// A part's fields: the engineering data a part states, each one KiCad `property` form on the part (`foreign`, the form
 /// the board editor writes), so the BOM, the KiCad board and a 3D body's join read one thing. The named attributes, by
 /// the property each writes (the TypeScript SDK's `PART_FIELDS`); `attrs` holds any other field by its KiCad name.
-pub const PART_FIELDS: &[(&str, &str)] = &[("partNumber", "CommandAGI IPN"), ("manufacturer", "Manufacturer"), ("mpn", "MPN"), ("rating", "Rating")];
-const FIELD_EXAMPLES: &[&str] = &["MF-R-3K", "Yageo", "RC0805FR-073KL", "0.125 W"];
+pub const PART_FIELDS: &[(&str, &str)] = &[
+    ("partNumber", "CommandAGI IPN"),
+    ("manufacturer", "Manufacturer"),
+    ("mpn", "MPN"),
+    ("rating", "Rating"),
+    ("pinoutVerified", "Pinout Verified"),
+    ("footprintVerified", "Footprint Verified"),
+    ("packageDimensions", "Package Dimensions"),
+];
+const FIELD_EXAMPLES: &[&str] = &[
+    "MF-R-3K",
+    "Yageo",
+    "RC0805FR-073KL",
+    "0.125 W",
+    "datasheet https://www.ti.com/lit/ds/symlink/sn74lvc1t45.pdf p. 3, 2026-10-15",
+    "measured 2026-10-15, calipers on the reel's part",
+    "6 pins, pitch 0.95 mm, body 2.9 x 1.6 mm",
+];
 /// Fields a part holds otherwise: its reference, its value, its footprint.
 const OWN_FIELDS: &[&str] = &["Reference", "Value", "Footprint"];
-const FIELD_PROPS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "attrs"];
+const FIELD_PROPS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs"];
+
+fn is_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 10 && b[4] == b'-' && b[7] == b'-' && b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+}
+fn is_number(s: &str) -> bool {
+    let mut parts = s.splitn(2, '.');
+    let whole = parts.next().unwrap_or("");
+    !whole.is_empty() && whole.bytes().all(|c| c.is_ascii_digit()) && parts.next().is_none_or(|f| !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
+}
+/// How a pinout or a footprint is known (the TypeScript SDK's `VERIFIED`).
+fn is_verified(v: &str) -> bool {
+    if v == "memory" {
+        return true;
+    }
+    if let Some(rest) = v.strip_prefix("measured ") {
+        let (date, how) = rest.split_once(", ").map_or((rest, None), |(d, h)| (d, Some(h)));
+        return is_date(date) && how.is_none_or(|h| !h.is_empty());
+    }
+    let Some(rest) = v.strip_prefix("datasheet ") else { return false };
+    let Some((url, rest)) = rest.split_once(" p. ") else { return false };
+    let Some((page, date)) = rest.split_once(", ") else { return false };
+    (url.starts_with("https://") || url.starts_with("http://")) && !url.contains(char::is_whitespace) && !page.is_empty() && page.bytes().all(|c| c.is_ascii_digit()) && is_date(date)
+}
+/// A datasheet's package numbers (the TypeScript SDK's `PACKAGE`).
+fn is_package(v: &str) -> bool {
+    let Some((pins, rest)) = v.split_once(" pins, pitch ") else { return false };
+    let Some((pitch, rest)) = rest.split_once(" mm, body ") else { return false };
+    let Some((l, rest)) = rest.split_once(" x ") else { return false };
+    let Some(w) = rest.strip_suffix(" mm") else { return false };
+    !pins.is_empty() && pins.bytes().all(|c| c.is_ascii_digit()) && is_number(pitch) && is_number(l) && is_number(w)
+}
+fn in_grammar(prop: &str, v: &str) -> bool {
+    match prop {
+        "pinoutVerified" | "footprintVerified" => is_verified(v),
+        "packageDimensions" => is_package(v),
+        _ => true,
+    }
+}
 
 /// One field as the part carries it: `(property "MPN" "…" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))`.
 fn field_form(name: &str, value: &str) -> Json {
@@ -373,7 +442,7 @@ fn fields_of(el: &El) -> Result<Option<Json>, String> {
     for (i, (prop, name)) in PART_FIELDS.iter().enumerate() {
         match el.attr(prop) {
             None => {}
-            Some(Json::Str(v)) if !v.trim().is_empty() => forms.push(field_form(name, v)),
+            Some(Json::Str(v)) if !v.trim().is_empty() && in_grammar(prop, v) => forms.push(field_form(name, v)),
             Some(_) => return Err(format!("{}: {} is text ({:?})", el.call_text(), rust_name(prop), FIELD_EXAMPLES[i])),
         }
     }

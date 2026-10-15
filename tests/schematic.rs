@@ -227,6 +227,22 @@ fn a_part_states_its_engineering_data_as_kicad_property_forms() {
     assert!(bad(group("S", [k2().attrs(json(r#"{"Value": "X"}"#))])).contains("attrs names Value, which is the part's own"));
 }
 
+#[test]
+fn how_a_parts_pinout_and_pads_are_known_and_its_package_are_fields_off_the_grammar_refused() {
+    let checked = "datasheet https://www.ti.com/lit/ds/symlink/sn74lvc1t45.pdf p. 3, 2026-10-15";
+    let pkg = "6 pins, pitch 0.95 mm, body 2.9 x 1.6 mm";
+    let g = graph(group("S", [part("U5").pins(["1", "2", "3", "4", "5", "6"]).pinout_verified(checked).footprint_verified("measured 2026-10-15, calipers").package_dimensions(pkg)]));
+    let foreign = node(&g, "U5").get("inputs").unwrap().get("foreign").unwrap().text();
+    let want = [field_form("Pinout Verified", checked), field_form("Footprint Verified", "measured 2026-10-15, calipers"), field_form("Package Dimensions", pkg)];
+    assert_eq!(foreign, format!("[{}]", want.join(",")));
+    let u5 = || part("U5").pins(["1", "2", "3"]);
+    for wrong in ["checked", "datasheet p. 3, 2026-10-15", "datasheet https://x.test/a.pdf p. 3", "measured yesterday"] {
+        assert!(bad(group("S", [u5().pinout_verified(wrong)])).contains("pinout_verified is text"), "{wrong}");
+    }
+    assert!(bad(group("S", [u5().package_dimensions("SOT-23")])).contains("package_dimensions is text"));
+    assert!(bad(group("S", [u5().attrs(json(r#"{"Pinout Verified": "memory"}"#))])).contains("say it with pinout_verified"));
+}
+
 fn without_source(list: &Json) -> String {
     match list {
         Json::Arr(items) => Json::Arr(
