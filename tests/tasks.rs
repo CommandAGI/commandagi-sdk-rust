@@ -78,7 +78,7 @@ fn times_read_as_javascripts_date_parse_reads_them() {
 #[test]
 fn a_proposal_its_sketch_and_its_asks() {
     let root = task([
-        sketch().ref_("../worlds/shop-sim/runs/cut/run.json"),
+        sketch().ref_("../worlds/shop/runs/cut/run.json"),
         asks().world("../worlds/shop/world.tsx").units(["cnc-1"]).channels(["gcode"]).verbs(["open", "arm", "run"]).hours(4),
         asks().folder("..").venues(["sim"]).max_qty(2).max_notional(500).per_day(3).note("paper first"),
     ])
@@ -95,7 +95,7 @@ fn a_proposal_its_sketch_and_its_asks() {
         doc,
         j(r#"{"id": "cut", "title": "Cut the bracket", "status": "proposed", "assignees": ["agent:claude"], "expires": 1792454400000,
               "approvedBy": "person:ada", "approvedAt": 1792506600000, "grants": ["g-0123456789ab"],
-              "sketch": "../worlds/shop-sim/runs/cut/run.json",
+              "sketch": "../worlds/shop/runs/cut/run.json",
               "asks": [{"world": "../worlds/shop/world.tsx", "units": ["cnc-1"], "channels": ["gcode"], "verbs": ["open", "arm", "run"], "hours": 4},
                        {"folder": "..", "venues": ["sim"], "maxQty": 2, "maxNotional": 500, "perDay": 3, "note": "paper first"}]}"#)
     );

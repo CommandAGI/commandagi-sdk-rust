@@ -30,7 +30,7 @@
 //!
 //! fn document() -> El {
 //!     task([
-//!         sketch().ref_("../worlds/shop-sim/runs/cut/run.json"),
+//!         sketch().ref_("../worlds/shop/runs/cut/run.json"),
 //!         asks().world("../worlds/shop/world.tsx").units(["cnc-1"]).channels(["gcode"]).verbs(["open", "arm", "run"]).hours(4),
 //!     ])
 //!     .id("cut")
