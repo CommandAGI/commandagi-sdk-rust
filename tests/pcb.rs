@@ -172,3 +172,36 @@ fn a_board_on_the_faces_of_a_cad_part() {
     assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").pcb_x(4).pcb_y(5).chart("top")])).contains("has no surface"));
     assert!(bad(board_of(vec![trace().layer("F.Cu").width(0.3).points([[4, 5], [9, 5]]).surface(true)])).contains("has no surface"));
 }
+
+#[test]
+fn the_layouts_constraints_are_board_facts() {
+    let g = graph(
+        board_of(vec![
+            netclass().name("supply").nets(["P24", "FIN*"]).kind("power").width(0.5).clearance(0.25).current(0.5).criticality(0.8).max_vias(2),
+            diffpair().name("usb").positive("D+").negative("D-").gap(0.15).max_skew(0.5),
+            group().name("in1").parts(["R1", "U1"]).region([10, 30, 30, 50]).near(".J1 > .pin5").max_distance(4).conviction(0.5),
+            keepout().name("label").points([[80, 20], [96, 20], [96, 28]]).no(["track", "via"]),
+            thermal().name("fets").parts(["Q1", "Q2"]).watts(0.3).spacing(4).away_from(["U1"]).distance(6),
+            objective().weights(json(r#"{"wirelength": 1, "vias": 3}"#)),
+        ])
+        .width(100)
+        .height(60),
+    );
+    let Some(Json::Obj(nodes)) = g.get("nodes") else { panic!() };
+    let facts: Vec<String> = nodes.iter().filter(|(_, n)| n.get("type") == Some(&Json::from("eda.boardfact"))).map(|(_, n)| n.get("inputs").unwrap().text()).collect();
+    assert_eq!(
+        facts,
+        [
+            compact(r#"{"fact":"netclass","name":"supply","nets":["P24","FIN*"],"kind":"power","width":0.5,"clearance":0.25,"current":0.5,"criticality":0.8,"maxVias":2}"#),
+            compact(r#"{"fact":"diffpair","name":"usb","positive":"D+","negative":"D-","gap":0.15,"maxSkew":0.5}"#),
+            compact(r#"{"fact":"group","name":"in1","parts":["R1","U1"],"region":[10,30,30,50],"near":".J1 > .pin5","maxDistance":4,"conviction":0.5}"#),
+            compact(r#"{"fact":"keepout","name":"label","points":[[80,20],[96,20],[96,28]],"no":["track","via"]}"#),
+            compact(r#"{"fact":"thermal","name":"fets","parts":["Q1","Q2"],"watts":0.3,"spacing":4,"awayFrom":["U1"],"distance":6}"#),
+            compact(r#"{"fact":"objective","weights":{"wirelength":1,"vias":3}}"#),
+        ]
+    );
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).kind("loud")])).contains("kind is signal, power"));
+    assert!(bad(board_of(vec![group().name("g").parts(["R1"]).max_distance(3)])).contains("max_distance needs near"));
+    assert!(bad(board_of(vec![group().name("g").parts(["R1"]).near("R1")])).contains("near is a part"));
+    assert!(bad(board_of(vec![objective().weights(json(r#"{"vias": 1}"#)), objective().weights(json(r#"{"vias": 2}"#))])).contains("one objective()"));
+}

@@ -58,6 +58,23 @@
 //!                                   a copper pour: its boundary on its layers.
 //! ```
 //!
+//! The layout's constraints (the board's design intent: the placer, the router, the layout score and the checks read
+//! them; the editor and the layout operations write each one back):
+//!
+//! ```text
+//! netclass().name().nets().kind().width().clearance().via_diameter().via_drill().current().criticality()
+//!          .max_length().max_vias().impedance()
+//!                                   the rules of the nets named ("FIN*" matches by prefix).
+//! diffpair().name().positive().negative().gap().width().impedance().max_skew()
+//! group().name().parts().region().near().max_distance().conviction().side()
+//!                                   parts placed together: in the box `region` [x0, y0, x1, y1], within
+//!                                   `max_distance` of `near` (".J1 > .pin5"); conviction 1 holds them fixed.
+//! keepout().name().points().layers().no()
+//!                                   a region where `no` ("track", "via", "component", "pour") may be.
+//! thermal().name().parts().watts().spacing().away_from().distance()
+//! objective().weights()             the weight of each term of the layout score.
+//! ```
+//!
 //! Coordinates are the board's own: millimetres, Y DOWN, from the outline's corner. An end is bound by what it says,
 //! never by where it is drawn: ".R1 > .pin2" (a pin of a component, by its number), ".V1" (a via, by name),
 //! ".T1 > .end" (a point of another trace or arc: .start, .end or its index). Anything else is refused by name, never
@@ -95,6 +112,18 @@ elements! {
     via: leaf;
     /// A copper pour.
     pour: leaf;
+    /// The rules of some nets: `netclass().name("supply").nets(["P24", "FIN*"]).width(0.5)`.
+    netclass: leaf;
+    /// Two nets routed as a pair.
+    diffpair: leaf;
+    /// Parts placed together: `group().name("in1").parts(["R1", "U1"]).region([10, 30, 30, 50])`.
+    group: leaf;
+    /// A region where tracks, vias, components or pours may not be.
+    keepout: leaf;
+    /// The heat parts dissipate, and the spacing it asks for.
+    thermal: leaf;
+    /// The weight of each term of the layout score.
+    objective: leaf;
 }
 
 attributes! {
@@ -192,6 +221,56 @@ attributes! {
         pads;
         /// What a pour's boundary points land on: `json(r#"[[0, ".J1 > .pin2"]]"#)`.
         terminals;
+        /// The nets a net class names: `["P24", "FIN*"]` ("FIN*" matches by prefix).
+        nets;
+        /// A net class's clearance (mm).
+        clearance;
+        /// A net class's via pad diameter (mm).
+        via_diameter;
+        /// A net class's via drill (mm).
+        via_drill;
+        /// The current a net class's copper carries (A).
+        current;
+        /// How critical a net class is, 0 to 1: routed first, kept short.
+        criticality;
+        /// A net class's longest route (mm).
+        max_length;
+        /// A net class's most vias per net.
+        max_vias;
+        /// The impedance of a trace over its reference plane (ohm).
+        impedance;
+        /// A differential pair's positive net.
+        positive;
+        /// A differential pair's negative net.
+        negative;
+        /// The gap between a differential pair's tracks (mm).
+        gap;
+        /// The most length difference of a differential pair (mm).
+        max_skew;
+        /// The parts a group or a thermal fact names.
+        parts;
+        /// The box a group stays in: `[x0, y0, x1, y1]` (mm).
+        region;
+        /// The part or pin a group stays near: `".J1 > .pin5"`.
+        near;
+        /// How far a group may be from `near` (mm).
+        max_distance;
+        /// How fixed a group is: 0 (free) to 1 (fixed where it is).
+        conviction;
+        /// The side a group is on: "top" or "bottom".
+        side;
+        /// What a keep-out keeps out: `["track", "via", "component", "pour"]`.
+        no;
+        /// The heat each part dissipates (W).
+        watts;
+        /// The least spacing between the parts of a thermal fact (mm).
+        spacing;
+        /// The parts a thermal fact keeps `distance` from.
+        away_from;
+        /// How far a thermal fact keeps from `away_from` (mm).
+        distance;
+        /// The weight of each term of the layout score: `json(r#"{"wirelength": 1, "vias": 2}"#)`.
+        weights;
     }
 }
 
@@ -208,7 +287,152 @@ pub const BOARD_LAYERS: &[(u32, &str, &str)] = &[(0, "F.Cu", "signal"), (31, "B.
 /// The drawings, by kind: how many points each has (none: a polygon, two or more).
 const GRAPHICS: &[(&str, Option<usize>)] = &[("line", Some(2)), ("arc", Some(3)), ("circle", Some(2)), ("rect", Some(2)), ("poly", None)];
 const CONDUCTORS: &[&str] = &["trace", "arc", "via", "pour"];
-const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net"];
+const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net", "netclass", "diffpair", "group", "keepout", "thermal", "objective"];
+/// The layout's constraints, each a board fact (`fact` is its tag), as the TypeScript SDK's.
+const CONSTRAINTS: &[&str] = &["netclass", "diffpair", "group", "keepout", "thermal", "objective"];
+const NET_KINDS: &[&str] = &["signal", "power", "ground", "noisy", "sensitive", "highspeed"];
+const KEEPOUT_KINDS: &[&str] = &["track", "via", "component", "pour"];
+
+fn is_names(v: &Json) -> bool {
+    matches!(v, Json::Arr(l) if !l.is_empty() && l.iter().all(|x| x.as_str().is_some_and(|s| !s.is_empty())))
+}
+
+fn is_box(v: &Json) -> bool {
+    match v {
+        Json::Arr(l) if l.len() == 4 => {
+            let n: Vec<f64> = l.iter().filter_map(finite).collect();
+            n.len() == 4 && n[0] < n[2] && n[1] < n[3]
+        }
+        _ => false,
+    }
+}
+
+/// A pin or a part a group stays near: `.J1` or `.J1 > .pin5`.
+fn is_near(s: &str) -> bool {
+    let name = |t: &str, extra: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_alphanumeric() || extra.contains(c));
+    let mut parts = s.split('>').map(str::trim);
+    let first = parts.next().and_then(|p| p.strip_prefix('.')).is_some_and(|p| name(p, "_#-"));
+    let rest: Vec<&str> = parts.collect();
+    first && rest.len() <= 1 && rest.iter().all(|p| p.strip_prefix('.').is_some_and(|p| name(p, "_+-")))
+}
+
+/// A constraint element's fact: what it takes, checked.
+fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
+    let mut out: Vec<(String, Json)> = vec![("fact".into(), Json::from(el.tag))];
+    let unit = |prop: &str| -> Result<Option<f64>, String> {
+        let v = num(el, prop, false)?;
+        if v.is_some_and(|v| !(0.0..=1.0).contains(&v)) {
+            return Err(format!("{}: {} is from 0 to 1", at(el), rust_name(prop)));
+        }
+        Ok(v)
+    };
+    let names = |prop: &str, required: bool| -> Result<Option<Json>, String> {
+        match plain(el, prop, is_names, "a list of names")? {
+            None if required => Err(format!("{} needs {}", at(el), rust_name(prop))),
+            v => Ok(v),
+        }
+    };
+    fn put(out: &mut Vec<(String, Json)>, k: &str, v: Option<impl Into<Json>>) {
+        if let Some(v) = v {
+            out.push((k.into(), v.into()));
+        }
+    }
+    let has = |out: &Vec<(String, Json)>, k: &str| out.iter().any(|(key, _)| key == k);
+    match el.tag {
+        "netclass" => {
+            refuse_unknown(el, &["name", "nets", "kind", "width", "clearance", "viaDiameter", "viaDrill", "current", "criticality", "maxLength", "maxVias", "impedance"])?;
+            let kind = text_of(el, "kind", false)?;
+            if kind.as_deref().is_some_and(|k| !NET_KINDS.contains(&k)) {
+                return Err(format!("{}: kind is {}", at(el), NET_KINDS.join(", ")));
+            }
+            let max_vias = num(el, "maxVias", false)?;
+            if max_vias.is_some_and(|v| v.fract() != 0.0 || v < 0.0) {
+                return Err(format!("{}: {} is a whole number, 0 or more", at(el), rust_name("maxVias")));
+            }
+            put(&mut out, "name", text_of(el, "name", true)?);
+            put(&mut out, "nets", names("nets", true)?);
+            put(&mut out, "kind", kind);
+            for k in ["width", "clearance", "viaDiameter", "viaDrill", "current", "maxLength", "impedance"] {
+                put(&mut out, k, positive(el, k, false)?);
+            }
+            put(&mut out, "criticality", unit("criticality")?);
+            put(&mut out, "maxVias", max_vias);
+            if let (Some(d), Some(h)) = (num(el, "viaDiameter", false)?, num(el, "viaDrill", false)?) {
+                if d <= h {
+                    return Err(format!("{}: {} is more than {}", at(el), rust_name("viaDiameter"), rust_name("viaDrill")));
+                }
+            }
+        }
+        "diffpair" => {
+            refuse_unknown(el, &["name", "positive", "negative", "gap", "width", "impedance", "maxSkew"])?;
+            let (p, n) = (text_of(el, "positive", true)?, text_of(el, "negative", true)?);
+            if p == n {
+                return Err(format!("{}: positive and negative are two nets", at(el)));
+            }
+            put(&mut out, "name", text_of(el, "name", true)?);
+            put(&mut out, "positive", p);
+            put(&mut out, "negative", n);
+            for k in ["gap", "width", "impedance", "maxSkew"] {
+                put(&mut out, k, positive(el, k, false)?);
+            }
+        }
+        "group" => {
+            refuse_unknown(el, &["name", "parts", "region", "near", "maxDistance", "conviction", "side"])?;
+            put(&mut out, "name", text_of(el, "name", true)?);
+            put(&mut out, "parts", names("parts", true)?);
+            put(&mut out, "region", plain(el, "region", is_box, "[x0, y0, x1, y1] in mm, x0 < x1 and y0 < y1")?);
+            let near = text_of(el, "near", false)?;
+            if near.as_deref().is_some_and(|s| !is_near(s)) {
+                return Err(format!("{}: near is a part (\".J1\") or a pin (\".J1 > .pin5\")", at(el)));
+            }
+            let max_distance = positive(el, "maxDistance", false)?;
+            if max_distance.is_some() && near.is_none() {
+                return Err(format!("{}: {} needs near", at(el), rust_name("maxDistance")));
+            }
+            put(&mut out, "near", near);
+            put(&mut out, "maxDistance", max_distance);
+            put(&mut out, "conviction", unit("conviction")?);
+            let side = text_of(el, "side", false)?;
+            if side.as_deref().is_some_and(|s| s != "top" && s != "bottom") {
+                return Err(format!("{}: side is \"top\" or \"bottom\"", at(el)));
+            }
+            put(&mut out, "side", side);
+        }
+        "keepout" => {
+            refuse_unknown(el, &["name", "points", "layers", "no"])?;
+            put(&mut out, "name", text_of(el, "name", false)?);
+            let points: Vec<Json> = point_list(el, "points", 3, None)?.iter().map(|(x, y)| Json::Arr(vec![(*x).into(), (*y).into()])).collect();
+            out.push(("points".into(), Json::Arr(points)));
+            if el.attr("layers").is_some() {
+                let layers: Vec<Json> = copper_layers(el, None)?.into_iter().map(Json::from).collect();
+                out.push(("layers".into(), Json::Arr(layers)));
+            }
+            let what = format!("a list of {}", KEEPOUT_KINDS.join(", "));
+            put(&mut out, "no", plain(el, "no", |v| is_names(v) && matches!(v, Json::Arr(l) if l.iter().all(|k| k.as_str().is_some_and(|k| KEEPOUT_KINDS.contains(&k)))), &what)?);
+        }
+        "thermal" => {
+            refuse_unknown(el, &["name", "parts", "watts", "spacing", "awayFrom", "distance"])?;
+            put(&mut out, "name", text_of(el, "name", true)?);
+            put(&mut out, "parts", names("parts", true)?);
+            put(&mut out, "watts", positive(el, "watts", true)?);
+            put(&mut out, "spacing", positive(el, "spacing", false)?);
+            put(&mut out, "awayFrom", names("awayFrom", false)?);
+            put(&mut out, "distance", positive(el, "distance", false)?);
+            if has(&out, "awayFrom") != has(&out, "distance") {
+                return Err(format!("{}: give away_from and distance together", at(el)));
+            }
+        }
+        _ => {
+            refuse_unknown(el, &["weights"])?;
+            let ok = |v: &Json| matches!(v, Json::Obj(e) if e.iter().all(|(_, x)| finite(x).is_some_and(|x| x >= 0.0)));
+            match plain(el, "weights", ok, "an object of term → weight (0 or more)")? {
+                Some(w) => out.push(("weights".into(), w)),
+                None => return Err(format!("{} needs weights", at(el))),
+            }
+        }
+    }
+    Ok(out)
+}
 const SCHEMATIC_ONLY: &[&str] = &["schX", "schY", "schRotation", "resistance", "capacitance", "inductance", "voltage", "current"];
 
 /// A trace point's id: the editor's own (`start`, `end`, and `p<i>` between them).
@@ -550,6 +774,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
     let mut components: Vec<String> = Vec::new();
     let mut conductors: HashMap<String, &El> = HashMap::new();
     let mut nets: Vec<String> = Vec::new();
+    let mut constraint_names: Vec<String> = Vec::new();
     let mut kicad_forms = 0;
     for el in &children {
         let nm = el.attr("name");
@@ -585,6 +810,18 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
             kicad_forms += 1;
             if kicad_forms > 1 {
                 return Err("a board has one kicad()".into());
+            }
+        } else if CONSTRAINTS.contains(&el.tag) {
+            let key = match (el.tag, nm) {
+                ("objective", _) => Some("objective".to_string()),
+                (tag, Some(Json::Str(n))) => Some(format!("{tag}:{n}")),
+                _ => None,
+            };
+            if let Some(key) = key {
+                if constraint_names.contains(&key) {
+                    return Err(if el.tag == "objective" { "a board has one objective()".to_string() } else { format!("two {}() elements are called {}", el.tag, key.split_once(':').map(|(_, n)| n).unwrap_or_default()) });
+                }
+                constraint_names.push(key);
             }
         } else if el.tag != "stack" && !FACTS.contains(&el.tag) {
             return Err(format!("{}() is not read on a board (see commandagi::design::pcb)", fn_name(el.tag)));
@@ -970,6 +1207,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 let name = el.attr("name").cloned().unwrap_or(Json::Null);
                 let inputs = vec![("fact".to_string(), Json::from("net")), ("name".into(), name), ("code".into(), code.into())];
                 s.add(BOARD_FACT, inputs, None, Some("Net"), meta(el))?;
+            }
+            tag if CONSTRAINTS.contains(&tag) => {
+                s.add(BOARD_FACT, constraint_fact(el)?, None, Some(tag), meta(el))?;
             }
             _ => {}
         }
