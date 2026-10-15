@@ -90,6 +90,16 @@ fn a_device_definitions_channels_are_channel_elements() {
 }
 
 #[test]
+fn a_definition_names_its_firmware_and_a_firmware_declares_its_channels() {
+    let cam = || channel().id("cam").dir("out").medium("video").format("video");
+    let (_, def, _) = document(device([cam()]).name("Cam").firmware("../../firmware/cam").revision("rev-a"));
+    assert_eq!(def, j(r#"{"name": "Cam", "firmware": "../../firmware/cam", "revision": "rev-a", "channels": [{"id": "cam", "dir": "out", "medium": "video", "format": "video"}]}"#));
+    let (format, fw, _) = document(firmware([cam()]).name("cam").hardware(json(r#"["rev-a"]"#)));
+    assert_eq!(format, "firmware");
+    assert_eq!(fw, j(r#"{"name": "cam", "hardware": ["rev-a"], "channels": [{"id": "cam", "dir": "out", "medium": "video", "format": "video"}]}"#));
+}
+
+#[test]
 fn a_dashboards_layout_is_nested_splits_of_panes_its_params_and_regions_elements() {
     let file = dashboard([
         param().id("unit").type_("unit"),
