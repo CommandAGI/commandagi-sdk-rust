@@ -30,6 +30,8 @@ Added
   `material()`, `fixture()`, `load_case()`, `force()`, `pressure()`, `mesh()`, `solver()`, `criterion()`,
   `revise()`, the same document as the TypeScript SDK's `study.ts` and the Python SDK's `commandagi.design.study`.
   The `structural` kind; a tag of another kind and a wrong field are refused by name.
+- The materials data (`standards_data.json`) carries a grade's `poissonsRatio` where its source states one (ten of
+  the 23 grades).
 
 Changed
 
