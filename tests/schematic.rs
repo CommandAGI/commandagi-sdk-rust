@@ -190,3 +190,39 @@ fn a_part_names_the_pins_it_leaves_open_on_purpose_by_pin_number() {
     assert!(bad(group("S", [part("K2").symbol("a:B").library("a.kicad_sym").no_connect(["3", "3"])])).contains("noConnect is a list of pin numbers"));
     assert!(bad(group("S", [part("K2").symbol("a:B").library("a.kicad_sym").no_connect(json("[3]"))])).contains("noConnect is a list of pin numbers"));
 }
+
+/// A part's field as the part carries it: KiCad's `property` form, as the board editor writes one (compact JSON).
+fn field_form(name: &str, value: &str) -> String {
+    let sym = |v: &str| format!(r#"{{"kind":"atom","v":"{v}","q":false}}"#);
+    let text = |v: &str| format!(r#"{{"kind":"atom","v":"{v}","q":true}}"#);
+    let list = |items: Vec<String>| format!(r#"{{"kind":"list","items":[{}]}}"#, items.join(","));
+    list(vec![
+        sym("property"),
+        text(name),
+        text(value),
+        list(vec![sym("at"), sym("0"), sym("0"), sym("0")]),
+        list(vec![sym("effects"), list(vec![sym("font"), list(vec![sym("size"), sym("1.27"), sym("1.27")])]), list(vec![sym("hide"), sym("yes")])]),
+    ])
+}
+
+#[test]
+fn a_part_states_its_engineering_data_as_kicad_property_forms() {
+    let g = graph(group("Fields", [
+        resistor("R1").resistance("3k").sch_x(0).sch_y(0).part_number("MF-R-3K").manufacturer("Yageo").mpn("RC0805FR-073KL").rating("0.125 W"),
+        part("K2").symbol("station:SSR").library("station.kicad_sym").sch_x(50.8).sch_y(0).mpn("G3NA-225B").attrs(json(r#"{"Tolerance": "1%"}"#)),
+        part("J1").pins(["1", "2"]).part_number("MF-J-2"),
+    ]));
+    let foreign = |id: &str| node(&g, id).get("inputs").unwrap().get("foreign").unwrap().text();
+    let r1 = [field_form("CommandAGI IPN", "MF-R-3K"), field_form("Manufacturer", "Yageo"), field_form("MPN", "RC0805FR-073KL"), field_form("Rating", "0.125 W")];
+    assert_eq!(foreign("R1"), format!("[{}]", r1.join(",")));
+    assert_eq!(foreign("K2"), format!("[{},{}]", field_form("MPN", "G3NA-225B"), field_form("Tolerance", "1%")));
+    assert_eq!(foreign("J1"), format!("[{}]", field_form("CommandAGI IPN", "MF-J-2")));
+    let k2 = || part("K2").symbol("a:B").library("a.kicad_sym");
+    assert!(bad(group("S", [k2().mpn("")])).contains(r#"mpn is text ("RC0805FR-073KL")"#));
+    assert!(bad(group("S", [k2().mpn(3)])).contains(r#"mpn is text ("RC0805FR-073KL")"#));
+    assert!(bad(group("S", [k2().attrs(json(r#"{"Tolerance": 1}"#))])).contains(r#"attrs is an object of text ({ Tolerance: "1%" })"#));
+    // One field, one way to say it: a field the part has an argument for, or its own name, value or footprint.
+    assert!(bad(group("S", [k2().attrs(json(r#"{"MPN": "X"}"#))])).contains("attrs names MPN: say it with mpn"));
+    assert!(bad(group("S", [k2().attrs(json(r#"{"CommandAGI IPN": "X"}"#))])).contains("attrs names CommandAGI IPN: say it with part_number"));
+    assert!(bad(group("S", [k2().attrs(json(r#"{"Value": "X"}"#))])).contains("attrs names Value, which is the part's own"));
+}

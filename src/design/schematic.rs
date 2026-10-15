@@ -51,6 +51,11 @@
 //!                                                                           not report them as pins on nothing
 //! … .spice(json(r#"[{"id", "model", "terminals"}]"#))                       on any part: the vendor SPICE packages it
 //!                                                                           binds, each formal by pin NUMBER
+//! … .part_number(…).manufacturer(…).mpn(…).rating(…)                        on any part but a ground: its engineering
+//!   .attrs(json(r#"{"Tolerance": "1%"}"#))                                  data, each a KiCad property of the part
+//!                                                                           (CommandAGI IPN, Manufacturer, MPN, Rating,
+//!                                                                           and attrs by their own names): the BOM and
+//!                                                                           the board's footprint carry them
 //! attachment(name).role("schematic").file(path).mime(…)                     a KiCad file the circuit carries
 //! fragment(iter)                                                            several elements as one item (a loop)
 //! ```
@@ -141,6 +146,16 @@ attributes! {
         spice;
         /// The pins a part leaves open on purpose, by pin number: `["3", "4"]`.
         no_connect;
+        /// A part's number in its owner's numbering (KiCad property `CommandAGI IPN`): `"MF-R-3K"`.
+        part_number;
+        /// Who makes a part (KiCad property `Manufacturer`): `"Yageo"`.
+        manufacturer;
+        /// The maker's part number (KiCad property `MPN`): `"RC0805FR-073KL"`.
+        mpn;
+        /// What a part is rated for (KiCad property `Rating`): `"0.125 W"`.
+        rating;
+        /// A part's other fields, by their KiCad names: `.attrs(json(r#"{"Tolerance": "1%"}"#))`.
+        attrs;
         /// A trace's whole path of selectors, from `from` to `to`.
         path;
         /// What an attachment is: "schematic", "project", "library" or "other".
@@ -301,6 +316,57 @@ fn no_connect_of(el: &El) -> Result<Option<Json>, String> {
     Ok(Some(v.clone()))
 }
 
+/// A part's fields: the engineering data a part states, each one KiCad `property` form on the part (`foreign`, the form
+/// the board editor writes), so the BOM, the KiCad board and a 3D body's join read one thing. The named attributes, by
+/// the property each writes (the TypeScript SDK's `PART_FIELDS`); `attrs` holds any other field by its KiCad name.
+pub const PART_FIELDS: &[(&str, &str)] = &[("partNumber", "CommandAGI IPN"), ("manufacturer", "Manufacturer"), ("mpn", "MPN"), ("rating", "Rating")];
+const FIELD_EXAMPLES: &[&str] = &["MF-R-3K", "Yageo", "RC0805FR-073KL", "0.125 W"];
+/// Fields a part holds otherwise: its reference, its value, its footprint.
+const OWN_FIELDS: &[&str] = &["Reference", "Value", "Footprint"];
+const FIELD_PROPS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "attrs"];
+
+/// One field as the part carries it: `(property "MPN" "…" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))`.
+fn field_form(name: &str, value: &str) -> Json {
+    let atom = |v: &str, q: bool| Json::Obj(vec![("kind".into(), "atom".into()), ("v".into(), v.into()), ("q".into(), q.into())]);
+    let sym = |v: &str| atom(v, false);
+    let list = |items: Vec<Json>| Json::Obj(vec![("kind".into(), "list".into()), ("items".into(), Json::Arr(items))]);
+    list(vec![
+        sym("property"),
+        atom(name, true),
+        atom(value, true),
+        list(vec![sym("at"), sym("0"), sym("0"), sym("0")]),
+        list(vec![sym("effects"), list(vec![sym("font"), list(vec![sym("size"), sym("1.27"), sym("1.27")])]), list(vec![sym("hide"), sym("yes")])]),
+    ])
+}
+
+/// The fields a part states (`.part_number`, `.manufacturer`, `.mpn`, `.rating`, `.attrs`), as its property forms.
+fn fields_of(el: &El) -> Result<Option<Json>, String> {
+    let mut forms = Vec::new();
+    for (i, (prop, name)) in PART_FIELDS.iter().enumerate() {
+        match el.attr(prop) {
+            None => {}
+            Some(Json::Str(v)) if !v.trim().is_empty() => forms.push(field_form(name, v)),
+            Some(_) => return Err(format!("{}: {} is text ({:?})", el.call_text(), rust_name(prop), FIELD_EXAMPLES[i])),
+        }
+    }
+    match el.attr("attrs") {
+        None => {}
+        Some(Json::Obj(entries)) if entries.iter().all(|(_, v)| v.as_str().is_some_and(|s| !s.trim().is_empty())) => {
+            for (name, v) in entries {
+                if let Some((prop, _)) = PART_FIELDS.iter().find(|(_, n)| n == name) {
+                    return Err(format!("{}: attrs names {name}: say it with {}", el.call_text(), rust_name(prop)));
+                }
+                if name.trim().is_empty() || OWN_FIELDS.contains(&name.as_str()) {
+                    return Err(format!("{}: attrs names {name}, which is the part's own (its name, value or footprint)", el.call_text()));
+                }
+                forms.push(field_form(name, v.as_str().unwrap()));
+            }
+        }
+        Some(_) => return Err(format!("{}: attrs is an object of text ({{ Tolerance: \"1%\" }})", el.call_text())),
+    }
+    Ok(if forms.is_empty() { None } else { Some(Json::Arr(forms)) })
+}
+
 /// Add the placement of `unit` of `part` that `el` declares (its sch_x, sch_y, sch_rotation, sch_mirror).
 fn place(s: &mut Scope, part: &mut Placed, unit: u32, el: &El, sockets: &[&str]) -> Result<(), String> {
     let (x, y, rot) = (num(el, "schX")?, num(el, "schY")?, num(el, "schRotation")?);
@@ -364,6 +430,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             if ideal.excitation {
                 allowed.push("excitation");
             }
+            if ideal.power.is_none() {
+                allowed.extend(FIELD_PROPS);
+            }
             refuse_unknown(el, &allowed)?;
             let reference = match el.attr("name") {
                 Some(Json::Str(n)) if !n.is_empty() => n.clone(),
@@ -401,6 +470,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             if let Some(open) = no_connect_of(el)? {
                 inputs.push(("noConnect".into(), open));
             }
+            if let Some(fields) = fields_of(el)? {
+                inputs.push(("foreign".into(), fields));
+            }
             let part = s.add(&part_type_for(&pins), inputs, Some(&reference), Some(&reference), meta(el))?;
             let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: Some((ideal.pins, ideal.aliases)), pins: None };
             let sockets: Vec<&str> = pins.iter().map(|(id, _)| id.as_str()).collect();
@@ -410,7 +482,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
         }
         match el.tag {
             "part" => {
-                refuse_unknown(el, &[&["name", "symbol", "library", "value", "pins", "spice", "noConnect"], PLACE].concat())?;
+                refuse_unknown(el, &[&["name", "symbol", "library", "value", "pins", "spice", "noConnect"], FIELD_PROPS, PLACE].concat())?;
                 let reference = text(el, "name", "the part's reference (U1)")?;
                 if parts.contains_key(&reference) {
                     return Err(format!("two parts are called {reference}"));
@@ -443,6 +515,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 }
                 if let Some(open) = no_connect_of(el)? {
                     inputs.push(("noConnect".into(), open));
+                }
+                if let Some(fields) = fields_of(el)? {
+                    inputs.push(("foreign".into(), fields));
                 }
                 let part = s.add(&part_type_for(&[]), inputs, Some(&reference), Some(&reference), meta(el))?;
                 let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: None, pins: None };
@@ -683,6 +758,9 @@ fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, Strin
     }
     if let Some(open) = no_connect_of(el)? {
         inputs.push(("noConnect".into(), open));
+    }
+    if let Some(fields) = fields_of(el)? {
+        inputs.push(("foreign".into(), fields));
     }
     let typed: Vec<(String, String)> = pins.iter().map(|(id, n, _)| (id.clone(), n.clone())).collect();
     let id = s.add(&part_type_for(&typed), inputs, Some(reference), Some(reference), meta(el))?;
