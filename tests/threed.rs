@@ -326,3 +326,20 @@ fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
     assert_eq!(bad(part([j1(), j1()]).name("P")), "two joint() elements are called j1");
     assert!(bad(part([sheet().id("s").views(json("[]"))]).name("P")).starts_with(r#"sheet().id("s"): views: "#));
 }
+
+#[test]
+fn a_sheets_section_view_has_its_cutting_plane_and_a_detail_view_enlarges_another_view() {
+    // The TypeScript and Python SDKs accept and refuse the same sheets with the same sentences.
+    let views = r#"[{"id":"front","view":"front"},{"id":"a","view":"section","section":{"point":[0,0,3],"normal":[0,1,0]}},{"id":"b","view":"detail","detail":{"of":"front","center":[-20,0,6],"radius":5,"label":"C"}}]"#;
+    let g = graph(part([sheet().id("s").views(json(views))]).name("P"));
+    let Some(Json::Arr(sheets)) = node(&g, "drawings").get("inputs").and_then(|i| i.get("value")) else { panic!("no sheets") };
+    assert_eq!(sheets[0].get("views").unwrap().text(), views);
+    assert_eq!(
+        bad(part([sheet().id("s").views(json(r#"[{"id": "front", "view": "front"}, {"id": "a", "view": "section"}]"#))]).name("P")),
+        r#"sheet().id("s"): view a is a section view with no section: give its cutting plane (point and normal)"#
+    );
+    assert_eq!(
+        bad(part([sheet().id("s").views(json(r#"[{"id": "b", "view": "detail", "detail": {"of": "b", "center": [0, 0, 0], "radius": 5}}]"#))]).name("P")),
+        r#"sheet().id("s"): view b is a detail of b, which is a detail itself"#
+    );
+}

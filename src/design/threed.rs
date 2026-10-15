@@ -258,6 +258,34 @@ fn check_value(el: &El, def: &str, value: &Json, path: &str) -> Result<Json, Str
     }
     Err(format!("{}: {}", at(el), issues.iter().map(describe_issue).collect::<Vec<_>>().join("; ")))
 }
+/// What is wrong with a sheet's section and detail views, one sentence each, as the 3D core's `sheetViewProblems`
+/// says it (packages/domain/3d-core/drawing-sheet.ts); the TypeScript and Python SDKs say the same sentences.
+fn sheet_view_problems(sheet: &Json) -> Vec<String> {
+    let Some(Json::Arr(views)) = sheet.get("views") else { return Vec::new() };
+    let text = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).unwrap_or_default().to_string();
+    let given = |v: &Json, k: &str| v.get(k).is_some_and(|x| !matches!(x, Json::Null));
+    let mut out = Vec::new();
+    for v in views {
+        let (id, view) = (text(v, "id"), text(v, "view"));
+        if view == "section" && !given(v, "section") {
+            out.push(format!("view {id} is a section view with no section: give its cutting plane (point and normal)"));
+        }
+        if view != "detail" {
+            continue;
+        }
+        let Some(detail) = v.get("detail").filter(|_| given(v, "detail")) else {
+            out.push(format!("view {id} is a detail view with no detail: give the view it enlarges, its centre and its radius"));
+            continue;
+        };
+        let of = text(detail, "of");
+        match views.iter().find(|w| text(w, "id") == of) {
+            None => out.push(format!("view {id} is a detail of {of}, which is no view of this sheet")),
+            Some(w) if text(w, "view") == "detail" => out.push(format!("view {id} is a detail of {of}, which is a detail itself")),
+            Some(_) => {}
+        }
+    }
+    out
+}
 /// Elements that are the items of a list the document holds: the tag, the document field (its node), the port of that
 /// node that holds the list, and the definition each item is checked against (`threed_schema()` `$defs`).
 pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
@@ -599,7 +627,14 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 if held.1.iter().any(|x| x.get("id").and_then(Json::as_str) == Some(id.as_str())) {
                     return Err(format!("two {}() elements are called {id}", fn_name(t)));
                 }
-                held.1.push(check_value(el, THREED_LISTS[kind].3, &Json::Obj(fields(el, &[])?), "")?);
+                let item = check_value(el, THREED_LISTS[kind].3, &Json::Obj(fields(el, &[])?), "")?;
+                if t == "sheet" {
+                    let problems = sheet_view_problems(&item);
+                    if !problems.is_empty() {
+                        return Err(format!("{}: {}", at(el), problems.join("; ")));
+                    }
+                }
+                held.1.push(item);
                 held.2.put(format!("{t}:{id}"), el);
             }
             "slot" => {
