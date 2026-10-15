@@ -4,12 +4,32 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
-## Unreleased
+## 0.6.0 (2026-10-15)
+
+The crate calls no platform tool, so the removal of `pcb_autoroute`, `pcb_optimize_routing` and
+`pcb_optimize_placement` from the platform (the Python and TypeScript SDKs' `eda.autoroute`) changes no code here. A
+document that a Rust program declares is laid out by the platform's layout tools (`pcb_layout`, `pcb_place_group`,
+`pcb_route_nets`).
 
 Added
 
+- A schematic part states its engineering data: `.part_number(…)`, `.manufacturer(…)`, `.mpn(…)`, `.rating(…)` and
+  `.attrs(…)` on any part but a ground. Each is one KiCad property of the part (`CommandAGI IPN`, `Manufacturer`,
+  `MPN`, `Rating`, and each `attrs` entry by its own name), so the BOM and the board's footprint carry it.
+  `PART_FIELDS` names them.
+- Declared checks in a 3D document: `check()` (`interference`, `clearance`, `holes`, `fasteners`, `edges`,
+  `symmetry`), `accept()` (one finding that is right on purpose, with its reason) and `permitted()` (the findings that
+  a process or a purpose permits), and `fastener()`: a screw of the fastener library with its washer and nut, and what
+  it clamps into what. Each is checked against the schema, as in the TypeScript SDK.
 - A board's layout constraints, each a board fact: `netclass()`, `diffpair()`, `group()`, `keepout()`, `thermal()`,
   `objective()` (`commandagi::design::pcb`; CommandAGI's `docs/eda-layout.md`), as the TypeScript SDK's elements.
+
+Changed
+
+- The schema reader checks the two `pattern`s the 3D schema now carries (a text that is not blank, an id of
+  `A-Z a-z 0-9 _ . -`). It refuses any other pattern by name; it never skips one.
+- An example of a task proposal names a simulated run of the world it asks for (`worlds/shop/runs/…`), not a run of
+  a second world.
 
 ## 0.5.1 (2026-10-15)
 
