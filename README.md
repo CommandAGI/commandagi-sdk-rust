@@ -43,6 +43,8 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::threed` | a 3D part or assembly |
 | `commandagi::design::fab` | a machining setup, a slicing setup |
 | `commandagi::design::study` | a study (the question of an analysis of a part) |
+| `commandagi::design::testplans` | a test plan |
+| `commandagi::design::firmware` | a firmware release, a rollout |
 | `commandagi::design::office` | a workbook, a page, a deck |
 | `commandagi::design::twod` | a drawing, a painting, a photo, a nest |
 | `commandagi::design::media` | a video, a song |

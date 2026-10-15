@@ -96,7 +96,7 @@ attributes! {
     /// The fields of the ontology's records, chained on their elements.
     pub trait OntologyAttrs {
         // A world's, a unit's and a body's.
-        name; kind; description; from; model; uid; device; domain; support; channels; manual_url; position; rotation;
+        name; kind; description; from; model; uid; device; serial; revision; domain; support; channels; manual_url; position; rotation;
         origin_mm = "origin_mm"; size_mm = "size_mm"; dimensions_mm = "dimensions_mm";
         hz; at; rot; vel; shape; mass; friction; restitution; angular_damping = "angular_damping"; gravity; scale;
         backdrop; walls; grids; bodies; forces; particles; entities; relations; systems; robots; joints; links; kinematics;
@@ -124,8 +124,9 @@ pub(crate) const FAMILY: Family =
 
 /// The graph id and domain a node graph has unless its file says another (the node-graph editor's new graph).
 pub const NODE_GRAPH_ID: &str = "nodegraph";
-/// The fields of a unit in a world's file (packages/domain/world/worlds.js).
-pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation"];
+/// The fields of a unit in a world's file (packages/domain/world/worlds.js). `serial`: the serial number of the one physical
+/// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports).
+pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation"];
 /// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];

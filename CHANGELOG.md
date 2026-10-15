@@ -4,6 +4,19 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
+## Unreleased
+
+Added
+
+- Test plans (`commandagi::design::testplans`): a `<name>.testplan.rs` holds the steps that test one serial-numbered
+  unit, never the results: `testplan([…]).title(…).device(…)` with `condition()`, `fixture()` and `step()`, the same
+  elements as the TypeScript SDK's `testplans.ts`.
+- Firmware (`commandagi::design::firmware`): a release (`<name>.firmware.rs`: `firmware([…]).version(…).image(…)
+  .sha256(…).sbom(…).device(…)` with `supports().revision(…)`) and a rollout (`<name>.rollout.rs`: `rollout([…])
+  .firmware(…).world(…).channel(…).canary(…).waves([…])` with `health()` and `target()`), as the TypeScript SDK's
+  `firmware.ts`. A `sha256` that is not 64 lowercase hex digits is refused.
+- A world's unit states its `.serial(…)` and its hardware `.revision(…)`.
+
 ## 0.6.0 (2026-10-15)
 
 The crate calls no platform tool, so the removal of `pcb_autoroute`, `pcb_optimize_routing` and
