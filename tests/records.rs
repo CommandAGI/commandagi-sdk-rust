@@ -71,3 +71,32 @@ fn a_product_instance_is_its_chain_oldest_first_each_by_its_seq() {
     assert!(bad(instance([event().seq(1).kind("service").at(1).by("x")]).serial("S").product_id("p")).contains("events are written oldest first"));
     assert!(bad(instance([event().seq(0).kind("service").at(1).by("x").with_attr("note", "n")]).serial("S").product_id("p")).contains("note is not read"));
 }
+
+#[test]
+fn a_release_is_its_files_check_verdicts_and_outputs_in_order() {
+    let (a, b) = ("a".repeat(64), "b".repeat(64));
+    let root = release([
+        file().path("cad/Plate.3d.rs").digest(a.as_str()),
+        check().file("cad/Plate.3d.rs").id("interference").kind("interference").status("passed"),
+        output().path("outputs/Plate.step").digest(b.as_str()).from("cad/Plate.3d.rs").kind("step"),
+    ])
+    .id("plate-A")
+    .rev("A")
+    .of("../..")
+    .created_at(1792000000000_i64);
+    let (format, doc, _) = document(root);
+    assert_eq!(format, "release");
+    assert_eq!(
+        doc,
+        j(&format!(
+            r#"{{"id": "plate-A", "rev": "A", "of": "../..", "createdAt": 1792000000000,
+                "files": [{{"path": "cad/Plate.3d.rs", "digest": "{a}"}}],
+                "checks": [{{"file": "cad/Plate.3d.rs", "id": "interference", "kind": "interference", "status": "passed"}}],
+                "outputs": [{{"path": "outputs/Plate.step", "digest": "{b}", "from": "cad/Plate.3d.rs", "kind": "step"}}]}}"#
+        ))
+    );
+    assert!(bad(release([file().path("x").digest("abc")]).id("r").rev("A").of(".")).contains("digest is its content's SHA-256"));
+    assert!(bad(release([check().file("x").id("i").kind("k").status("ok")]).id("r").rev("A").of(".")).contains("status is passed, failed, skipped, accepted"));
+    let (_, unit, _) = document(instance([]).serial("S").product_id("p").release("../releases/A/A.release.rs"));
+    assert_eq!(unit.get("release"), Some(&Json::from("../releases/A/A.release.rs")));
+}

@@ -53,6 +53,8 @@ elements! {
     sketch: leaf;
     /// One thing a proposal asks for, the shape of one standing grant.
     asks: leaf;
+    /// One file a change proposal changes: `.file("../cad/Plate.3d.rs").base("<sha256>").proposed("Thinner/Plate.3d.rs")`.
+    change: leaf;
     /// A subtask: the file of a task, by its path from this file: `subtask().ref_("Ship it/Draft.task.rs")`.
     subtask: leaf;
     /// A project: its views.
@@ -69,6 +71,7 @@ attributes! {
         /// A subtask's or a sketch's file, by its path from this file.
         ref_;
         world; units; channels; verbs; folder; files; venues; symbols; max_qty; max_notional; per_day; hours; note;
+        file; base; proposed;
         name; default_view_id; subprojects; archived;
         mode; group_by; filter; lane_order;
     }
@@ -85,6 +88,8 @@ pub const TASK_FIELDS: &[&str] = &[
 pub const ASK_FIELDS: &[&str] = &[
     "world", "units", "channels", "verbs", "folder", "files", "venues", "symbols", "maxQty", "maxNotional", "perDay", "hours", "note",
 ];
+/// The fields of one `change()` of a change proposal: the file it edits, the version it was made from, the edited copy.
+pub const CHANGE_FIELDS: &[&str] = &["file", "base", "proposed"];
 /// The fields of a project's body (`ProjectDoc`), but its views.
 pub const PROJECT_FIELDS: &[&str] = &["id", "name", "glyph", "defaultViewId", "subprojects", "archived", "readme", "createdAt", "updatedAt"];
 /// The fields of a project's view (`TaskView`).
@@ -100,6 +105,7 @@ const TASK: Vocabulary = Vocabulary {
         TagRule::new("task", &[]).required(&["id"]).attrs(TASK_FIELDS),
         TagRule::new("sketch", &["task"]).single().required(&["ref"]).attrs(&["ref"]),
         TagRule::new("asks", &["task"]).attrs(ASK_FIELDS),
+        TagRule::new("change", &["task"]).key("file").required(&["file", "base", "proposed"]).attrs(CHANGE_FIELDS),
         TagRule::new("subtask", &["task"]).key("ref").required(&["ref"]).attrs(&["ref"]),
     ],
     from_tree: task_of,
@@ -245,6 +251,22 @@ fn task_of(t: &DocTree) -> Result<Json, String> {
     let asks: Vec<Json> = t.children.iter().filter(|c| c.tag == "asks").map(DocTree::record).collect();
     if !asks.is_empty() {
         out.set("asks", Json::Arr(asks));
+    }
+    let changes: Vec<Json> = t.children.iter().filter(|c| c.tag == "change").map(DocTree::record).collect();
+    for c in &changes {
+        for k in ["file", "proposed"] {
+            if !matches!(c.get(k), Some(Json::Str(s)) if !s.is_empty()) {
+                let said = c.get(k).map(Json::text).unwrap_or_else(|| "undefined".into());
+                return Err(format!("change(): {k} is a path from this file, not {said}"));
+            }
+        }
+        if !matches!(c.get("base"), Some(Json::Str(d)) if d.len() == 64 && d.chars().all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())) {
+            let said = c.get("base").map(Json::text).unwrap_or_else(|| "undefined".into());
+            return Err(format!("change(): base is the content id (SHA-256, hex) of the version the edit was made from, not {said}"));
+        }
+    }
+    if !changes.is_empty() {
+        out.set("changes", Json::Arr(changes));
     }
     if !subtasks.is_empty() {
         out.set("subtasks", Json::Arr(subtasks));

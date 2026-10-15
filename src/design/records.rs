@@ -37,24 +37,43 @@ elements! {
     instance: children;
     /// An event of an instance's chain: `.seq(0).kind("manufacture").at(…).by("org-acme")`.
     event: leaf;
+    /// A hardware release: its frozen files, its check verdicts and its outputs.
+    release: children;
+    /// A frozen file of a release: `.path("cad/Plate.3d.tsx").digest("<sha256>")`.
+    file: leaf;
+    /// A check's verdict at a frozen file's digest: `.file(…).id("interference").kind("interference").status("passed")`.
+    check: leaf;
+    /// An output a release made: `.path("outputs/Plate.step").digest(…).from(…).kind("step")`.
+    output: leaf;
 }
 
 attributes! {
-    /// The fields of a contract record, a party, a product instance and an event, chained on their elements.
+    /// The fields of a contract record, a party, a product instance, an event and a release, chained on their elements.
     pub trait RecordsAttrs {
         id; terms; created_at;
         principal; role; acted_by; agent; sig; signed_at;
-        serial; product_id; model;
+        serial; product_id; model; release;
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
+        rev; of; product; note; previous; path; digest; file; status; accepted; reason; from;
     }
 }
 
-pub(crate) const FAMILY: Family = Family { module: "records", roots: &["contract", "instance"], declare };
+pub(crate) const FAMILY: Family = Family { module: "records", roots: &["contract", "instance", "release"], declare };
 
 /// The fields of a contract record (packages/domain/core/src/contract-document.ts `ContractDoc`), but its parties.
 pub const CONTRACT_FIELDS: &[&str] = &["id", "terms", "createdAt"];
-/// The fields of a product instance (`ProductInstance`), but its events.
-pub const INSTANCE_FIELDS: &[&str] = &["serial", "productId", "model"];
+/// The fields of a product instance (`ProductInstance`), but its events. `release`: the release it was built from.
+pub const INSTANCE_FIELDS: &[&str] = &["serial", "productId", "model", "release"];
+/// The fields of a hardware release, but its lists.
+pub const RELEASE_FIELDS: &[&str] = &["id", "rev", "of", "product", "createdAt", "by", "note", "previous"];
+/// The fields of one frozen file of a release.
+pub const RELEASE_FILE_FIELDS: &[&str] = &["path", "digest"];
+/// The fields of one check verdict of a release.
+pub const RELEASE_CHECK_FIELDS: &[&str] = &["file", "id", "kind", "status", "accepted", "reason"];
+/// The fields of one output of a release.
+pub const RELEASE_OUTPUT_FIELDS: &[&str] = &["path", "digest", "from", "kind"];
+/// What a release's check says.
+pub const RELEASE_CHECK_STATUSES: &[&str] = &["passed", "failed", "skipped", "accepted"];
 /// The fields of a provenance event (`InstanceEvent`).
 pub const INSTANCE_EVENT_FIELDS: &[&str] = &["seq", "kind", "at", "prev", "by", "to", "contractRef", "attestationRef", "data", "sig"];
 
@@ -81,8 +100,57 @@ const INSTANCE: Vocabulary = Vocabulary {
     from_tree: instance_of,
 };
 
+const RELEASE: Vocabulary = Vocabulary {
+    format: "release",
+    noun: "a hardware release",
+    root: "release",
+    tags: &[
+        TagRule::new("release", &[]).required(&["id", "rev", "of"]).attrs(RELEASE_FIELDS),
+        TagRule::new("file", &["release"]).key("path").required(&["path", "digest"]).attrs(RELEASE_FILE_FIELDS),
+        TagRule::new("check", &["release"]).required(&["file", "id", "kind", "status"]).attrs(RELEASE_CHECK_FIELDS),
+        TagRule::new("output", &["release"]).key("path").required(&["path", "digest"]).attrs(RELEASE_OUTPUT_FIELDS),
+    ],
+    from_tree: release_of,
+};
+
 fn declare(root: El) -> Result<Declared, String> {
-    declare_document(&root, if root.tag == "contract" { &CONTRACT } else { &INSTANCE })
+    declare_document(&root, match &*root.tag {
+        "contract" => &CONTRACT,
+        "release" => &RELEASE,
+        _ => &INSTANCE,
+    })
+}
+
+fn release_of(t: &DocTree) -> Result<Json, String> {
+    let at = format!("release().rev({})", Json::from(js_string(t.attr("rev"))).text());
+    let list = |tag: &str| -> Vec<Json> { t.children.iter().filter(|c| c.tag == tag).map(DocTree::record).collect() };
+    let (files, checks, outputs) = (list("file"), list("check"), list("output"));
+    for f in files.iter().chain(outputs.iter()) {
+        let ok = matches!(f.get("digest"), Some(Json::Str(d)) if d.len() == 64 && d.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        if !ok {
+            let said = f.get("digest").map(Json::text).unwrap_or_else(|| "undefined".into());
+            let path = f.get("path").map(Json::text).unwrap_or_default();
+            return Err(format!("{at}: {path}'s digest is its content's SHA-256 in hex (64 characters), not {said}"));
+        }
+    }
+    for c in &checks {
+        if !matches!(c.get("status"), Some(Json::Str(s)) if RELEASE_CHECK_STATUSES.contains(&s.as_str())) {
+            let said = c.get("status").map(Json::text).unwrap_or_else(|| "undefined".into());
+            return Err(format!("{at}: a check's status is {}, not {said}", RELEASE_CHECK_STATUSES.join(", ")));
+        }
+    }
+    match t.attr("createdAt") {
+        None => {}
+        Some(Json::Num(n)) if n.is_finite() && n.fract() == 0.0 => {}
+        Some(other) => return Err(format!("{at}: created_at is epoch milliseconds, not {}", other.text())),
+    }
+    let mut out = Json::obj();
+    for k in RELEASE_FIELDS {
+        if let Some(v) = t.attr(k) {
+            out.set(k, v.clone());
+        }
+    }
+    Ok(out.with("files", files).with("checks", checks).with("outputs", outputs))
 }
 
 fn field(t: &DocTree, name: &str) -> Json {

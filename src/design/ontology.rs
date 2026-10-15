@@ -126,7 +126,7 @@ pub(crate) const FAMILY: Family =
 pub const NODE_GRAPH_ID: &str = "nodegraph";
 /// The fields of a unit in a world's file (packages/domain/world/worlds.js). `serial`: the serial number of the one physical
 /// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports).
-pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation"];
+pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "release"];
 /// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];

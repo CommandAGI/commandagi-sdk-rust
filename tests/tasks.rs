@@ -105,6 +105,17 @@ fn a_proposal_its_sketch_and_its_asks() {
 }
 
 #[test]
+fn a_change_proposal_its_changes_in_order() {
+    let base = "c".repeat(64);
+    let (_, doc, _) = document(task([change().file("../cad/Plate.3d.rs").base(base.as_str()).proposed("Thinner plate/Plate.3d.rs")]).id("thinner").status("proposed"));
+    assert_eq!(
+        doc.get("changes"),
+        Some(&j(&format!(r#"[{{"file": "../cad/Plate.3d.rs", "base": "{base}", "proposed": "Thinner plate/Plate.3d.rs"}}]"#)))
+    );
+    assert!(bad(task([change().file("a.3d.rs").base("HEAD").proposed("b.3d.rs")]).id("a")).contains("base is the content id"));
+}
+
+#[test]
 fn a_projects_views_are_view_children() {
     let root = project([
         view().id("board").name("Board").mode("board").group_by("status"),
