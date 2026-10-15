@@ -75,11 +75,20 @@
 //! objective().weights()             the weight of each term of the layout score.
 //! ```
 //!
+//! The checks the board must pass and the findings it accepts on purpose (kept in the graph's meta, `checks` and
+//! `accepted`, not as nodes: `super::circuit_checks`):
+//!
+//! ```text
+//! check().id("drc").kind("drc").severity("warning")
+//! accept().id().check().rule().refs().net().region(json(r#"{"min": [0, 0], "max": [3, 3]}"#)).reason()
+//! ```
+//!
 //! Coordinates are the board's own: millimetres, Y DOWN, from the outline's corner. An end is bound by what it says,
 //! never by where it is drawn: ".R1 > .pin2" (a pin of a component, by its number), ".V1" (a via, by name),
 //! ".T1 > .end" (a point of another trace or arc: .start, .end or its index). Anything else is refused by name, never
 //! guessed. Each node an element declares carries the element's call in `meta.source`.
 
+use super::circuit_checks::declare_circuit_checks;
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::ir::{slug, Scope};
 use super::source::meta;
@@ -124,6 +133,10 @@ elements! {
     thermal: leaf;
     /// The weight of each term of the layout score.
     objective: leaf;
+    /// A check the board must pass: `check().id("drc").kind("drc")` (`super::circuit_checks`).
+    check: leaf;
+    /// A finding the board accepts on purpose: `accept().id("edge").check("drc").rule("clearance").region(…).reason(…)`.
+    accept: leaf;
 }
 
 attributes! {
@@ -271,6 +284,16 @@ attributes! {
         distance;
         /// The weight of each term of the layout score: `json(r#"{"wirelength": 1, "vias": 2}"#)`.
         weights;
+        /// A check's severity: "error", or "warning" (its errors are warnings).
+        severity;
+        /// The id of the check whose findings an accept accepts.
+        check;
+        /// The rule of the findings an accept accepts: "clearance", "pin_conflict".
+        rule;
+        /// The parts an accepted finding is about, each of them: `["U1", "U3"]`.
+        refs;
+        /// Why an accepted finding is right on purpose.
+        reason;
     }
 }
 
@@ -654,7 +677,7 @@ enum Owner<'a> {
 
 /// Declare the board's nodes; whether it declared the board node itself.
 fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
-    let children: Vec<&El> = root.child_elements().collect();
+    let children: Vec<&El> = declare_circuit_checks(&mut s.meta, root.child_elements().collect())?;
     let (w, h) = (positive(root, "width", false)?, positive(root, "height", false)?);
     let (core, copper_mm, thickness) = (positive(root, "core", false)?, positive(root, "copper", false)?, positive(root, "thickness", false)?);
     let layers = plain(

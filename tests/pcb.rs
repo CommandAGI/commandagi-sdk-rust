@@ -205,3 +205,23 @@ fn the_layouts_constraints_are_board_facts() {
     assert!(bad(board_of(vec![group().name("g").parts(["R1"]).near("R1")])).contains("near is a part"));
     assert!(bad(board_of(vec![objective().weights(json(r#"{"vias": 1}"#)), objective().weights(json(r#"{"vias": 2}"#))])).contains("one objective()"));
 }
+
+#[test]
+fn a_boards_checks_and_accepts_are_kept_in_the_graphs_meta() {
+    let meta = graph(board_of(vec![
+        component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
+        check().id("drc").kind("drc"),
+        accept().id("edge").check("drc").rule("clearance").net("GND").region(json(r#"{"min": [0, 0], "max": [3, 3]}"#)).reason("the mounting hole's keep-out"),
+    ]))
+    .get("meta")
+    .cloned()
+    .unwrap();
+    assert_eq!(meta.get("schematic").and_then(Json::as_str), Some("Divider.sch.rs"));
+    let Some(Json::Arr(accepted)) = meta.get("accepted") else { panic!("no accepted") };
+    let mut a = accepted[0].clone();
+    assert!(a.remove("source").is_some(), "an accept carries its call");
+    assert_eq!(a.text(), r#"{"id":"edge","check":"drc","rule":"clearance","net":"GND","region":{"min":[0,0],"max":[3,3]},"reason":"the mounting hole's keep-out"}"#);
+    let Some(Json::Arr(checks)) = meta.get("checks") else { panic!("no checks") };
+    assert_eq!(checks[0].get("kind").and_then(Json::as_str), Some("drc"));
+    assert!(bad(board_of(vec![check().id("drc").kind("drc").width(1)])).contains("width is not read (it takes id, kind, severity)"));
+}

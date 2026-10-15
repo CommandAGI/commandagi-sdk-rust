@@ -34,6 +34,7 @@
 //! the file's one import.
 
 pub mod business;
+pub(crate) mod circuit_checks;
 pub mod documents;
 pub mod element;
 pub mod fab;

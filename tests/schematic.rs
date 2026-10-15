@@ -226,3 +226,54 @@ fn a_part_states_its_engineering_data_as_kicad_property_forms() {
     assert!(bad(group("S", [k2().attrs(json(r#"{"CommandAGI IPN": "X"}"#))])).contains("attrs names CommandAGI IPN: say it with part_number"));
     assert!(bad(group("S", [k2().attrs(json(r#"{"Value": "X"}"#))])).contains("attrs names Value, which is the part's own"));
 }
+
+fn without_source(list: &Json) -> String {
+    match list {
+        Json::Arr(items) => Json::Arr(
+            items
+                .iter()
+                .cloned()
+                .map(|mut c| {
+                    c.remove("source");
+                    c
+                })
+                .collect(),
+        )
+        .text(),
+        other => other.text(),
+    }
+}
+
+#[test]
+fn a_circuits_checks_and_accepts_are_kept_in_the_graphs_meta_not_as_nodes() {
+    let line = line!() + 3;
+    let g = graph(group("S", [
+        resistor("R1").resistance("1k").sch_x(0).sch_y(0),
+        check().id("erc").kind("erc").severity("warning"),
+        accept().id("open").check("erc").rule("pin_not_connected").refs(["R1"]).reason("a test point"),
+    ]));
+    let meta = g.get("meta").unwrap();
+    assert_eq!(without_source(meta.get("checks").unwrap()), r#"[{"id":"erc","kind":"erc","severity":"warning"}]"#);
+    assert_eq!(without_source(meta.get("accepted").unwrap()), r#"[{"id":"open","check":"erc","rule":"pin_not_connected","refs":["R1"],"reason":"a test point"}]"#);
+    // Each carries the call it came from, as a node does, so an editor can write it back.
+    let Some(Json::Arr(checks)) = meta.get("checks") else { panic!() };
+    assert_eq!(checks[0].get("source").and_then(|s| s.get("site")), Some(&Json::Arr(vec![line.into(), 9u32.into()])));
+    let Some(Json::Obj(nodes)) = g.get("nodes") else { panic!() };
+    assert!(nodes.iter().all(|(_, n)| !matches!(n.get("type").and_then(Json::as_str), Some("check" | "accept"))));
+    // The circuit is the same with them or without them.
+    let plain = graph(group("S", [resistor("R1").resistance("1k").sch_x(0).sch_y(0)]));
+    assert_eq!(without_sources(g.clone()).get("nodes").unwrap().text(), without_sources(plain).get("nodes").unwrap().text());
+}
+
+#[test]
+fn a_wrong_check_or_accept_is_refused_by_name() {
+    let r1 = || resistor("R1").resistance("1k");
+    assert!(bad(group("S", [r1(), check().id("erc").kind("erc").resistance(1)])).contains(r#"check().id("erc"): resistance is not read (it takes id, kind, severity)"#));
+    assert!(bad(group("S", [r1(), check().id("erc").kind("erc").severity("fatal")])).contains(r#"severity is "error" or "warning""#));
+    assert!(bad(group("S", [r1(), check().kind("erc")])).contains("check(): id is the check's name (erc)"));
+    assert!(bad(group("S", [r1(), check().id("a b").kind("erc")])).contains("id is letters, digits, _ . -"));
+    assert!(bad(group("S", [r1(), check().id("erc").kind("erc"), accept().id("erc").check("erc").rule("x").reason("y")])).contains("two checks or accepts are called erc"));
+    assert!(bad(group("S", [r1(), accept().id("a").check("erc").rule("x")])).contains(r#"accept().id("a"): reason is why the finding is right on purpose"#));
+    assert!(bad(group("S", [r1(), accept().id("a").check("erc").rule("x").refs(Vec::<&str>::new()).reason("y")])).contains("refs is a list of part references"));
+    assert!(bad(group("S", [r1(), accept().id("a").check("erc").rule("x").region(json(r#"{"min": [0]}"#)).reason("y")])).contains("region is"));
+}

@@ -57,6 +57,10 @@
 //!                                                                           and attrs by their own names): the BOM and
 //!                                                                           the board's footprint carry them
 //! attachment(name).role("schematic").file(path).mime(…)                     a KiCad file the circuit carries
+//! check().id(…).kind("erc").severity(…)                                     a check the circuit must pass, and a
+//! accept().id(…).check(…).rule(…).refs([…]).net(…).reason(…)               finding it accepts on purpose: kept in
+//!                                                                           the graph's meta (`checks`, `accepted`),
+//!                                                                           not as nodes (`super::circuit_checks`)
 //! fragment(iter)                                                            several elements as one item (a loop)
 //! ```
 //!
@@ -67,6 +71,7 @@
 //! `meta.source` (`super::source`), so the circuit editor writes its edits back into the file. What the sheet cannot
 //! say is refused by name, never guessed.
 
+use super::circuit_checks::declare_circuit_checks;
 use super::element::{attributes, elements, rust_name};
 use super::ir::{channels, fnv1a, slug, wire, Scope};
 use super::source::meta;
@@ -105,6 +110,10 @@ elements! {
     net(name): leaf;
     /// A KiCad file the circuit carries for exchange: `attachment("Divider.kicad_sch").role("schematic").file(…)`.
     attachment(name): leaf;
+    /// A check the circuit must pass: `check().id("erc").kind("erc")` (`super::circuit_checks`).
+    check: leaf;
+    /// A finding the circuit accepts on purpose: `accept().id("tp").check("erc").rule("pin_not_connected").reason(…)`.
+    accept: leaf;
 }
 
 attributes! {
@@ -164,6 +173,24 @@ attributes! {
         file;
         /// An attachment's media type.
         mime;
+        /// A check's or an accept's name: letters, digits, _ . -
+        id;
+        /// What a check checks: "erc".
+        kind;
+        /// A check's severity: "error", or "warning" (its errors are warnings).
+        severity;
+        /// The id of the check whose findings an accept accepts.
+        check;
+        /// The rule of the findings an accept accepts: "pin_not_connected", "pin_conflict".
+        rule;
+        /// The parts an accepted finding is about, each of them: `["U1", "U3"]`.
+        refs;
+        /// The net of an accepted finding.
+        net;
+        /// Where an accepted DRC finding lies: `json(r#"{"min": [0, 0], "max": [3, 3]}"#)` (board millimetres).
+        region;
+        /// Why an accepted finding is right on purpose.
+        reason;
     }
 }
 
@@ -233,7 +260,8 @@ fn declare(root: El) -> Result<Declared, String> {
         _ => return Err("group() needs a name".into()),
     };
     let mut s = Scope::new(&format!("eda:{}", slug(&name)), Json::obj().with("domain", "eda").with("rung", "board").with("name", name.as_str()));
-    declare_sheet(&mut s, &root.child_elements().collect::<Vec<_>>())?;
+    let children = declare_circuit_checks(&mut s.meta, root.child_elements().collect())?;
+    declare_sheet(&mut s, &children)?;
     Ok(Declared::Graph(s.build()))
 }
 
