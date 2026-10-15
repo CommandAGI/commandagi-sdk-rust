@@ -4,6 +4,13 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
+## Unreleased
+
+Added
+
+- A board's layout constraints, each a board fact: `netclass()`, `diffpair()`, `group()`, `keepout()`, `thermal()`,
+  `objective()` (`commandagi::design::pcb`; CommandAGI's `docs/eda-layout.md`), as the TypeScript SDK's elements.
+
 ## 0.5.1 (2026-10-15)
 
 Changed
