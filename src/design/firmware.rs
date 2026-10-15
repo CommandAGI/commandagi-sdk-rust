@@ -43,11 +43,32 @@
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
 //!
+//! A firmware's project folder holds `firmware.rs`, the same element without a built image: what the firmware gives,
+//! its channels as a definition writes them (the ontology's `channel()`), and the revisions it supports. A definition
+//! names that folder (or a release by `sha256:<hex>`) as its `firmware`; `commandagi check <definition>` holds the two to
+//! each other.
+//!
+//! ```
+//! use commandagi::design::firmware::*;
+//!
+//! mod channels {
+//!     use commandagi::design::ontology::*;
+//!     pub fn cam() -> El { channel().id("cam").dir("out").medium("video").format("video") }
+//! }
+//!
+//! fn document() -> El {
+//!     firmware([supports().revision("A"), channels::cam()]).name("ESP32 camera")
+//! }
+//! # commandagi::design::declare(document()).unwrap();
+//! ```
+//!
 //! `target().unit(…)`: the units it updates, in that world; none: every unit of the world whose definition is the
 //! release's device. A record is an element and its fields are its attributes.
 //!
 //! ```text
-//! firmware: { version, image, sha256, sbom, device, size?, securityVersion?, title?, note?, supports?: [{ revision }] }
+//! firmware: { name?, version?, image?, sha256?, sbom?, device?, size?, securityVersion?, title?, note?,
+//!             supports?: [{ revision }], channels?: [{ id, … }] }: a release states all of version, image, sha256,
+//!             sbom and device; a project's declaration states its name
 //! rollout:  { firmware, world, channel, canary, waves, settleMs?, title?, note?, health?: [{ id, channel, read,
 //!             command?, min?, max?, equals?, unit?, timeoutMs? }], targets?: [{ unit }] }
 //! ```
@@ -58,7 +79,8 @@ use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
-    /// A firmware release: the hardware revisions it supports. `.version(…).image(…).sha256(…).sbom(…).device(…)`.
+    /// A firmware: the hardware revisions it supports and the channels it gives. A release:
+    /// `.version(…).image(…).sha256(…).sbom(…).device(…)`; a project's declaration: `.name(…)`.
     firmware: children;
     /// A hardware revision the release supports: `supports().revision("B")`.
     supports: leaf;
@@ -73,6 +95,8 @@ elements! {
 attributes! {
     /// The fields of a release's and a rollout's records, chained on their elements.
     pub trait FirmwareAttrs {
+        /// A firmware's name, in its project's declaration.
+        name;
         version; image;
         /// The image's SHA-256, 64 lowercase hex digits.
         sha256;
@@ -86,17 +110,20 @@ attributes! {
 
 pub(crate) const FAMILY: Family = Family { module: "firmware", roots: &["firmware", "rollout"], declare };
 
-pub const FIRMWARE_FIELDS: &[&str] = &["version", "image", "sha256", "size", "sbom", "device", "securityVersion", "title", "note"];
+pub const FIRMWARE_FIELDS: &[&str] = &["name", "version", "image", "sha256", "size", "sbom", "device", "securityVersion", "title", "note"];
+/// The fields a release states, all of them (a firmware's declaration in its project states none of them).
+pub const FIRMWARE_RELEASE_FIELDS: &[&str] = &["version", "image", "sha256", "sbom", "device"];
 pub const ROLLOUT_FIELDS: &[&str] = &["firmware", "world", "channel", "canary", "waves", "settleMs", "title", "note"];
 pub const HEALTH_FIELDS: &[&str] = &["id", "channel", "command", "read", "min", "max", "equals", "unit", "timeoutMs"];
 
 const FIRMWARE: Vocabulary = Vocabulary {
     format: "firmware",
-    noun: "a firmware release",
+    noun: "a firmware",
     root: "firmware",
     tags: &[
-        TagRule::new("firmware", &[]).required(&["version", "image", "sha256", "sbom", "device"]).attrs(FIRMWARE_FIELDS),
+        TagRule::new("firmware", &[]).attrs(FIRMWARE_FIELDS),
         TagRule::new("supports", &["firmware"]).key("revision").required(&["revision"]).attrs(&["revision"]),
+        TagRule::new("channel", &["firmware"]).key("id").required(&["id"]),
     ],
     from_tree: firmware_of,
 };
@@ -121,18 +148,39 @@ fn list_of(t: &DocTree, tag: &str) -> Vec<Json> {
     t.children.iter().filter(|c| c.tag == tag).map(DocTree::record).collect()
 }
 
+fn stated(v: Option<&Json>) -> bool {
+    !matches!(v, None | Some(Json::Null)) && !matches!(v, Some(Json::Str(s)) if s.is_empty()) && !matches!(v, Some(Json::Arr(a)) if a.is_empty())
+}
+
 fn firmware_of(t: &DocTree) -> Result<Json, String> {
+    if !FIRMWARE_RELEASE_FIELDS.iter().any(|k| stated(t.attr(k))) {
+        if !stated(t.attr("name")) {
+            return Err("firmware(): a firmware's declaration states its name; a release states version, image, sha256, sbom and device".into());
+        }
+        return Ok(with_children(t));
+    }
+    let missing: Vec<&str> = FIRMWARE_RELEASE_FIELDS.iter().copied().filter(|k| !stated(t.attr(k))).collect();
+    if !missing.is_empty() {
+        return Err(format!("firmware() needs {}: a release states all of {}", missing.join(", "), FIRMWARE_RELEASE_FIELDS.join(", ")));
+    }
     let sha = t.attr("sha256");
     if !matches!(sha, Some(Json::Str(s)) if s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))) {
         let said = sha.map(Json::text).unwrap_or_else(|| "undefined".into());
         return Err(format!("firmware() sha256 is the image's SHA-256 in 64 lowercase hex digits, not {said}"));
     }
+    Ok(with_children(t))
+}
+
+fn with_children(t: &DocTree) -> Json {
     let mut out = t.record();
-    let supports = list_of(t, "supports");
+    let (supports, channels) = (list_of(t, "supports"), list_of(t, "channel"));
     if !supports.is_empty() {
         out.set("supports", Json::Arr(supports));
     }
-    Ok(out)
+    if !channels.is_empty() {
+        out.set("channels", Json::Arr(channels));
+    }
+    out
 }
 
 fn rollout_of(t: &DocTree) -> Result<Json, String> {

@@ -22,7 +22,6 @@
 //! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, unit().uid …,
 //!   .links?                                                               view(), scene([body().id …])
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …
-//! firmware([…]).name.hardware?                       firmware.rs          channel().id.dir.medium.format.transport …
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
 //!                                                                         one pane(); region().side.tab …
@@ -65,10 +64,8 @@ elements! {
     body: leaf;
     /// A device definition: its channels.
     device: children;
-    /// A channel of a device or a firmware: `.id("joints").dir("duplex").medium("records")`.
+    /// A channel of a device or a firmware (`firmware::firmware`): `.id("joints").dir("duplex").medium("records")`.
     channel: leaf;
-    /// What a firmware says it gives: its channels; `.name("cam").hardware(["rev-a"])`.
-    firmware: children;
     /// A dashboard: its params, its one layout, its regions.
     dashboard: children;
     /// A dashboard's param: `.id("log").type_("file")`.
@@ -110,9 +107,9 @@ attributes! {
         limits; min_interval_ms; verbs; units; unit; rate; baud; dialect; encoding; conversion; parameters; params; editor;
         /// A G-code channel's rapid rate (mm/min): what the simulator moves a G0 at.
         rapid_mm_per_min;
-        /// The firmware a definition runs (a ref to its project folder, or a release `sha256:<hex>`), the hardware
-        /// revision it is, and the revisions a firmware is built for.
-        firmware; revision; hardware;
+        /// The firmware a definition runs (a ref to its project folder, or a release `sha256:<hex>`); its `revision`
+        /// is the hardware revision it is.
+        firmware;
         notes; status; suggest; speed; source; title; value; rank;
         // A dashboard's, a param's, a pane's and a region's.
         focus; accept; default; required; axis; ratio; side; tab; open; collapsed; selected; path; view; world; param;
@@ -126,7 +123,7 @@ attributes! {
 }
 
 pub(crate) const FAMILY: Family =
-    Family { module: "ontology", roots: &["world", "device", "firmware", "dashboard", "geoproject", "opgraph"], declare };
+    Family { module: "ontology", roots: &["world", "device", "dashboard", "geoproject", "opgraph"], declare };
 
 /// The graph id and domain a node graph has unless its file says another (the node-graph editor's new graph).
 pub const NODE_GRAPH_ID: &str = "nodegraph";
@@ -162,14 +159,6 @@ const DEVICE: Vocabulary = Vocabulary {
     root: "device",
     tags: &[TagRule::new("device", &[]).required(&["name"]), TagRule::new("channel", &["device"]).key("id").required(&["id"])],
     from_tree: device_of,
-};
-
-const FIRMWARE: Vocabulary = Vocabulary {
-    format: "firmware",
-    noun: "a firmware's declaration",
-    root: "firmware",
-    tags: &[TagRule::new("firmware", &[]).required(&["name"]), TagRule::new("channel", &["firmware"]).key("id").required(&["id"])],
-    from_tree: firmware_of,
 };
 
 const DASHBOARD: Vocabulary = Vocabulary {
@@ -212,7 +201,7 @@ const OPGRAPH: Vocabulary = Vocabulary {
 };
 
 /// The vocabularies of the ontology's files.
-pub const ONTOLOGY: &[&Vocabulary] = &[&WORLD, &DEVICE, &FIRMWARE, &DASHBOARD, &GEO, &OPGRAPH];
+pub const ONTOLOGY: &[&Vocabulary] = &[&WORLD, &DEVICE, &DASHBOARD, &GEO, &OPGRAPH];
 
 /// Declare a world, a definition, a dashboard or a geo project (a document), or a node graph (a graph).
 fn declare(root: El) -> Result<Declared, String> {
@@ -290,20 +279,6 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
 fn device_of(t: &DocTree) -> Result<Json, String> {
     if t.attr("channels").is_some() {
         return Err("device(): write each channel as a channel() element, not a channels attribute".into());
-    }
-    let channels: Vec<Json> = kids(t, "channel").map(DocTree::record).collect();
-    let mut out = t.record();
-    if !channels.is_empty() {
-        out.set("channels", Json::Arr(channels));
-    }
-    Ok(out)
-}
-
-// ── firmware.rs ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-fn firmware_of(t: &DocTree) -> Result<Json, String> {
-    if t.attr("channels").is_some() {
-        return Err("firmware(): write each channel as a channel() element, not a channels attribute".into());
     }
     let channels: Vec<Json> = kids(t, "channel").map(DocTree::record).collect();
     let mut out = t.record();

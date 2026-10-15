@@ -94,9 +94,9 @@ fn a_definition_names_its_firmware_and_a_firmware_declares_its_channels() {
     let cam = || channel().id("cam").dir("out").medium("video").format("video");
     let (_, def, _) = document(device([cam()]).name("Cam").firmware("../../firmware/cam").revision("rev-a"));
     assert_eq!(def, j(r#"{"name": "Cam", "firmware": "../../firmware/cam", "revision": "rev-a", "channels": [{"id": "cam", "dir": "out", "medium": "video", "format": "video"}]}"#));
-    let (format, fw, _) = document(firmware([cam()]).name("cam").hardware(json(r#"["rev-a"]"#)));
+    let (format, fw, _) = document(commandagi::design::firmware::firmware([commandagi::design::firmware::supports().revision("rev-a"), cam()]).name("cam"));
     assert_eq!(format, "firmware");
-    assert_eq!(fw, j(r#"{"name": "cam", "hardware": ["rev-a"], "channels": [{"id": "cam", "dir": "out", "medium": "video", "format": "video"}]}"#));
+    assert_eq!(fw, j(r#"{"name": "cam", "supports": [{"revision": "rev-a"}], "channels": [{"id": "cam", "dir": "out", "medium": "video", "format": "video"}]}"#));
 }
 
 #[test]
