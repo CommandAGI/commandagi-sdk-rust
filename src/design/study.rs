@@ -25,7 +25,7 @@
 //! ```
 //!
 //! One root, `study([…]).kind(…).part(…).units(…)`, for every kind of study. A kind has its own tags: this module
-//! knows `structural` (FEA). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
+//! knows `structural` (FEA) and `flow` (CFD: `fluid()`, `inlet()`, `outlet()`, `flow_mesh()`, in `units("m-kg-s")`). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
 //! its attributes (methods in snake case of the native names: `.load_case("clamp")` on a criterion is `loadCase`). A
 //! load's tag is its `type`. A face pick is the 3D document's pick, written as `json(r#"…"#)`. Nothing adds a
 //! default: the runner says what it assumes. A tag of one kind is refused in a study of another, by name.
@@ -64,6 +64,14 @@ elements! {
     criterion: leaf;
     /// A parameter of the part the planner may change: `revise().parameter("thickness").min(3).max(8)`.
     revise: leaf;
+    /// A flow study's fluid: `fluid().nu(1e-6).body("body_0")` (kinematic viscosity, m²/s).
+    fluid: leaf;
+    /// Where the fluid enters: `inlet().faces(json(…)).velocity(0.5)` (m/s, into the body).
+    inlet: leaf;
+    /// Where the fluid leaves (pressure 0): `outlet().faces(json(…))`.
+    outlet: leaf;
+    /// A flow study's mesh: `flow_mesh().cells([20, 3, 3]).levels([1, 2, 4])`.
+    flow_mesh = "flowMesh": leaf;
 }
 
 attributes! {
@@ -107,6 +115,18 @@ attributes! {
         region;
         /// The load case a criterion reads.
         load_case;
+        /// A fluid's kinematic viscosity (m²/s).
+        nu;
+        /// The inlet's mean velocity (m/s).
+        velocity;
+        /// The background block's cells along x, y and z at the coarsest level.
+        cells;
+        /// The refinement multipliers of the cells, one level each: `[1, 2, 4]`.
+        levels;
+        /// The solver's iterations at most.
+        iterations;
+        /// `"wall-functions"` or `"resolved"`.
+        wall_model;
         note;
         /// A named parameter of the part.
         parameter;
@@ -121,7 +141,7 @@ pub(crate) const FAMILY: Family = Family { module: "study", roots: &["study"], d
 pub const STUDY_UNITS: &str = "mm-N-MPa-t";
 pub const STUDY_ROOT_FIELDS: &[&str] = &["kind", "part", "units", "title"];
 /// The kinds a study may name.
-pub const STUDY_KINDS: &[&str] = &["structural"];
+pub const STUDY_KINDS: &[&str] = &["structural", "flow"];
 
 /// A tag of a study: the field of its parent record it fills, whether that field is a list, whether the tag is the
 /// record's `type` (a load is `force()` or `pressure()`, both in `loads`), and its kind (none: every kind's).
@@ -138,6 +158,7 @@ const fn tag(tag: &'static str, field: &'static str, list: bool, typed: bool, ki
 }
 
 const S: Option<&str> = Some("structural");
+const F: Option<&str> = Some("flow");
 pub const STUDY_TAGS: &[StudyTag] = &[
     tag("criterion", "criteria", true, false, None),
     tag("revise", "revise", true, false, None),
@@ -148,6 +169,10 @@ pub const STUDY_TAGS: &[StudyTag] = &[
     tag("pressure", "loads", true, true, S),
     tag("mesh", "mesh", false, false, S),
     tag("solver", "solver", false, false, S),
+    tag("fluid", "fluid", false, false, F),
+    tag("inlet", "inlet", false, false, F),
+    tag("outlet", "outlet", false, false, F),
+    tag("flowMesh", "flowMesh", false, false, F),
 ];
 
 const IN_STUDY: &[&str] = &["study"];
@@ -171,6 +196,10 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("pressure", &["loadCase"]).key("id").required(PRESSURE).attrs(PRESSURE),
         TagRule::new("mesh", IN_STUDY).single().attrs(&["order", "size", "refine"]),
         TagRule::new("solver", IN_STUDY).single().attrs(&["kind", "analysis"]),
+        TagRule::new("fluid", IN_STUDY).single().required(&["nu"]).attrs(&["nu", "body"]),
+        TagRule::new("inlet", IN_STUDY).single().required(&["faces", "velocity"]).attrs(&["faces", "velocity"]),
+        TagRule::new("outlet", IN_STUDY).single().required(&["faces"]).attrs(&["faces"]),
+        TagRule::new("flowMesh", IN_STUDY).single().required(&["cells"]).attrs(&["cells", "levels", "iterations", "wallModel"]),
     ],
     from_tree: study_from_tree,
 };

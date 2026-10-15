@@ -73,9 +73,36 @@ fn a_structural_study_is_its_question_with_each_site_by_its_path() {
 }
 
 #[test]
+fn a_flow_study_is_the_fluid_the_inlet_and_the_outlet_on_one_body() {
+    let (format, doc, _) = document(
+        study([
+            fluid().nu(1e-6),
+            inlet().faces(face(r#"{"normal": [-1, 0, 0]}"#)).velocity(0.5),
+            outlet().faces(face(r#"{"normal": [1, 0, 0]}"#)),
+            flow_mesh().cells([20, 3, 3]).levels([1, 2, 4]),
+            criterion().id("drop").quantity("pressureDrop").limit(2),
+        ])
+        .kind("flow")
+        .part("Channel.3d.tsx")
+        .units("m-kg-s"),
+    );
+    assert_eq!(format, "study");
+    let golden = Json::parse(
+        r#"{"kind": "flow", "part": "Channel.3d.tsx", "units": "m-kg-s", "fluid": {"nu": 1e-6},
+            "inlet": {"faces": {"kind": "face", "select": {"normal": [-1, 0, 0]}}, "velocity": 0.5},
+            "outlet": {"faces": {"kind": "face", "select": {"normal": [1, 0, 0]}}},
+            "flowMesh": {"cells": [20, 3, 3], "levels": [1, 2, 4]},
+            "criteria": [{"id": "drop", "quantity": "pressureDrop", "limit": 2}]}"#,
+    )
+    .unwrap();
+    assert_eq!(doc.text(), golden.text());
+    assert_eq!(bad(study([mesh().size(2)]).kind("flow").part("a.3d.tsx")), "mesh() belongs to a structural study, not to a flow one");
+}
+
+#[test]
 fn a_study_refuses_by_name_what_it_has_no_words_for() {
     assert_eq!(bad(study([]).kind("structural")), "study() needs part");
-    assert_eq!(bad(study([]).kind("thermal").part("a.3d.tsx")), r#"study() kind is one of structural, not "thermal""#);
+    assert_eq!(bad(study([]).kind("thermal").part("a.3d.tsx")), r#"study() kind is one of structural, flow, not "thermal""#);
     assert_eq!(bad(of(vec![force().id("f").faces(face("{}")).total([0, 0, 1])])), "force() stands in load_case(), not in study()");
     assert_eq!(bad(of(vec![fixture().id("a").type_("fixed")])), r#"fixture().id("a") needs faces"#);
     assert_eq!(bad(of(vec![mesh().order(2).size(2).poisson(0.3)])), "mesh(): poisson is not read (order, size, refine)");
