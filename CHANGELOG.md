@@ -16,6 +16,11 @@ Added
   .firmware(…).world(…).channel(…).canary(…).waves([…])` with `health()` and `target()`), as the TypeScript SDK's
   `firmware.ts`. A `sha256` that is not 64 lowercase hex digits is refused.
 - A world's unit states its `.serial(…)` and its hardware `.revision(…)`.
+- Tolerances. `parameter().tolerance(json(…))` takes `{"upper", "lower"}` (mm), `{"class": "H7"}` (an ISO 286 class or
+  `ISO 492 bore|outside|width`) or `{"basic": true}`; a tolerance given two ways is refused. `design::tolerances`:
+  `tolerance_limits(nominal, &tol)` and `fit_of(&hole, &shaft)`, the classes read from the shipped tables
+  (`standards_data.json` `tolerances`). A 3D document's `check` takes `hole`, `shaft`, `intent` (a fit) and `chain`,
+  `limit`, `method`, `samples`, `seed` (a stack-up).
 
 ## 0.6.0 (2026-10-15)
 

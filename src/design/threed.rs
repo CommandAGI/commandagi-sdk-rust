@@ -204,6 +204,12 @@ attributes! {
         skins; source; source_materials; source_uv; spacing; spacing2; standard_parts; start; step; style;
         subdivision; suppressed; symmetric; target; terminal; thickness; through; title; token; transform; translate;
         travel; turns; type_; u; unit; unit_scale_mm; up_to_face; uv; v; value; views; visible; weight; width; x; x_axis; y;
+        /// A size's tolerance: `json(r#"{"class": "H7"}"#)`, `{"upper": 0.05, "lower": -0.05}` or `{"basic": true}`.
+        tolerance;
+        /// A fit check's hole, shaft and intended fit (clearance, transition, interference).
+        hole; shaft; intent;
+        /// A stack-up check's chain (`["+pocket", "-width"]`), limit (`{"min": 0.05, "max": 0.5}`), method, samples and seed.
+        chain; limit; method; samples; seed;
     }
 }
 
@@ -269,7 +275,7 @@ pub const BUILTIN_PLANES: &[(&str, &str, [f64; 3], [f64; 3], [f64; 3], &str)] = 
 ];
 /// The document's view fields a root element may hold (the graph's `meta`), beside `name`.
 const VIEW_ATTRS: &[&str] = &["semanticVisibility"];
-const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"];
+const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step", "tolerance"];
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
@@ -519,6 +525,11 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 }
                 if !matches!(el.attr("value"), Some(Json::Num(_))) {
                     return Err(format!("{}: value is a number", at(el)));
+                }
+                if let Some(tol) = el.attr("tolerance") {
+                    if let Some(problem) = super::tolerances::tolerance_problem(tol) {
+                        return Err(format!("{}: tolerance: {problem}", at(el)));
+                    }
                 }
                 claim(&mut owner, &pname, format!("parameter \"{pname}\""))?;
                 let mut inputs = fields(el, &["name", "bindings"])?;

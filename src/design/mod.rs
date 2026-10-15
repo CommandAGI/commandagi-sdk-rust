@@ -59,6 +59,7 @@ pub mod tasks;
 pub mod testplans;
 pub mod threed;
 pub mod threed_props;
+pub mod tolerances;
 pub mod twod;
 
 pub use element::{fragment, json, Child, El, Text, TextPart, Value};

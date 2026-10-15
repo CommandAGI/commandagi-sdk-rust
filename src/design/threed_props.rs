@@ -2191,6 +2191,41 @@ impl ToJson for HoleStyle {
     }
 }
 
+/// A size's tolerance. Give deviations, or a class, or `basic`: one way, never two.
+#[derive(Clone, Debug)]
+pub struct DimensionTolerance {
+    /// The upper deviation from the nominal, signed (`0.1`, or `-0.02` for a size wholly under it).
+    /// Unit: mm.
+    pub upper: Option<f64>,
+    /// The lower deviation from the nominal, signed (`-0.1`).
+    /// Unit: mm.
+    pub lower: Option<f64>,
+    /// A tolerance class by name, its deviations read from the shipped tables at the nominal size: an ISO 286 class (`H7`, `g6`, `JS7`, `k6`: capital for a hole, small for a shaft) or a radial bearing ring's ISO 492 Normal class (`ISO 492 bore`, `ISO 492 outside`, `ISO 492 width`).
+    pub class: Option<String>,
+    /// A basic dimension: theoretically exact, boxed on a drawing; the geometric tolerances that refer to it tolerance it.
+    pub basic: Option<bool>,
+}
+
+impl ToJson for DimensionTolerance {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        if let Some(v) = &self.upper {
+            o.set("upper", v.to_json());
+        }
+        if let Some(v) = &self.lower {
+            o.set("lower", v.to_json());
+        }
+        if let Some(v) = &self.class {
+            o.set("class", v.to_json());
+        }
+        if let Some(v) = &self.basic {
+            o.set("basic", v.to_json());
+        }
+        o
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HoleProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -2226,6 +2261,8 @@ pub struct HoleProps {
     pub head_depth: Option<f64>,
     /// A standard hole by name: a thread and a fit, "M4 close fit", "M4 normal fit", "M4 loose fit", "M4 tap" (`./hole-sizes.ts`; the sizes are the shipped tables of ISO 273 and ISO 2306). It gives `diameter`, and for a counterbore or a countersink the head. Clear it to give a diameter that is not in the table.
     pub size: Option<String>,
+    /// The diameter's tolerance: an ISO 286 class (`{ class: "H7" }`), deviations (`{ upper: 0.02, lower: 0 }`) or basic (`./tolerances.ts`). The drawing's hole callout writes it; a fit check names the hole by its id.
+    pub tolerance: Option<DimensionTolerance>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2266,6 +2303,9 @@ impl ToJson for HoleProps {
         }
         if let Some(v) = &self.size {
             o.set("size", v.to_json());
+        }
+        if let Some(v) = &self.tolerance {
+            o.set("tolerance", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
