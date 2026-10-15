@@ -245,11 +245,19 @@ fn check_value(el: &El, def: &str, value: &Json, path: &str) -> Result<Json, Str
 /// Elements that are the items of a list the document holds: the tag, the document field (its node), the port of that
 /// node that holds the list, and the definition each item is checked against (`threed_schema()` `$defs`).
 pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
-    &[("joint", "dynamics", "joints", "DynamicsJoint"), ("mate", "assembly", "mates", "Mate"), ("sheet", "drawings", "value", "DrawingSheet")];
+    &[
+        ("joint", "dynamics", "joints", "DynamicsJoint"),
+        ("mate", "assembly", "mates", "Mate"),
+        ("sheet", "drawings", "value", "DrawingSheet"),
+        ("check", "checks", "value", "DesignCheck"),
+        ("accept", "accepted", "value", "AcceptedFinding"),
+        ("permitted", "permitted", "value", "PermittedFinding"),
+        ("fastener", "fasteners", "value", "FastenerStack"),
+    ];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "point", "constraint", "projection", "line", "circle", "arc",
-    "spline", "ellipse", "ellipseArc", "input",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "point", "constraint",
+    "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input",
 ];
 /// A sketch's segment kinds, by tag.
 pub const SKETCH_SEGMENTS: &[&str] = &["line", "circle", "arc", "spline", "ellipse", "ellipseArc"];
@@ -263,8 +271,10 @@ pub const BUILTIN_PLANES: &[(&str, &str, [f64; 3], [f64; 3], [f64; 3], &str)] = 
 const VIEW_ATTRS: &[&str] = &["semanticVisibility"];
 const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"];
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
-const NOT_SLOTS: &[&str] =
-    &["id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings"];
+const NOT_SLOTS: &[&str] = &[
+    "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
+    "accepted", "permitted", "fasteners",
+];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];
 
