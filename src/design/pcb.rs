@@ -75,6 +75,18 @@
 //! objective().weights()             the weight of each term of the layout score.
 //! ```
 //!
+//! How the board is made (docs/formats.md § logistics):
+//!
+//! ```text
+//! fab().suppliers(json(…)).finish().mask().silk().min_track().min_space().min_drill().min_annular_ring()
+//!      .max_layers().thicknesses([…]).assembly(json(…)).inspection(json(…)).compliance(json(…)).shipping(json(…))
+//!                                   the fab house (the first of `suppliers`, with its terms), its capabilities for
+//!                                   the service ordered (mm), the finish, the solder mask and silk colours, the
+//!                                   assembly ({"house", "sides"}), the board's test ({"electrical", "procedure",
+//!                                   "acceptance", …}), its compliance and shipping. One per board. The board's
+//!                                   layers, thickness and copper stay its own.
+//! ```
+//!
 //! The checks the board must pass and the findings it accepts on purpose (kept in the graph's meta, `checks` and
 //! `accepted`, not as nodes: `super::circuit_checks`):
 //!
@@ -91,6 +103,7 @@
 use super::circuit_checks::declare_circuit_checks;
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::ir::{slug, Scope};
+use super::part_fields::{check_facet, check_offers};
 use super::source::meta;
 use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
@@ -133,6 +146,8 @@ elements! {
     thermal: leaf;
     /// The weight of each term of the layout score.
     objective: leaf;
+    /// How the board is made: `fab().suppliers(json(…)).finish("ENIG").min_track(0.09).assembly(json(…))`.
+    fab: leaf;
     /// A check the board must pass: `check().id("drc").kind("drc")` (`super::circuit_checks`).
     check: leaf;
     /// A finding the board accepts on purpose: `accept().id("edge").check("drc").rule("clearance").region(…).reason(…)`.
@@ -286,6 +301,37 @@ attributes! {
         weights;
         /// A check's severity: "error", or "warning" (its errors are warnings).
         severity;
+        /// A logistics check's options: `json(r#"{"quantities": [10, 100]}"#)`.
+        options;
+        /// The fab house and its terms (the first makes the board):
+        /// `json(r#"[{"name": "JLCPCB", "currency": "USD", "priceBreaks": [{"quantity": 5, "unitPrice": 2}]}]"#)`.
+        suppliers;
+        /// The surface finish: "ENIG", "HASL".
+        finish;
+        /// The solder mask colour.
+        mask;
+        /// The silkscreen colour.
+        silk;
+        /// The house's narrowest track (mm).
+        min_track;
+        /// The house's narrowest space (mm).
+        min_space;
+        /// The house's smallest drill (mm).
+        min_drill;
+        /// The house's smallest annular ring (mm).
+        min_annular_ring;
+        /// The most copper layers the house makes.
+        max_layers;
+        /// The finished thicknesses the house offers (mm): `[0.8, 1.6]`.
+        thicknesses;
+        /// Who places the parts, on which sides: `json(r#"{"house": "JLCPCB", "sides": ["top"]}"#)`.
+        assembly;
+        /// The board's test: `json(r#"{"electrical": "flying-probe", "acceptance": "boots"}"#)`.
+        inspection;
+        /// The board's compliance: `json(r#"{"rohs": "compliant", "reach": "compliant", "eccn": "EAR99"}"#)`.
+        compliance;
+        /// The board's shipping: `json(r#"{"hsCode": "8534.00", "origin": "CN", "hazmat": "none"}"#)`.
+        shipping;
         /// The id of the check whose findings an accept accepts.
         check;
         /// The rule of the findings an accept accepts: "clearance", "pin_conflict".
@@ -310,7 +356,7 @@ pub const BOARD_LAYERS: &[(u32, &str, &str)] = &[(0, "F.Cu", "signal"), (31, "B.
 /// The drawings, by kind: how many points each has (none: a polygon, two or more).
 const GRAPHICS: &[(&str, Option<usize>)] = &[("line", Some(2)), ("arc", Some(3)), ("circle", Some(2)), ("rect", Some(2)), ("poly", None)];
 const CONDUCTORS: &[&str] = &["trace", "arc", "via", "pour"];
-const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net", "netclass", "diffpair", "group", "keepout", "thermal", "objective"];
+const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net", "netclass", "diffpair", "group", "keepout", "thermal", "objective", "fab"];
 /// The layout's constraints, each a board fact (`fact` is its tag), as the TypeScript SDK's.
 const CONSTRAINTS: &[&str] = &["netclass", "diffpair", "group", "keepout", "thermal", "objective"];
 const NET_KINDS: &[&str] = &["signal", "power", "ground", "noisy", "sensitive", "highspeed"];
@@ -467,6 +513,108 @@ pub fn trace_point_id(index: usize, count: usize) -> String {
     } else {
         format!("p{index}")
     }
+}
+
+const FAB_CAPABILITIES: &[&str] = &["minTrack", "minSpace", "minDrill", "minAnnularRing"];
+const SIDES: &[&str] = &["top", "bottom"];
+const ELECTRICAL: &[&str] = &["flying-probe", "fixture", "none"];
+const INSPECTION_KEYS: &[&str] = &["dimensions", "procedure", "acceptance", "sampling", "electrical", "minutes", "ratePerHour", "currency"];
+
+/// The board's `fab()`: the house that makes it (`suppliers`, the first is the one that makes it), its capabilities
+/// for the service ordered, the finish, mask and silk, the assembly, the board's test and its compliance and shipping
+/// (docs/formats.md § logistics). The board's layers, thickness and copper are its own and are not restated here.
+fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
+    let fields = [&["suppliers", "finish", "mask", "silk"][..], FAB_CAPABILITIES, &["maxLayers", "thicknesses", "assembly", "inspection", "compliance", "shipping"]].concat();
+    refuse_unknown(el, &fields)?;
+    let w = at(el);
+    let mut out = vec![("fact".to_string(), Json::from("fab"))];
+    if let Some(v) = el.attr("suppliers") {
+        out.push(("suppliers".into(), check_offers(&w, v)?));
+    }
+    for k in ["finish", "mask", "silk"] {
+        if let Some(v) = text_of(el, k, false)? {
+            if v.trim().is_empty() {
+                return Err(format!("{w}: {k} is text"));
+            }
+            out.push((k.into(), v.into()));
+        }
+    }
+    for k in FAB_CAPABILITIES {
+        if let Some(v) = positive(el, k, false)? {
+            out.push((k.to_string(), v.into()));
+        }
+    }
+    if let Some(n) = num(el, "maxLayers", false)? {
+        if !(n.fract() == 0.0 && n >= 1.0) {
+            return Err(format!("{w}: max_layers is a whole number of copper layers"));
+        }
+        out.push(("maxLayers".into(), n.into()));
+    }
+    let thick = |v: &Json| matches!(v, Json::Arr(l) if !l.is_empty() && l.iter().all(|x| finite(x).is_some_and(|t| t > 0.0)));
+    if let Some(t) = plain(el, "thicknesses", thick, "a list of the finished thicknesses the house offers (mm)")? {
+        out.push(("thicknesses".into(), t));
+    }
+    if let Some(a) = el.attr("assembly") {
+        if !is_object(a) || a_keys(a).any(|k| k != "house" && k != "sides") {
+            return Err(format!("{w}: assembly is {{ house, sides }}"));
+        }
+        if a.get("house").is_some() && !matches!(a.get("house"), Some(Json::Str(h)) if !h.trim().is_empty()) {
+            return Err(format!("{w}: assembly.house is the house that places the parts"));
+        }
+        if let Some(sides) = a.get("sides") {
+            let ok = match sides {
+                Json::Arr(l) => {
+                    let names: Vec<&str> = l.iter().filter_map(Json::as_str).filter(|s| SIDES.contains(s)).collect();
+                    !l.is_empty() && names.len() == l.len() && names.iter().enumerate().all(|(i, s)| !names[..i].contains(s))
+                }
+                _ => false,
+            };
+            if !ok {
+                return Err(format!(r#"{w}: assembly.sides is a list of "top", "bottom""#));
+            }
+        }
+        out.push(("assembly".into(), a.clone()));
+    }
+    if let Some(i) = el.attr("inspection") {
+        if !is_object(i) {
+            return Err(format!("{w}: inspection is an object ({{ {} }})", INSPECTION_KEYS.join(", ")));
+        }
+        if let Some(k) = a_keys(i).find(|k| !INSPECTION_KEYS.contains(k)) {
+            return Err(format!("{w}: inspection.{k} is not read (it takes {})", INSPECTION_KEYS.join(", ")));
+        }
+        if i.get("electrical").is_some_and(|e| !e.as_str().is_some_and(|e| ELECTRICAL.contains(&e))) {
+            return Err(format!("{w}: inspection.electrical is one of {}", ELECTRICAL.join(", ")));
+        }
+        for k in ["procedure", "acceptance", "sampling"] {
+            if i.get(k).is_some_and(|v| !v.as_str().is_some_and(|s| !s.trim().is_empty())) {
+                return Err(format!("{w}: inspection.{k} is text"));
+            }
+        }
+        for k in ["minutes", "ratePerHour"] {
+            if i.get(k).is_some_and(|v| !v.as_f64().is_some_and(|n| n >= 0.0)) {
+                return Err(format!("{w}: inspection.{k} is a number, 0 or more"));
+            }
+        }
+        if i.get("currency").is_some_and(|c| !c.as_str().is_some_and(|c| c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()))) {
+            return Err(format!(r#"{w}: inspection.currency is an ISO 4217 code ("USD")"#));
+        }
+        out.push(("inspection".into(), i.clone()));
+    }
+    for k in ["compliance", "shipping"] {
+        if let Some(v) = el.attr(k) {
+            out.push((k.into(), check_facet(&w, k, v)?));
+        }
+    }
+    Ok(out)
+}
+
+/// The keys of a JSON object, in order.
+fn a_keys(v: &Json) -> impl Iterator<Item = &str> {
+    let entries: &[(String, Json)] = match v {
+        Json::Obj(e) => e,
+        _ => &[],
+    };
+    entries.iter().map(|(k, _)| k.as_str())
 }
 
 /// How a message names an element: `component().name("R1")`, `trace()`.
@@ -799,6 +947,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
     let mut nets: Vec<String> = Vec::new();
     let mut constraint_names: Vec<String> = Vec::new();
     let mut kicad_forms = 0;
+    let mut fabs = 0;
     for el in &children {
         let nm = el.attr("name");
         if el.tag == "component" {
@@ -833,6 +982,11 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
             kicad_forms += 1;
             if kicad_forms > 1 {
                 return Err("a board has one kicad()".into());
+            }
+        } else if el.tag == "fab" {
+            fabs += 1;
+            if fabs > 1 {
+                return Err("a board has one fab()".into());
             }
         } else if CONSTRAINTS.contains(&el.tag) {
             let key = match (el.tag, nm) {
@@ -1230,6 +1384,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 let name = el.attr("name").cloned().unwrap_or(Json::Null);
                 let inputs = vec![("fact".to_string(), Json::from("net")), ("name".into(), name), ("code".into(), code.into())];
                 s.add(BOARD_FACT, inputs, None, Some("Net"), meta(el))?;
+            }
+            "fab" => {
+                s.add(BOARD_FACT, fab_fact(el)?, None, Some("Fab"), meta(el))?;
             }
             tag if CONSTRAINTS.contains(&tag) => {
                 s.add(BOARD_FACT, constraint_fact(el)?, None, Some(tag), meta(el))?;

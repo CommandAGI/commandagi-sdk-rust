@@ -239,7 +239,7 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
     // This crate has no regex engine: it reads the two patterns its schema carries, and refuses any other.
     use commandagi::design::schema::{describe_issue, validate};
     let text = include_str!("../src/design/threed_schema.json");
-    let known = [r#""pattern":"\\S""#, r#""pattern":"^[A-Za-z0-9_.-]+$""#];
+    let known = [r#""pattern":"\\S""#, r#""pattern":"^[A-Za-z0-9_.-]+$""#, r#""pattern":"^[A-Z]{2}$""#, r#""pattern":"^[A-Z]{3}$""#, r#""pattern":"^\\d{4}-\\d{2}-\\d{2}$""#];
     assert_eq!(text.matches(r#""pattern""#).count(), known.iter().map(|k| text.matches(k).count()).sum::<usize>());
     let none = Json::parse("{}").unwrap();
     let id = Json::parse(r#"{"type":"string","pattern":"^[A-Za-z0-9_.-]+$"}"#).unwrap();
@@ -278,7 +278,7 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
 #[test]
 fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
     // The TypeScript and Python SDKs read the same elements to the same nodes.
-    let engineering = r#"{"partNumber":"CA-0001","material":"6061-T6","process":"cnc-milling","finish":"anodize clear, 10 µm","vendor":{"name":"Misumi","partNumber":"HFS5-2020-300"},"cost":{"amount":12.5,"currency":"USD","source":"quote Q-118","date":"2026-10-01"}}"#;
+    let engineering = r#"{"partNumber":"CA-0001","material":"6061-T6","process":"cnc-milling","finish":"anodize clear, 10 µm","suppliers":[{"name":"Misumi","sku":"HFS5-2020-300","currency":"USD","priceBreaks":[{"quantity":1,"unitPrice":12.5}],"source":"quote Q-118","date":"2026-10-01"}]}"#;
     let j1 = || joint().id("j1").kind("revolute").a("base").b("arm").anchor([0, 0, 40]).axis([0, 0, 1]).limits([-1.5, 1.5]).ref_a(json(r#"{"kind": "face", "point": [0, 0, 40], "direction": [0, 0, 1]}"#));
     let g = graph(
         part([
@@ -318,8 +318,8 @@ fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
     );
     assert_eq!(bad(part([joint().id("j1").kind("fixed").a("base")]).name("P")), r#"joint().id("j1"): anchor: is required"#);
     assert_eq!(
-        bad(part([body().id("base").engineering(json(r#"{"process": "magic", "cost": {"amount": 1, "source": "x", "date": "2026-10-01"}}"#))]).name("P")),
-        r#"body().id("base"): engineering/process: must be one of cnc-milling, cnc-turning, laser-cutting, waterjet-cutting, sheet-metal-bending, extrusion, casting, injection-moulding, fdm-printing, sla-printing, sls-printing, welding, grinding, manual, purchased (got "magic"); engineering/cost/currency: is required"#
+        bad(part([body().id("base").engineering(json(r#"{"process": "magic", "suppliers": [{"sku": "x", "date": "2026-10-01"}]}"#))]).name("P")),
+        r#"body().id("base"): engineering/process: must be one of cnc-milling, cnc-turning, laser-cutting, waterjet-cutting, sheet-metal-bending, extrusion, casting, injection-moulding, fdm-printing, sla-printing, sls-printing, welding, grinding, manual, purchased (got "magic"); engineering/suppliers/0/name: is required"#
     );
     assert_eq!(bad(part([slot().name("dynamics").value(json(r#"{"joints": []}"#))]).name("P")), r#"slot().name("dynamics"): joints are written as joint() elements"#);
     assert!(bad(part([slot().name("drawings").value(json("[]"))]).name("P")).contains("drawings is not a slot"));

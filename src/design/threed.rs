@@ -52,7 +52,13 @@
 //!                                                .kind().entities([…]), projection().id().ref_().feature()
 //! body().id().name().material(…).engineering(…) a body's own data (`bodyMeta[id]`): its name, its look (`material`)
 //!                                                and what it is (`engineering`: the material grade by its id in a
-//!                                                materials table, the process, the finish, the vendor and the cost)
+//!                                                materials table, the process and how it is made, the finish, its
+//!                                                suppliers and their terms, its inspection, compliance, shipping and
+//!                                                lifecycle; docs/formats.md § logistics)
+//! item().id().name().qty().ref_().engineering(…) a part of the product with no geometry here (`items`): a cable in
+//!                                                the box, or another design by `ref` (a board's .pcb.rs)
+//! assemble().id().order().parts([…]).fasteners([…]).tools([…]).fixture().by().minutes().rate_per_hour()
+//!          .currency().instruction()             one assembly step (`assemblySteps`)
 //! joint().id().kind().a().b().anchor().axis().limits() …   a joint between two bodies (`dynamics.joints`): fixed,
 //!                                                revolute, prismatic, cylindrical, planar, screw, spherical, universal
 //! mate().id().kind().a().b().axis() …            a mate between two components of an assembly (`assembly.mates`)
@@ -104,6 +110,10 @@ elements! {
     mate: leaf;
     /// An engineering drawing sheet: `sheet().id("sheet1").views(json(r#"[{"id": "front", "view": "front"}]"#))`.
     sheet: leaf;
+    /// A part of the product with no geometry here: `item().id("tape").name("Foam tape").qty(2).engineering(…)`.
+    item: leaf;
+    /// One assembly step: `assemble().id("s1").order(1).parts(["b", "tape"]).by("in-house").minutes(2)`.
+    assemble: leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
     feature: leaf;
     /// A sketch: its points, segments, constraints and projections.
@@ -186,23 +196,23 @@ attributes! {
     pub trait ThreedAttrs {
         a; actuator; african; age; align_to_path; anchor; angle; animation; annotations; area; armatures; asian; assembly;
         at; axis; axis_b; b; base; bend_radius; bias; bindings; bodies; body_id; bond_orders; bonds; both_sides;
-        break_after; builtin; builtin_planes; cap; caucasian; cell; center; centreline; chains; closed; collapsed;
+        break_after; builtin; builtin_planes; by; cap; caucasian; cell; center; centreline; chains; closed; collapsed;
         colormap; colors; comment; component; conductor; construction; consumes; control_points; count; count2;
-        cupsize; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
+        cupsize; currency; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
         draft_angle; drill_mm; dynamics; edge; edge_weights; edges; electrical; electron; elements; end; engineering; entities;
-        environment; fabrication; face; faces; factor; feature; file_id; file_name; firmness; fixed; focus;
+        environment; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
         footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; id; importer; indices;
-        input; inputs; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
-        level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; mode;
+        input; inputs; instruction; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
+        level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; minutes; mode;
         model_id; modifier; muscle; name; node_colors; node_groups; node_positions; node_sizes; node_types; normal;
         normals; nucleus; nurbs; offset; operation; optimization; order; origin; outward; overall_dimensions; pad; pad_diameter_mm;
-        pads; paint; params; parents; part; path; pin; pitch; placement; planar; plane; point; point_size; points;
-        polygons; position; positions; profile; profiles; projection; proportions; provenance; pull_direction; quaternion;
-        radii; radius; radius1; radius2; ref_; ref_a; ref_b; reference; refs; regions; render; representation; reverse;
+        pads; paint; params; parents; part; parts; path; pin; pitch; placement; planar; plane; point; point_size; points;
+        polygons; position; positions; profile; profiles; projection; proportions; provenance; pull_direction; qty; quaternion;
+        radii; radius; radius1; radius2; rate_per_hour; ref_; ref_a; ref_b; reference; refs; regions; render; representation; reverse;
         right_handed; rings; rotate_angle; rotate_axis; rotation_deg; rotations; rule; ruled; scale; scale_x_y_z;
         scales; scene_constraints; seed_feature; semantic_visibility; sh; sh_degree; side; signature; size; sketch;
         skins; source; source_materials; source_uv; spacing; spacing2; standard_parts; start; step; style;
-        subdivision; suppressed; symmetric; target; terminal; thickness; through; title; token; transform; translate;
+        subdivision; suppressed; symmetric; target; terminal; thickness; through; title; token; tools; transform; translate;
         travel; turns; type_; u; unit; unit_scale_mm; up_to_face; uv; v; value; views; visible; weight; width; x; x_axis; y;
         /// A size's tolerance: `json(r#"{"class": "H7"}"#)`, `{"upper": 0.05, "lower": -0.05}` or `{"basic": true}`.
         tolerance;
@@ -259,10 +269,12 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
         ("accept", "accepted", "value", "AcceptedFinding"),
         ("permitted", "permitted", "value", "PermittedFinding"),
         ("fastener", "fasteners", "value", "FastenerStack"),
+        ("item", "items", "value", "ProductItem"),
+        ("assemble", "assemblySteps", "value", "AssemblyStep"),
     ];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "point", "constraint",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "item", "assemble", "point", "constraint",
     "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input",
 ];
 /// A sketch's segment kinds, by tag.
@@ -279,7 +291,7 @@ const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
-    "accepted", "permitted", "fasteners",
+    "accepted", "permitted", "fasteners", "items", "assemblySteps",
 ];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];

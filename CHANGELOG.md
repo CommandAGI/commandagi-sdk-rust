@@ -22,6 +22,18 @@ Added
   (`standards_data.json` `tolerances`). A 3D document's `check` takes `hole`, `shaft`, `intent` (a fit) and `chain`,
   `limit`, `method`, `samples`, `seed` (a stack-up).
 
+Added (a design's logistics, CommandAGI's `docs/formats.md` § logistics, as the TypeScript SDK's)
+
+- A schematic part's logistics: `.suppliers(…)`, `.alternates(…)`, `.datasheet(…)`, `.lifecycle(…)`,
+  `.compliance(…)`, `.shipping(…)`, each written as KiCad properties of the part (`LCSC Part`, `LCSC Terms`,
+  `Datasheet`, `RoHS`, `HS Code` …) in the TypeScript SDK's forms; `commandagi::design::part_fields` writes them and
+  `part_fields()` reads them back. `attrs` may not name a property that an argument says.
+- A circuit's `check()` takes `options` (a logistics check's, `{"quantities": [10, 100]}`), kept in `meta.checks`.
+- A board's `fab()`: the fab house and its terms, its capabilities, finish, mask, silk, assembly, test, compliance and
+  shipping, as one board fact. One per board.
+- A 3D document's `item()` (`items`) and `assemble()` (`assemblySteps`); `body().engineering(…)` takes the logistics
+  fields and no longer `vendor` or `cost`. The schema reader knows the patterns of a currency, a country and a date.
+
 ## 0.6.0 (2026-10-15)
 
 The crate calls no platform tool, so the removal of `pcb_autoroute`, `pcb_optimize_routing` and

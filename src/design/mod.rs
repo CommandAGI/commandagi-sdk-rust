@@ -45,6 +45,7 @@ pub mod media;
 pub mod monitors;
 pub mod office;
 pub mod ontology;
+pub mod part_fields;
 pub mod pcb;
 pub mod pdf;
 pub mod postal;

@@ -284,7 +284,7 @@ fn a_circuits_checks_and_accepts_are_kept_in_the_graphs_meta_not_as_nodes() {
 #[test]
 fn a_wrong_check_or_accept_is_refused_by_name() {
     let r1 = || resistor("R1").resistance("1k");
-    assert!(bad(group("S", [r1(), check().id("erc").kind("erc").resistance(1)])).contains(r#"check().id("erc"): resistance is not read (it takes id, kind, severity)"#));
+    assert!(bad(group("S", [r1(), check().id("erc").kind("erc").resistance(1)])).contains(r#"check().id("erc"): resistance is not read (it takes id, kind, severity, options)"#));
     assert!(bad(group("S", [r1(), check().id("erc").kind("erc").severity("fatal")])).contains(r#"severity is "error" or "warning""#));
     assert!(bad(group("S", [r1(), check().kind("erc")])).contains("check(): id is the check's name (erc)"));
     assert!(bad(group("S", [r1(), check().id("a b").kind("erc")])).contains("id is letters, digits, _ . -"));

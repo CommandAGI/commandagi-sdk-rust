@@ -63,6 +63,9 @@
 //!                                                                           package ("<n> pins, pitch <mm> mm, body
 //!                                                                           <l> x <w> mm"), read by the pinout and
 //!                                                                           footprint checks
+//! … .suppliers(json(…)).alternates(json(…)).datasheet(…)                   its logistics, as KiCad properties too
+//!   .lifecycle(json(…)).compliance(json(…)).shipping(json(…))               (`super::part_fields`: LCSC Part,
+//!                                                                           Datasheet, RoHS, HS Code …)
 //! attachment(name).role("schematic").file(path).mime(…)                     a KiCad file the circuit carries
 //! check().id(…).kind("erc").severity(…)                                     a check the circuit must pass, and a
 //! accept().id(…).check(…).rule(…).refs([…]).net(…).reason(…)               finding it accepts on purpose: kept in
@@ -81,6 +84,8 @@
 use super::circuit_checks::declare_circuit_checks;
 use super::element::{attributes, elements, rust_name};
 use super::ir::{channels, fnv1a, slug, wire, Scope};
+use super::part_fields::{part_field_forms, FIELD_ARGUMENTS};
+pub use super::part_fields::{part_fields, FACET_FIELDS, PART_FIELDS};
 use super::source::meta;
 use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
@@ -179,6 +184,19 @@ attributes! {
         package_dimensions;
         /// A part's other fields, by their KiCad names: `.attrs(json(r#"{"Tolerance": "1%"}"#))`.
         attrs;
+        /// Who sells a part, on what terms (KiCad properties `<name> Part`, `<name> Terms`):
+        /// `json(r#"[{"name": "LCSC", "sku": "C25744", "currency": "USD", "priceBreaks": [{"quantity": 1, "unitPrice": 0.01}]}]"#)`.
+        suppliers;
+        /// A part's approved second sources (KiCad property `Alternates`): `json(r#"[{"manufacturer": "…", "mpn": "…"}]"#)`.
+        alternates;
+        /// A part's datasheet, a URL or a path (KiCad property `Datasheet`).
+        datasheet;
+        /// A part's lifecycle: `json(r#"{"status": "active", "onHand": 2, "reorderPoint": 5}"#)` (`Lifecycle`, `On Hand` …).
+        lifecycle;
+        /// A part's compliance: `json(r#"{"rohs": "compliant", "reach": "compliant", "eccn": "EAR99"}"#)` (`RoHS`, `REACH` …).
+        compliance;
+        /// A part's shipping: `json(r#"{"hsCode": "8517.62", "origin": "CN", "hazmat": "none"}"#)` (`HS Code` …).
+        shipping;
         /// A trace's whole path of selectors, from `from` to `to`.
         path;
         /// What an attachment is: "schematic", "project", "library" or "other".
@@ -193,6 +211,8 @@ attributes! {
         kind;
         /// A check's severity: "error", or "warning" (its errors are warnings).
         severity;
+        /// A logistics check's options: `json(r#"{"quantities": [10, 100]}"#)`.
+        options;
         /// The id of the check whose findings an accept accepts.
         check;
         /// The rule of the findings an accept accepts: "pin_not_connected", "pin_conflict".
@@ -358,109 +378,12 @@ fn no_connect_of(el: &El) -> Result<Option<Json>, String> {
     Ok(Some(v.clone()))
 }
 
-/// A part's fields: the engineering data a part states, each one KiCad `property` form on the part (`foreign`, the form
-/// the board editor writes), so the BOM, the KiCad board and a 3D body's join read one thing. The named attributes, by
-/// the property each writes (the TypeScript SDK's `PART_FIELDS`); `attrs` holds any other field by its KiCad name.
-pub const PART_FIELDS: &[(&str, &str)] = &[
-    ("partNumber", "CommandAGI IPN"),
-    ("manufacturer", "Manufacturer"),
-    ("mpn", "MPN"),
-    ("rating", "Rating"),
-    ("pinoutVerified", "Pinout Verified"),
-    ("footprintVerified", "Footprint Verified"),
-    ("packageDimensions", "Package Dimensions"),
-];
-const FIELD_EXAMPLES: &[&str] = &[
-    "MF-R-3K",
-    "Yageo",
-    "RC0805FR-073KL",
-    "0.125 W",
-    "datasheet https://www.ti.com/lit/ds/symlink/sn74lvc1t45.pdf p. 3, 2026-10-15",
-    "measured 2026-10-15, calipers on the reel's part",
-    "6 pins, pitch 0.95 mm, body 2.9 x 1.6 mm",
-];
-/// Fields a part holds otherwise: its reference, its value, its footprint.
-const OWN_FIELDS: &[&str] = &["Reference", "Value", "Footprint"];
-const FIELD_PROPS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs"];
+/// The attributes that state a part's fields (its text fields and its logistics: `super::part_fields`).
+const FIELD_PROPS: &[&str] = FIELD_ARGUMENTS;
 
-fn is_date(s: &str) -> bool {
-    let b = s.as_bytes();
-    b.len() == 10 && b[4] == b'-' && b[7] == b'-' && b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
-}
-fn is_number(s: &str) -> bool {
-    let mut parts = s.splitn(2, '.');
-    let whole = parts.next().unwrap_or("");
-    !whole.is_empty() && whole.bytes().all(|c| c.is_ascii_digit()) && parts.next().is_none_or(|f| !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
-}
-/// How a pinout or a footprint is known (the TypeScript SDK's `VERIFIED`).
-fn is_verified(v: &str) -> bool {
-    if v == "memory" {
-        return true;
-    }
-    if let Some(rest) = v.strip_prefix("measured ") {
-        let (date, how) = rest.split_once(", ").map_or((rest, None), |(d, h)| (d, Some(h)));
-        return is_date(date) && how.is_none_or(|h| !h.is_empty());
-    }
-    let Some(rest) = v.strip_prefix("datasheet ") else { return false };
-    let Some((url, rest)) = rest.split_once(" p. ") else { return false };
-    let Some((page, date)) = rest.split_once(", ") else { return false };
-    (url.starts_with("https://") || url.starts_with("http://")) && !url.contains(char::is_whitespace) && !page.is_empty() && page.bytes().all(|c| c.is_ascii_digit()) && is_date(date)
-}
-/// A datasheet's package numbers (the TypeScript SDK's `PACKAGE`).
-fn is_package(v: &str) -> bool {
-    let Some((pins, rest)) = v.split_once(" pins, pitch ") else { return false };
-    let Some((pitch, rest)) = rest.split_once(" mm, body ") else { return false };
-    let Some((l, rest)) = rest.split_once(" x ") else { return false };
-    let Some(w) = rest.strip_suffix(" mm") else { return false };
-    !pins.is_empty() && pins.bytes().all(|c| c.is_ascii_digit()) && is_number(pitch) && is_number(l) && is_number(w)
-}
-fn in_grammar(prop: &str, v: &str) -> bool {
-    match prop {
-        "pinoutVerified" | "footprintVerified" => is_verified(v),
-        "packageDimensions" => is_package(v),
-        _ => true,
-    }
-}
-
-/// One field as the part carries it: `(property "MPN" "…" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))`.
-fn field_form(name: &str, value: &str) -> Json {
-    let atom = |v: &str, q: bool| Json::Obj(vec![("kind".into(), "atom".into()), ("v".into(), v.into()), ("q".into(), q.into())]);
-    let sym = |v: &str| atom(v, false);
-    let list = |items: Vec<Json>| Json::Obj(vec![("kind".into(), "list".into()), ("items".into(), Json::Arr(items))]);
-    list(vec![
-        sym("property"),
-        atom(name, true),
-        atom(value, true),
-        list(vec![sym("at"), sym("0"), sym("0"), sym("0")]),
-        list(vec![sym("effects"), list(vec![sym("font"), list(vec![sym("size"), sym("1.27"), sym("1.27")])]), list(vec![sym("hide"), sym("yes")])]),
-    ])
-}
-
-/// The fields a part states (`.part_number`, `.manufacturer`, `.mpn`, `.rating`, `.attrs`), as its property forms.
+/// The fields a part states, as its property forms (`super::part_fields`).
 fn fields_of(el: &El) -> Result<Option<Json>, String> {
-    let mut forms = Vec::new();
-    for (i, (prop, name)) in PART_FIELDS.iter().enumerate() {
-        match el.attr(prop) {
-            None => {}
-            Some(Json::Str(v)) if !v.trim().is_empty() && in_grammar(prop, v) => forms.push(field_form(name, v)),
-            Some(_) => return Err(format!("{}: {} is text ({:?})", el.call_text(), rust_name(prop), FIELD_EXAMPLES[i])),
-        }
-    }
-    match el.attr("attrs") {
-        None => {}
-        Some(Json::Obj(entries)) if entries.iter().all(|(_, v)| v.as_str().is_some_and(|s| !s.trim().is_empty())) => {
-            for (name, v) in entries {
-                if let Some((prop, _)) = PART_FIELDS.iter().find(|(_, n)| n == name) {
-                    return Err(format!("{}: attrs names {name}: say it with {}", el.call_text(), rust_name(prop)));
-                }
-                if name.trim().is_empty() || OWN_FIELDS.contains(&name.as_str()) {
-                    return Err(format!("{}: attrs names {name}, which is the part's own (its name, value or footprint)", el.call_text()));
-                }
-                forms.push(field_form(name, v.as_str().unwrap()));
-            }
-        }
-        Some(_) => return Err(format!("{}: attrs is an object of text ({{ Tolerance: \"1%\" }})", el.call_text())),
-    }
+    let forms = part_field_forms(&el.call_text(), el)?;
     Ok(if forms.is_empty() { None } else { Some(Json::Arr(forms)) })
 }
 

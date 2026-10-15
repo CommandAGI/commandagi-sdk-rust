@@ -223,5 +223,5 @@ fn a_boards_checks_and_accepts_are_kept_in_the_graphs_meta() {
     assert_eq!(a.text(), r#"{"id":"edge","check":"drc","rule":"clearance","net":"GND","region":{"min":[0,0],"max":[3,3]},"reason":"the mounting hole's keep-out"}"#);
     let Some(Json::Arr(checks)) = meta.get("checks") else { panic!("no checks") };
     assert_eq!(checks[0].get("kind").and_then(Json::as_str), Some("drc"));
-    assert!(bad(board_of(vec![check().id("drc").kind("drc").width(1)])).contains("width is not read (it takes id, kind, severity)"));
+    assert!(bad(board_of(vec![check().id("drc").kind("drc").width(1)])).contains("width is not read (it takes id, kind, severity, options)"));
 }

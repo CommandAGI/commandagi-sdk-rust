@@ -4,6 +4,15 @@
 //! ```text
 //! check().id("erc").kind("erc")                                  the electrical rule check (a schematic, a board)
 //! check().id("drc").kind("drc").severity("warning")             the design rule check (a board); its errors as warnings
+//! check().id("pinout").kind("pinout")                           every part's pinout checked against its datasheet or
+//!                                                                measured (its pinout_verified, `super::part_fields`)
+//! check().id("footprint").kind("footprint")                     every part's pads checked, and its footprint's pad
+//!                                                                count, pitch and body equal to its package_dimensions
+//! check().id("cost").kind("cost").options(json(r#"{"quantities": [10, 100]}"#))
+//!                                                                a logistics check (sourcing, process, assembly,
+//!                                                                inspection, compliance, shipping, lifecycle, cost:
+//!                                                                docs/formats.md § logistics), with its own options
+//! accept().id("lbl").check("sourcing").rule("no-supplier").refs(["J9"]).reason("…")   a logistics finding of one part
 //! accept().id("tx").check("erc").rule("pin_conflict").refs(["U1", "U3"]).reason("the bus is open-drain")
 //! accept().id("edge").check("drc").rule("clearance").region(json(r#"{"min": [0, 0], "max": [3, 3]}"#)).reason("…")
 //! ```
@@ -65,9 +74,10 @@ pub(crate) fn declare_circuit_checks<'a>(meta: &mut Json, elements: Vec<&'a El>)
         let taken = [checks.as_slice(), accepted.as_slice()].concat();
         match el.tag {
             "check" => {
-                only(el, &["id", "kind", "severity"])?;
+                only(el, &["id", "kind", "severity", "options"])?;
                 let id = id_of(el, "the check's name (erc)", &taken)?;
-                let kind = text(el, "kind", "what is checked: erc, drc, pinout, footprint", true)?.unwrap_or_default();
+                let kind = text(el, "kind", "what is checked: erc, drc, pinout, footprint, or a logistics kind (sourcing, process, assembly, inspection, compliance, shipping, lifecycle, cost)", true)?
+                    .unwrap_or_default();
                 let mut c = Json::obj().with("id", id.as_str()).with("kind", kind.as_str());
                 match el.attr("severity") {
                     None => {}
@@ -75,6 +85,13 @@ pub(crate) fn declare_circuit_checks<'a>(meta: &mut Json, elements: Vec<&'a El>)
                         c.set("severity", s.as_str());
                     }
                     Some(_) => return Err(format!("{}: severity is \"error\" or \"warning\"", at(el))),
+                }
+                match el.attr("options") {
+                    None => {}
+                    Some(o @ Json::Obj(_)) => {
+                        c.set("options", o.clone());
+                    }
+                    Some(_) => return Err(format!("{}: options is an object (the cost check's {{\"quantities\": [10, 100]}})", at(el))),
                 }
                 if let Some(s) = el.source_json() {
                     c.set("source", s);

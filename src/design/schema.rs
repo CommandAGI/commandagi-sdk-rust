@@ -6,7 +6,8 @@
 //!
 //! The subset: type, enum, const, properties, required, additionalProperties, items, prefixItems, minItems, maxItems,
 //! minimum, maximum, exclusiveMinimum, exclusiveMaximum, anyOf, oneOf, `$ref` to `#/$defs/<name>`, and the two
-//! `pattern`s the generated schemas use (`\S`, `^[A-Za-z0-9_.-]+$`). The crate has no regex engine: any other pattern
+//! `pattern`s the generated schemas use (`\S`, `^[A-Za-z0-9_.-]+$`, `^[A-Z]{2}$`, `^[A-Z]{3}$`,
+//! `^\d{4}-\d{2}-\d{2}$`). The crate has no regex engine: any other pattern
 //! is refused by name, never skipped.
 
 use super::json::Json;
@@ -248,6 +249,14 @@ fn matches_pattern(pattern: &str, text: &str) -> Result<bool, String> {
     match pattern {
         r"\S" => Ok(text.chars().any(|c| !c.is_whitespace())),
         r"^[A-Za-z0-9_.-]+$" => Ok(!text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))),
+        // An ISO 3166 alpha-2 country and an ISO 4217 currency.
+        r"^[A-Z]{2}$" => Ok(text.len() == 2 && text.bytes().all(|b| b.is_ascii_uppercase())),
+        r"^[A-Z]{3}$" => Ok(text.len() == 3 && text.bytes().all(|b| b.is_ascii_uppercase())),
+        // A date, YYYY-MM-DD.
+        r"^\d{4}-\d{2}-\d{2}$" => {
+            let b = text.as_bytes();
+            Ok(b.len() == 10 && b.iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() }))
+        }
         other => Err(format!("schema pattern {other} is not one this reader knows")),
     }
 }
