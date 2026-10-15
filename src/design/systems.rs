@@ -17,8 +17,10 @@
 //!
 //! The rule of the ontology's files: a record is an element and its fields are the element's attributes (`verified_by`
 //! is `verifiedBy`; `ref_` is `ref`). A requirement is named by a ref, never by an id alone (`Rover.req.rs#mass`). A
-//! side's maps are JSON: `.defines(json(r#"{"BOARD": 1}"#))`. Nothing adds a default. The checks are the host's
-//! (`commandagi check`, `commandagi trace`).
+//! side's maps are JSON: `.defines(json(r#"{"BOARD": 1}"#))`. Nothing adds a default. A `bom()` gives masses; a cost
+//! budget reads the logistics roll-up of the design it names (`.design("cad/Assembly.3d.rs")`: a 3D document, a
+//! schematic or a board with a cost check), the one source of cost, so no contribution is a cost. The checks are the
+//! host's (`commandagi check`, `commandagi trace`).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
@@ -87,8 +89,8 @@ pub const MODE_FIELDS: &[&str] = &["id", "description"];
 pub const RAIL_FIELDS: &[&str] = &["id", "voltage", "description", "source"];
 pub const CONVERTER_FIELDS: &[&str] = &["id", "input", "output", "efficiency", "source"];
 pub const LOAD_FIELDS: &[&str] = &["id", "part", "rail", "mode", "current", "power", "voltage", "source"];
-pub const CONTRIBUTION_FIELDS: &[&str] = &["id", "quantity", "part", "value", "unit", "qty", "mode", "rail", "currency", "per", "source"];
-pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "per", "currency", "resistance", "margin", "source", "description"];
+pub const CONTRIBUTION_FIELDS: &[&str] = &["id", "quantity", "part", "value", "unit", "qty", "mode", "rail", "source"];
+pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "per", "currency", "design", "resistance", "margin", "source", "description"];
 pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", "at", "required", "description"];
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
@@ -237,6 +239,9 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
             }
             "contribution" => {
                 need(one_of(c.attr("quantity"), BUDGET_QUANTITIES), || format!("{w}: quantity must be one of {} (got {})", BUDGET_QUANTITIES.join(", "), said(c.attr("quantity"))))?;
+                need(c.attr("quantity").and_then(Json::as_str) != Some("cost"), || {
+                    format!("{w}: a cost is stated in the design's logistics (a part's suppliers, a made part's rate), which a cost budget's design rolls up, not as a contribution")
+                })?;
                 need(num(c.attr("value")), || format!("{w}: value is a number"))?;
                 need(matches!(c.attr("source"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: source says where the number was read (a datasheet, a measurement, "estimate: …")"#))?;
             }
@@ -247,6 +252,9 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
                 let q = c.attr("quantity").and_then(Json::as_str);
                 if q == Some("power") {
                     need(string(c.attr("rail")) && string(c.attr("mode")), || format!("{w}: a power budget names its rail and its mode"))?;
+                }
+                if q == Some("cost") {
+                    need(string(c.attr("design")), || format!(r#"{w}: a cost budget names the design whose logistics roll-up it reads (design="cad/Assembly.3d.rs")"#))?;
                 }
                 if q == Some("thermal") {
                     need(string(c.attr("mode")) && num(c.attr("resistance")), || format!("{w}: a thermal budget names its mode and the thermal resistance to the ambient (resistance, K/W)"))?;

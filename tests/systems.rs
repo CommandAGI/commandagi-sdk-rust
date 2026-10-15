@@ -70,6 +70,8 @@ fn a_system_is_its_records_as_written() {
         (budget().id("b").quantity("power").limit(1), "a power budget names its rail and its mode"),
         (budget().id("b").quantity("thermal").limit(1).mode("m"), "thermal resistance to the ambient (resistance, K/W)"),
         (budget().id("b").quantity("mass").limit(1).margin(1.5), "margin is a fraction"),
+        (budget().id("b").quantity("cost").per(100).limit(30), "a cost budget names the design whose logistics roll-up it reads"),
+        (contribution().id("c").quantity("cost").part("P").value(1).source("a quote"), "a cost is stated in the design's logistics"),
         (converter().id("c").input("a").output("b").efficiency(88), "efficiency is a number in (0, 1]"),
         (load().id("l").part("U1").rail("r").mode("m"), "a load states its current (A) or its power (W)"),
         (contribution().id("c").quantity("mass").part("P").value(1), "source says where the number was read"),
