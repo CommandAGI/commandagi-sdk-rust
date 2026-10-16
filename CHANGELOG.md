@@ -4,7 +4,7 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
-## Unreleased
+## 0.6.1 (2026-10-15)
 
 Added
 
@@ -37,6 +37,19 @@ Added (a design's logistics, CommandAGI's `docs/formats.md` § logistics, as the
   shipping, as one board fact. One per board.
 - A 3D document's `item()` (`items`) and `assemble()` (`assemblySteps`); `body().engineering(…)` takes the logistics
   fields and no longer `vendor` or `cost`. The schema reader knows the patterns of a currency, a country and a date.
+
+Added (the vocabulary the TypeScript and Python SDKs have)
+
+- A hardware release and a change (`release()`, `change()`), and the release a unit or an instance was built from. A
+  definition names its firmware and revision; `firmware()` also declares the channels a firmware gives.
+- Systems (`commandagi::design::systems`): requirements, a system's budgets (a cost budget names the design whose
+  logistics roll-up it reads, `.design(…)`) and an interface.
+- Studies (`commandagi::design::study`), with the flow kind (`fluid`, `inlet`, `outlet`, `flow_mesh`; units m-kg-s).
+- `check()` and `accept()` in a `.sch.rs` and a `.pcb.rs`, kept in the graph's meta (0.6.0 refused them).
+- Drawing sheets: section and detail views in the schema; a `sheet()` with a section view and no section, or a bad
+  detail, is refused.
+- A part's pinout and pads are checked: `.pinout_verified`, `.footprint_verified` and `.package_dimensions` are part
+  fields. A material grade states its Poisson's ratio where its source states one.
 
 ## 0.6.0 (2026-10-15)
 
