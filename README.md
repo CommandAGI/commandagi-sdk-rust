@@ -6,7 +6,7 @@ the file as the smallest text edit.
 
 ```toml
 [dependencies]
-commandagi = { git = "https://github.com/CommandAGI/commandagi-sdk-rust", tag = "v0.6.1" }
+commandagi = { git = "https://github.com/CommandAGI/commandagi-sdk-rust", tag = "v0.6.2" }
 ```
 
 ```rust
