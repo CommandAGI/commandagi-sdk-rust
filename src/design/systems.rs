@@ -225,6 +225,18 @@ fn requirements_of(t: &DocTree) -> Result<Json, String> {
     Ok(grouped(t, &[("requirement", "requirements")]))
 }
 
+/// A built-in quantity, or a declared one's name (lower-case letters, digits and "-") with its unit: the unit names the
+/// family the host converts within (m3/h, m2, slm).
+fn quantity_of(c: &DocTree, w: &str) -> Result<(), String> {
+    if one_of(c.attr("quantity"), BUDGET_QUANTITIES) {
+        return Ok(());
+    }
+    let q = c.attr("quantity").and_then(Json::as_str);
+    let named = matches!(q, Some(s) if s.chars().next().is_some_and(|ch| ch.is_ascii_lowercase()) && s.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'));
+    need(named, || format!(r#"{w}: quantity must be one of {}, or a quantity's name in lower-case letters, digits and "-" ("exhaust-flow") (got {})"#, BUDGET_QUANTITIES.join(", "), said(c.attr("quantity"))))?;
+    need(matches!(c.attr("unit"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: a quantity of {} states its unit (unit="m3/h"): the unit names what it measures"#, q.unwrap_or_default()))
+}
+
 fn system_of(t: &DocTree) -> Result<Json, String> {
     for c in &t.children {
         let w = at(c, if c.tag == "bom" { "ref" } else { "id" });
@@ -238,7 +250,7 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
                 }
             }
             "contribution" => {
-                need(one_of(c.attr("quantity"), BUDGET_QUANTITIES), || format!("{w}: quantity must be one of {} (got {})", BUDGET_QUANTITIES.join(", "), said(c.attr("quantity"))))?;
+                quantity_of(c, &w)?;
                 need(c.attr("quantity").and_then(Json::as_str) != Some("cost"), || {
                     format!("{w}: a cost is stated in the design's logistics (a part's suppliers, a made part's rate), which a cost budget's design rolls up, not as a contribution")
                 })?;
@@ -246,7 +258,7 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
                 need(matches!(c.attr("source"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: source says where the number was read (a datasheet, a measurement, "estimate: …")"#))?;
             }
             "budget" => {
-                need(one_of(c.attr("quantity"), BUDGET_QUANTITIES), || format!("{w}: quantity must be one of {} (got {})", BUDGET_QUANTITIES.join(", "), said(c.attr("quantity"))))?;
+                quantity_of(c, &w)?;
                 need(num(c.attr("limit")), || format!("{w}: limit is a number"))?;
                 need(c.attr("margin").is_none() || matches!(c.attr("margin"), Some(Json::Num(m)) if *m >= 0.0 && *m < 1.0), || format!("{w}: margin is a fraction of the limit kept free, in [0, 1)"))?;
                 let q = c.attr("quantity").and_then(Json::as_str);

@@ -66,7 +66,9 @@ fn a_system_is_its_records_as_written() {
     assert_eq!(doc.get("rails"), Some(&j(r#"[{"id": "+5V", "voltage": 5, "source": "USB"}, {"id": "VBAT", "voltage": 3.8}]"#)));
     assert_eq!(doc.get("boms"), Some(&j(r#"[{"ref": "bom.csv"}]"#)));
     let cases: Vec<(El, &str)> = vec![
-        (budget().id("b").quantity("volume").limit(1), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal (got "volume")"#),
+        (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, or a quantity's name"#),
+        (budget().id("b").quantity("exhaust-flow").limit(600), r#"budget().id("b"): a quantity of exhaust-flow states its unit"#),
+        (contribution().id("c").quantity("exhaust-flow").part("P").value(35).source("datasheet"), r#"contribution().id("c"): a quantity of exhaust-flow states its unit"#),
         (budget().id("b").quantity("power").limit(1), "a power budget names its rail and its mode"),
         (budget().id("b").quantity("thermal").limit(1).mode("m"), "thermal resistance to the ambient (resistance, K/W)"),
         (budget().id("b").quantity("mass").limit(1).margin(1.5), "margin is a fraction"),
