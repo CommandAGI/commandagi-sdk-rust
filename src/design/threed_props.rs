@@ -279,9 +279,9 @@ pub type Vec3 = [f64; 3];
 
 #[derive(Clone, Debug)]
 pub struct TopoSignature {
-    /// Face center, edge midpoint, or vertex position.
+    /// Faces: a point on the face (anywhere on it) or its centre; the face nearest to it wins. Edges: the midpoint. Vertices: the position.
     pub point: Vec3,
-    /// Face normal (faces only).
+    /// Face normal (faces only): its outward sense, which tells two touching faces apart.
     pub normal: Option<Vec3>,
     /// Face area (faces only).
     pub area: Option<f64>,
@@ -1483,7 +1483,7 @@ pub struct CylinderProps {
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// The centre of its base.
+    /// The centre of its base, not of the solid (a box's `center` is its middle): it runs `height` from here along `axis`.
     /// Unit: mm.
     /// Default: `[0,0,0]`.
     pub center: Option<Vec3>,
@@ -1618,7 +1618,7 @@ pub struct ConeProps {
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// The centre of its base.
+    /// The centre of its base, not of the solid (a box's `center` is its middle): it runs `height` from here along `axis`.
     /// Unit: mm.
     /// Default: `[0,0,0]`.
     pub center: Option<Vec3>,

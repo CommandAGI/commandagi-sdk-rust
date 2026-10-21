@@ -74,6 +74,13 @@ fn a_hole_by_name_is_the_clearance_hole_of_iso_273_or_the_tap_drill_of_iso_2306(
         sized_hole(&Json::parse(r#"{"size": "M4 close fit", "style": "counterbore", "headDiameter": 9}"#).unwrap()).unwrap_err(),
         r#"headDiameter: "M4 close fit" is 8 mm (got 9); leave headDiameter out, or clear size"#
     );
+    // A counterbore deeper than the size's sinks the head: the designer's choice. A shallower one leaves it proud.
+    let deep = sized_hole(&Json::parse(r#"{"size": "M4 normal fit", "style": "counterbore", "headDepth": 5.4}"#).unwrap()).unwrap();
+    assert_eq!(num(&deep, "headDepth"), 5.4);
+    assert_eq!(
+        sized_hole(&Json::parse(r#"{"size": "M4 normal fit", "style": "counterbore", "headDepth": 3}"#).unwrap()).unwrap_err(),
+        r#"headDepth: "M4 normal fit" is 4.4 mm (got 3); leave headDepth out, or clear size (a counterbore may be deeper than the size's, not shallower)"#
+    );
 }
 
 #[test]

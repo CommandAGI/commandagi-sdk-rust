@@ -108,7 +108,8 @@ pub fn hole_size(name: &str) -> Result<Json, String> {
 /// tables give for that thread (a counterbore for a hexagon socket head cap screw, DIN 974-1; a countersink for a
 /// countersunk screw, DIN 74 form F, its depth from its diameter and angle). The size wins: a `diameter`,
 /// `headDiameter` or `headDepth` that differs from the size's is refused. Leave it out, or clear `size` to give your
-/// own.
+/// own. One choice stays yours: a counterbore deeper than the size's (`headDepth` more than the table's) sinks the
+/// head below the face.
 pub fn sized_hole(hole: &Json) -> Result<Json, String> {
     let Some(size) = hole.get("size").and_then(Json::as_str) else { return Ok(hole.clone()) };
     let named = hole_size(size)?;
@@ -120,7 +121,10 @@ pub fn sized_hole(hole: &Json) -> Result<Json, String> {
     let num = |v: Option<&Json>, k: &str| v.and_then(|j| j.get(k)).and_then(Json::as_f64);
     if let (false, Some("counterbore"), Some(bore)) = (tap, style, row.and_then(|r| r.get("counterbore"))) {
         says.push(("headDiameter", num(Some(bore), "diameter").unwrap_or_default()));
-        says.push(("headDepth", num(Some(bore), "depth").unwrap_or_default()));
+        let table = num(Some(bore), "depth").unwrap_or_default();
+        // A counterbore deeper than the size's sinks the head below the face: the one choice that stays yours.
+        let written = hole.get("headDepth").and_then(Json::as_f64).filter(|d| *d > table);
+        says.push(("headDepth", written.unwrap_or(table)));
     } else if let (false, Some("countersink"), Some(sink)) = (tap, style, row.and_then(|r| r.get("countersink"))) {
         let head = num(Some(sink), "diameter").unwrap_or_default();
         let angle = num(Some(sink), "angleDeg").unwrap_or(90.0);
@@ -132,7 +136,8 @@ pub fn sized_hole(hole: &Json) -> Result<Json, String> {
     for (field, value) in says {
         if let Some(written) = hole.get(field).and_then(Json::as_f64) {
             if (written - value).abs() > 1e-9 {
-                return Err(format!("{field}: \"{size}\" is {} mm (got {}); leave {field} out, or clear size", Json::Num(value).text(), Json::Num(written).text()));
+                let deeper = if field == "headDepth" && style == Some("counterbore") { " (a counterbore may be deeper than the size's, not shallower)" } else { "" };
+                return Err(format!("{field}: \"{size}\" is {} mm (got {}); leave {field} out, or clear size{deeper}", Json::Num(value).text(), Json::Num(written).text()));
             }
         }
         out.set(field, value);

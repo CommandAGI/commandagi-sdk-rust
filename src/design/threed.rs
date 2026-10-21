@@ -42,10 +42,11 @@
 //!                                                `.edge()`): one picked by where it was, `{"kind", "signature":
 //!                                                {"point", …}}`, or the ones a query chooses when the part is built,
 //!                                                `{"kind", "select": {…}}`: normal, parallel, perpendicular, axis,
-//!                                                geometry, length, radius, area, ofFace, createdBy, inBox, farthest,
+//!                                                geometry, length, radius, area, ofFace, createdBy, at, inBox, farthest,
 //!                                                any, not. Every test present must hold
 //! hole().face(…).positions(…) | .sketch(…)       where the holes are: points in model coordinates, or a sketch of
-//!                                                points; with neither, the face's centre
+//!                                                points; with neither, the face's centre. A face that chooses
+//!                                                several drills each place in the one it lies on
 //! feature().type_(…).id().name() …               a feature of a type the kernel does not know
 //! sketch([…]).id().name().plane(…)              a sketch: point().id().x().y(), a segment by its type (line,
 //!                                                circle, arc, spline, ellipse, ellipse_arc), constraint().id()
