@@ -25,8 +25,17 @@ fn a_class_is_read_from_the_tables_at_its_size() {
     assert!(h7.source.is_some());
     let unknown = tolerance_limits(25.0, &tol(r#"{"class": "H77"}"#)).unwrap_err();
     assert!(unknown.contains("no tolerance class \"H77\""), "{unknown}");
-    let big = tolerance_limits(900.0, &tol(r#"{"class": "H7"}"#)).unwrap_err();
-    assert_eq!(big, "H7 is tabled over 0 up to 120 mm, not at 900 mm");
+    let big = tolerance_limits(3200.0, &tol(r#"{"class": "H7"}"#)).unwrap_err();
+    assert_eq!(big, "H7: ISO 286 gives sizes over 0 up to 3150 mm, not 3200 mm");
+    // Any ISO 286 class at any size to 3150 mm, from the fundamental deviation and the grade (ISO 286-2 values).
+    let um = |c: &str, size: f64| {
+        let l = limits(size, &format!(r#"{{"class": "{c}"}}"#));
+        ((l.upper * 1000.0).round() as i64, (l.lower * 1000.0).round() as i64)
+    };
+    assert_eq!(
+        [um("E10", 6.0), um("H9", 255.0), um("e8", 250.0), um("H13", 31.7), um("M6", 300.0), um("ISO 2768-m", 50.0)],
+        [(68, 20), (130, 0), (-100, -172), (390, 0), (-9, -41), (300, -300)]
+    );
     let own = limits(12.0, r#"{"upper": 0.05, "lower": -0.05}"#);
     assert_eq!((own.min, own.max), (11.95, 12.05));
 }
