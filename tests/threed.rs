@@ -361,3 +361,24 @@ fn a_check_sweeps_a_joint_over_its_limits_and_a_pair_accept_is_bounded_by_its_vo
         r#"check().id("s"): sweep/samples: must be at least 2 (got 1)"#
     );
 }
+
+#[test]
+fn an_envelope_declares_its_mounting_holes_and_a_library_its_sizes() {
+    // The TypeScript and Python SDKs read the same fields (IC2-13, CORE-29).
+    let engineering = r#"{"process":"purchased","envelope":true,"mountingHoles":[{"at":[-10,0,0],"axis":[0,0,-1],"diameter":5,"depth":12}]}"#;
+    let library = |sizes: &str| {
+        El::new("library").with_attr("id", "shcs").with_attr("match", "ISO 4762 * A2-70").with_attr("engineering", json(r#"{"process":"purchased"}"#)).with_attr("sizes", json(sizes))
+    };
+    let sizes = r#"[{"size":"M4x25","partNumber":"MF-SHCS-M4x0025-A2","priceBreaks":[{"quantity":1,"unitPrice":0.2}]}]"#;
+    let g = graph(assembly([body().id("valve").engineering(json(engineering)), library(sizes)]).name("A"));
+    assert_eq!(node(&g, "bodyMeta").get("inputs").unwrap().text(), format!(r#"{{"valve":{{"engineering":{engineering}}}}}"#));
+    assert_eq!(
+        node(&g, "library").get("inputs").unwrap().text(),
+        format!(r#"{{"value":[{{"id":"shcs","match":"ISO 4762 * A2-70","engineering":{{"process":"purchased"}},"sizes":{sizes}}}]}}"#)
+    );
+    assert_eq!(bad(assembly([library(r#"[{"size":"M4x25","price":0.2}]"#)]).name("A")), r#"library().id("shcs"): sizes/0/price: is not one of its fields"#);
+    assert_eq!(
+        bad(assembly([body().id("valve").engineering(json(r#"{"envelope":true,"mountingHoles":[{"at":[0,0,0]}]}"#))]).name("A")),
+        r#"body().id("valve"): engineering/mountingHoles/0/diameter: is required"#
+    );
+}
