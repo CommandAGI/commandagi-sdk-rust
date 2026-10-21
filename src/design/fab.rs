@@ -23,6 +23,8 @@
 //! null. A CAM operation is an `operation().id(…)`; the order of the elements is the order the cuts run. An operation's
 //! `params`, `tabs` and `region` and a slicing setup's `params` are the native object, written as `json(r#"…"#)`.
 //! Nothing adds a default. Each record's call is in the document's `sources` by its path (`operation#op-1`, `stock`).
+//! A slicing setup that runs on no unit names its printer by its device definition: `slice([…]).profile(…).device(…)`
+//! (a ref to a `definition.tsx` that declares `process.print`). With a `machine` too, the unit's device is that one.
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
@@ -111,6 +113,8 @@ attributes! {
         channel;
         /// A spool's filament diameter (mm).
         diameter_mm;
+        /// A slicing setup's printer, by its device definition (a `definition.tsx` with `process.print`).
+        device;
     }
 }
 
@@ -125,6 +129,8 @@ pub const CAM_OPERATION_FIELDS: &[&str] = &["id", "op", "profile", "enabled", "p
 /// A unit's channel a job runs on (`runsOn` of a machining setup, `machine` of a slicing setup).
 pub const TARGET_FIELDS: &[&str] = &["unit", "channel", "name"];
 pub const SPOOL_FIELDS: &[&str] = &["materialId", "diameterMm"];
+/// A slicing setup's own fields: its profile, its overrides, and the printer's definition (`device`).
+pub const SLICE_FIELDS: &[&str] = &["profile", "params", "device"];
 
 const CAM_PARENT: &[&str] = &["cam"];
 const SLICE_PARENT: &[&str] = &["slice"];
@@ -155,7 +161,7 @@ pub const SLICE: Vocabulary = Vocabulary {
     noun: "a slicing setup",
     root: "slice",
     tags: &[
-        TagRule::new("slice", &[]).required(&["profile"]).attrs(&["profile", "params"]),
+        TagRule::new("slice", &[]).required(&["profile"]).attrs(SLICE_FIELDS),
         TagRule::new("source", SLICE_PARENT).single().required(REF_REQUIRED).attrs(CAM_REF_FIELDS),
         TagRule::new("design", SLICE_PARENT).single().required(REF_REQUIRED).attrs(CAM_REF_FIELDS),
         TagRule::new("spool", SLICE_PARENT).single().attrs(SPOOL_FIELDS),

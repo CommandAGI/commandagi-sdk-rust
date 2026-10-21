@@ -82,6 +82,11 @@ fn a_slicing_setup_has_its_profile_on_the_root_and_each_record_one_element() {
     )
     .unwrap();
     assert_eq!(doc.text(), golden.text());
+    // A setup that runs on no unit names its printer by its definition.
+    let saturn = "cloud://global/devices/elegoo-saturn-4-ultra/definition.tsx";
+    let (_, doc, _) = document(slice([source().file_id("node.stl").name("node.stl")]).profile("sla_resin_0.05").device(saturn));
+    let golden = Json::parse(&format!(r#"{{"profile":"sla_resin_0.05","device":"{saturn}","source":{{"fileId":"node.stl","name":"node.stl"}}}}"#)).unwrap();
+    assert_eq!(doc.text(), golden.text());
     assert_eq!(bad(slice([])), "slice() needs profile");
     assert_eq!(bad(slice([machine().unit("x")]).profile("p")), "machine() needs channel");
 }
