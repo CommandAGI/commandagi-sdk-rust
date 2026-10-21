@@ -703,6 +703,9 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 }
                 declared.push(el);
             }
+            "part" | "assembly" => {
+                return Err(format!("{}() is a document of its own: place its file with external_part() (file_name, importer \"3d\"; its bodies keep their names under the placement)", fn_name(el.tag)))
+            }
             _ => return Err(format!("{}() is not read in a 3D document (see commandagi::design::threed)", fn_name(el.tag))),
         }
     }
