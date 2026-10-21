@@ -45,6 +45,7 @@ fn a_sample_of_each_dimension_table_is_the_standards_number() {
     row("bearings", "625", &[("d", 5.0), ("D", 16.0), ("B", 5.0)]);
     row("mgn-linear-guide", "MGN12H", &[("H", 13.0), ("W", 27.0), ("L", 45.4), ("WR", 12.0), ("HR", 8.0), ("P", 25.0)]);
     row("t-slot-profiles", "HFS5-2020", &[("width", 20.0), ("height", 20.0), ("slotWidth", 6.0)]);
+    row("t-slot-profiles", "HFS5-2080", &[("width", 20.0), ("height", 80.0), ("slotCount", 10.0), ("massKgPerM", 1.64), ("iyCm4", 36.0)]);
     row("iso-2338", "6", &[("chamferC", 1.2)]);
     row("heat-set-inserts", "M3x5.7", &[("length", 5.7), ("recommendedHoleDiameter", 4.0)]);
     assert!(standard_row("iso-4762", "M7").unwrap_err().starts_with("table \"iso-4762\" has no row \"M7\" (it has M2, "));
