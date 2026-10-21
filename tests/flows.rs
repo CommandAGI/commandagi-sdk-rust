@@ -20,6 +20,7 @@ fn a_flow_is_its_tools_and_steps() {
             step([
                 param().name("speed").value(3000).unit("rpm"),
                 measure().id("resist").name("resist thickness").nominal(1.2).plus(0.1).minus(0.1).unit("um"),
+                visit().tool("oven").minutes(2).instruction("soft bake"),
             ])
             .id("coat")
             .order(1)
@@ -35,7 +36,7 @@ fn a_flow_is_its_tools_and_steps() {
         r#"{"name":"Marks","of":"Kit.3d.tsx#wafer","tools":[{"id":"coater","ref":"Kit.3d.tsx#coater","ratePerHour":40,"currency":"USD"}],
         "steps":[{"id":"why","kind":"note","instruction":"Marks first."},
         {"id":"coat","order":1,"tool":"coater","by":"in-house","minutes":6,"params":[{"name":"speed","value":3000,"unit":"rpm"}],
-        "measures":[{"id":"resist","name":"resist thickness","nominal":1.2,"plus":0.1,"minus":0.1,"unit":"um"}]}]}"#,
+        "measures":[{"id":"resist","name":"resist thickness","nominal":1.2,"plus":0.1,"minus":0.1,"unit":"um"}],"visits":[{"tool":"oven","minutes":2,"instruction":"soft bake"}]}]}"#,
     )
     .unwrap();
     assert_eq!(doc, want);
@@ -55,6 +56,8 @@ fn a_wrong_field_of_a_flow_is_refused_by_name() {
         (flow([step([measure().id("m").min(2).max(1)]).id("a")]), r#"measure().id("m"): min is at most max"#),
         (flow([step([param().name("t").value(1), param().name("t").value(2)]).id("a")]), r#"step().id("a"): two params are named "t""#),
         (flow([step([measure().id("m").max(1)]).id("a"), step([measure().id("m").max(2)]).id("b")]), r#"measure().id("m"): two measures have this id"#),
+        (flow([step([visit().tool("oven").minutes(-1)]).id("a")]), r#"step().id("a") visit().tool("oven"): minutes is a number of at least 0"#),
+        (flow([step([visit().tool("oven")]).id("a").kind("note")]), r#"step().id("a"): a note step names no tool, takes no time (minutes 0 or absent) and holds no param, measure or visit"#),
     ];
     for (root, why) in cases {
         let got = bad(root);

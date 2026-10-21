@@ -269,8 +269,8 @@ pub(crate) fn check_facet(at: &str, arg: &str, v: &Json) -> Result<Json, String>
             if DATES.contains(&key.as_str()) && !date(Some(x)) {
                 return Err(format!("{at}: {key} is YYYY-MM-DD"));
             }
-            if key == "shipping.origin" && !code(Some(x), 2) {
-                return Err(format!(r#"{at}: {key} is an ISO 3166 alpha-2 code ("CN")"#));
+            if key == "shipping.origin" && !code(Some(x), 2) && x.as_str() != Some("unknown") {
+                return Err(format!(r#"{at}: {key} is an ISO 3166 alpha-2 code ("CN"), or "unknown""#));
             }
         }
     }

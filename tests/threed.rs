@@ -239,7 +239,7 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
     // This crate has no regex engine: it reads the two patterns its schema carries, and refuses any other.
     use commandagi::design::schema::{describe_issue, validate};
     let text = include_str!("../src/design/threed_schema.json");
-    let known = [r#""pattern":"\\S""#, r#""pattern":"^[A-Za-z0-9_.-]+$""#, r#""pattern":"^[A-Z]{2}$""#, r#""pattern":"^[A-Z]{3}$""#, r#""pattern":"^\\d{4}-\\d{2}-\\d{2}$""#];
+    let known = [r#""pattern":"\\S""#, r#""pattern":"^[A-Za-z0-9_.-]+$""#, r#""pattern":"^(?:[A-Z]{2}|unknown)$""#, r#""pattern":"^[A-Z]{3}$""#, r#""pattern":"^\\d{4}-\\d{2}-\\d{2}$""#];
     assert_eq!(text.matches(r#""pattern""#).count(), known.iter().map(|k| text.matches(k).count()).sum::<usize>());
     let none = Json::parse("{}").unwrap();
     let id = Json::parse(r#"{"type":"string","pattern":"^[A-Za-z0-9_.-]+$"}"#).unwrap();

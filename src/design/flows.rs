@@ -12,6 +12,7 @@
 //!         step([
 //!             param().name("speed").value(3000).unit("rpm"),
 //!             measure().id("resist").name("resist thickness").nominal(1.2).plus(0.1).minus(0.1).unit("um"),
+//!             visit().tool("coater").minutes(2).instruction("second coat"),
 //!         ])
 //!         .id("coat").order(1).tool("coater").by("in-house").minutes(6),
 //!     ])
@@ -22,7 +23,8 @@
 //! ```
 //!
 //! A record is an element and its fields are the element's attributes (`rate_per_hour` is `ratePerHour`; `ref_` is
-//! `ref`). Nothing adds a default. The check is the host's (`commandagi check <file>.flow.rs`).
+//! `ref`). A step that goes to more tools than its own names each in a `visit().tool(…).minutes(…)`. Nothing adds a
+//! default. The check is the host's (`commandagi check <file>.flow.rs`).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
@@ -40,6 +42,8 @@ elements! {
     param: leaf;
     /// A measurement taken in the process and its limits: `.id("cd").nominal(2).plus(0.2).minus(0.2).unit("um")`.
     measure: leaf;
+    /// One more tool a step goes to, and its time there: `.tool("oven").minutes(2)`.
+    visit: leaf;
 }
 
 attributes! {
@@ -58,6 +62,7 @@ pub const FLOW_TOOL_FIELDS: &[&str] = &["id", "ref", "name", "ratePerHour", "cur
 pub const FLOW_STEP_FIELDS: &[&str] = &["id", "order", "kind", "tool", "fixture", "by", "minutes", "setupMinutes", "ratePerHour", "currency", "instruction", "note"];
 pub const FLOW_PARAM_FIELDS: &[&str] = &["name", "value", "unit", "description"];
 pub const FLOW_MEASURE_FIELDS: &[&str] = &["id", "name", "nominal", "min", "max", "plus", "minus", "unit", "method", "sampling", "acceptance"];
+pub const FLOW_VISIT_FIELDS: &[&str] = &["tool", "minutes", "setupMinutes", "ratePerHour", "currency", "instruction"];
 
 const FLOW: Vocabulary = Vocabulary {
     format: "flow",
@@ -69,6 +74,7 @@ const FLOW: Vocabulary = Vocabulary {
         TagRule::new("step", &["flow"]).key("id").required(&["id"]).attrs(FLOW_STEP_FIELDS),
         TagRule::new("param", &["step"]).required(&["name", "value"]).attrs(FLOW_PARAM_FIELDS),
         TagRule::new("measure", &["step"]).key("id").required(&["id"]).attrs(FLOW_MEASURE_FIELDS),
+        TagRule::new("visit", &["step"]).required(&["tool"]).attrs(FLOW_VISIT_FIELDS),
     ],
     from_tree: flow_of,
 };
@@ -128,7 +134,7 @@ fn step_ok(t: &DocTree) -> Result<(), String> {
     money(t, &w)?;
     if t.attr("kind").and_then(Json::as_str) == Some("note") {
         let no_time = t.attr("minutes").is_none() || num(t.attr("minutes")) == Some(0.0);
-        need(t.attr("tool").is_none() && no_time && t.children.is_empty(), || format!("{w}: a note step names no tool, takes no time (minutes 0 or absent) and holds no param or measure"))?;
+        need(t.attr("tool").is_none() && no_time && t.children.is_empty(), || format!("{w}: a note step names no tool, takes no time (minutes 0 or absent) and holds no param, measure or visit"))?;
     }
     let names: Vec<&Json> = t.children.iter().filter(|c| c.tag == "param").filter_map(|c| c.attr("name")).collect();
     if let Some(twice) = names.iter().enumerate().find(|(i, n)| names[..*i].contains(n)).map(|(_, n)| *n) {
@@ -140,6 +146,13 @@ fn step_ok(t: &DocTree) -> Result<(), String> {
             need(matches!(c.attr("name"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{pw}: name says what the parameter is"))?;
             need(matches!(c.attr("value"), Some(Json::Num(_) | Json::Str(_) | Json::Bool(_))), || format!("{pw}: value is a number, a text or true/false"))?;
             need(c.attr("unit").is_none() || matches!(c.attr("unit"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{pw}: unit is a unit's symbol (rpm, sccm, mTorr, °C, s)"))?;
+        } else if c.tag == "visit" {
+            let vw = format!("{w} {}", at(c, "tool"));
+            need(is_id(c.attr("tool")), || format!("{vw}: tool is the id of one of the flow's tools"))?;
+            for k in ["minutes", "setupMinutes"] {
+                need(c.attr(k).is_none() || num(c.attr(k)).is_some_and(|m| m >= 0.0), || format!("{vw}: {k} is a number of at least 0"))?;
+            }
+            money(c, &vw)?;
         } else {
             let mw = at(c, "id");
             need(is_id(c.attr("id")), || format!(r#"{mw}: id is letters, digits, ".", "_" and "-""#))?;
@@ -189,11 +202,15 @@ fn flow_of(t: &DocTree) -> Result<Json, String> {
             let mut rec = s.record();
             let params: Vec<Json> = s.children.iter().filter(|c| c.tag == "param").map(DocTree::record).collect();
             let measures: Vec<Json> = s.children.iter().filter(|c| c.tag == "measure").map(DocTree::record).collect();
+            let visits: Vec<Json> = s.children.iter().filter(|c| c.tag == "visit").map(DocTree::record).collect();
             if !params.is_empty() {
                 rec.set("params", params);
             }
             if !measures.is_empty() {
                 rec.set("measures", measures);
+            }
+            if !visits.is_empty() {
+                rec.set("visits", visits);
             }
             rec
         })

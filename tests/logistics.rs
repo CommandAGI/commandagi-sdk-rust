@@ -108,6 +108,8 @@ fn a_wrong_logistics_field_is_refused_by_name_and_attrs_cannot_say_what_an_argum
         let got = sheet(el);
         assert!(got.contains(why), "{got:?} does not say {why:?}");
     }
+    // A part not specified yet says so (PCBC-16): the host's check warns of each "unknown".
+    assert!(commandagi::design::declare(group("L", [u4().shipping(json(r#"{"hsCode": "unknown", "origin": "unknown", "hazmat": "unknown"}"#))])).is_ok());
 }
 
 #[test]
