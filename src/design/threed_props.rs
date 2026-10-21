@@ -2200,7 +2200,7 @@ pub struct DimensionTolerance {
     /// The lower deviation from the nominal, signed (`-0.1`).
     /// Unit: mm.
     pub lower: Option<f64>,
-    /// A tolerance class by name, its deviations read from the shipped tables at the nominal size: an ISO 286 class (`H7`, `g6`, `JS7`, `k6`: capital for a hole, small for a shaft) or a radial bearing ring's ISO 492 Normal class (`ISO 492 bore`, `ISO 492 outside`, `ISO 492 width`).
+    /// A tolerance class by name, its deviations at the nominal size: any ISO 286 class, computed from its fundamental deviation and grade over 0 up to 3150 mm (`H7`, `e8`, `E10`, `H13`, `JS7`, `zc11`: capitals for a hole, small letters for a shaft), a general tolerance of ISO 2768-1 (`ISO 2768-m`) or a radial bearing ring's ISO 492 Normal class (`ISO 492 bore`, `ISO 492 outside`, `ISO 492 width`).
     pub class: Option<String>,
     /// A basic dimension: theoretically exact, boxed on a drawing; the geometric tolerances that refer to it tolerance it.
     pub basic: Option<bool>,
@@ -2263,6 +2263,9 @@ pub struct HoleProps {
     pub size: Option<String>,
     /// The diameter's tolerance: an ISO 286 class (`{ class: "H7" }`), deviations (`{ upper: 0.02, lower: 0 }`) or basic (`./tolerances.ts`). The drawing's hole callout writes it; a fit check names the hole by its id.
     pub tolerance: Option<DimensionTolerance>,
+    /// Spare holes, left empty on purpose (a breadboard's grid, a bolt pattern for an option): the holes check does not ask what fills them. It reads them by `positions` and `diameter`.
+    /// Default: `false`.
+    pub spare: Option<bool>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2306,6 +2309,9 @@ impl ToJson for HoleProps {
         }
         if let Some(v) = &self.tolerance {
             o.set("tolerance", v.to_json());
+        }
+        if let Some(v) = &self.spare {
+            o.set("spare", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
