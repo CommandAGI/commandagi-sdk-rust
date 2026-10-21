@@ -33,7 +33,7 @@
 //! The document a study declares:
 //!
 //! ```text
-//! { kind, part, units, title?, material?, fixtures?: [{ id, type, faces, region? }], loadCases?: [{ id, loads: [{ type:
+//! { kind, part, units, title?, material?, fixtures?: [{ id, type, faces, region?, stiffness?, axis? }], loadCases?: [{ id, loads: [{ type:
 //!   "force" | "pressure", id, faces, total | value }] }], mesh?, solver?, criteria?: [{ id, quantity, limit, region?,
 //!   loadCase?, note? }], revise?: [{ parameter, min, max }] }
 //! ```
@@ -91,8 +91,12 @@ attributes! {
         /// Poisson's ratio ν, when the study states it; else the materials table's.
         poisson;
         id;
-        /// A fixture's type: `"fixed"` or `"roller"`.
+        /// A fixture's type: `"fixed"`, `"roller"`, `"spring"` (`.stiffness(…)`) or `"pin"` (`.axis(json(…))`).
         type_;
+        /// A spring fixture's stiffness: N/mm per mm² of its faces, in each direction.
+        stiffness;
+        /// A pin fixture's axis, the line its faces turn about: `json(r#"{"point": [0, 0, 5], "direction": [0, 1, 0]}"#)`.
+        axis;
         /// A face pick: `json(r#"{"kind": "face", "select": {"normal": [1, 0, 0]}}"#)`.
         faces;
         /// A force's total, [Fx, Fy, Fz] in N.
@@ -193,7 +197,7 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("criterion", IN_STUDY).key("id").required(&["id", "quantity", "limit"]).attrs(&["id", "quantity", "limit", "region", "loadCase", "note"]),
         TagRule::new("revise", IN_STUDY).key("parameter").required(&["parameter", "min", "max"]).attrs(&["parameter", "min", "max"]),
         TagRule::new("material", IN_STUDY).single().required(&["grade"]).attrs(&["grade", "body", "poisson"]),
-        TagRule::new("fixture", IN_STUDY).key("id").required(FIXTURE).attrs(&["id", "type", "faces", "region"]),
+        TagRule::new("fixture", IN_STUDY).key("id").required(FIXTURE).attrs(&["id", "type", "faces", "region", "stiffness", "axis"]),
         TagRule::new("loadCase", IN_STUDY).key("id").required(&["id"]).attrs(&["id"]),
         TagRule::new("force", &["loadCase"]).key("id").required(FACES_LOAD).attrs(FACES_LOAD),
         TagRule::new("pressure", &["loadCase"]).key("id").required(PRESSURE).attrs(PRESSURE),
