@@ -201,6 +201,17 @@ fn the_layouts_constraints_are_board_facts() {
         ]
     );
     assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).kind("loud")])).contains("kind is signal, power"));
+    let rules = graph(
+        board_of(vec![netclass().name("Default").nets(["*"]).width(0.2).min_width(0.15).clearance(0.2).edge_clearance(0.3).hole_clearance(0.15).inner(json(r#"{"clearance": 0.15, "width": 0.15}"#)).min_spokes(1)])
+            .width(60)
+            .height(40),
+    );
+    let Some(Json::Obj(nodes)) = rules.get("nodes") else { panic!() };
+    let fact = nodes.iter().find(|(_, n)| n.get("type") == Some(&Json::from("eda.boardfact"))).map(|(_, n)| n.get("inputs").unwrap().text()).unwrap();
+    assert_eq!(fact, compact(r#"{"fact":"netclass","name":"Default","nets":["*"],"width":0.2,"minWidth":0.15,"clearance":0.2,"edgeClearance":0.3,"holeClearance":0.15,"inner":{"clearance":0.15,"width":0.15},"minSpokes":1}"#));
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).width(0.2).min_width(0.3)])).contains("min_width is at most width"));
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).inner(json(r#"{"gap": 0.1}"#))])).contains("the rules on inner copper layers"));
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).min_spokes(1.5)])).contains("min_spokes is a whole number from 0 to 4"));
     assert!(bad(board_of(vec![group().name("g").parts(["R1"]).max_distance(3)])).contains("max_distance needs near"));
     assert!(bad(board_of(vec![group().name("g").parts(["R1"]).near("R1")])).contains("near is a part"));
     assert!(bad(board_of(vec![objective().weights(json(r#"{"vias": 1}"#)), objective().weights(json(r#"{"vias": 2}"#))])).contains("one objective()"));

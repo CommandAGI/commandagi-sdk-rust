@@ -62,9 +62,11 @@
 //! them; the editor and the layout operations write each one back):
 //!
 //! ```text
-//! netclass().name().nets().kind().width().clearance().via_diameter().via_drill().current().criticality()
-//!          .max_length().max_vias().impedance()
-//!                                   the rules of the nets named ("FIN*" matches by prefix).
+//! netclass().name().nets().kind().width().min_width().clearance().edge_clearance().hole_clearance().inner()
+//!          .min_spokes().via_diameter().via_drill().current().criticality().max_length().max_vias().impedance()
+//!                                   the rules of the nets named ("FIN*" matches by prefix): the width the router
+//!                                   lays and the narrowest allowed, the gaps to copper, to the board edge and to a
+//!                                   hole, the rules on inner layers, the fewest thermal spokes a pad needs.
 //! diffpair().name().positive().negative().gap().width().impedance().max_skew()
 //! group().name().parts().region().near().max_distance().conviction().side()
 //!                                   parts placed together: in the box `region` [x0, y0, x1, y1], within
@@ -265,6 +267,16 @@ attributes! {
         max_length;
         /// A net class's most vias per net.
         max_vias;
+        /// The narrowest track a net class allows (a neck-down, mm); its `width` is what the router lays.
+        min_width;
+        /// The least gap from a net class's copper to the board edge (mm).
+        edge_clearance;
+        /// The least gap from a net class's copper to a hole (mm).
+        hole_clearance;
+        /// A net class's rules on inner copper layers: `json(r#"{"clearance": 0.15, "width": 0.15}"#)`.
+        inner;
+        /// The fewest thermal spokes a pad of a net class needs to a pour.
+        min_spokes;
         /// The impedance of a trace over its reference plane (ohm).
         impedance;
         /// A differential pair's positive net.
@@ -409,7 +421,7 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
     let has = |out: &Vec<(String, Json)>, k: &str| out.iter().any(|(key, _)| key == k);
     match el.tag {
         "netclass" => {
-            refuse_unknown(el, &["name", "nets", "kind", "width", "clearance", "viaDiameter", "viaDrill", "current", "criticality", "maxLength", "maxVias", "impedance"])?;
+            refuse_unknown(el, &["name", "nets", "kind", "width", "minWidth", "clearance", "edgeClearance", "holeClearance", "inner", "minSpokes", "viaDiameter", "viaDrill", "current", "criticality", "maxLength", "maxVias", "impedance"])?;
             let kind = text_of(el, "kind", false)?;
             if kind.as_deref().is_some_and(|k| !NET_KINDS.contains(&k)) {
                 return Err(format!("{}: kind is {}", at(el), NET_KINDS.join(", ")));
@@ -421,11 +433,25 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
             put(&mut out, "name", text_of(el, "name", true)?);
             put(&mut out, "nets", names("nets", true)?);
             put(&mut out, "kind", kind);
-            for k in ["width", "clearance", "viaDiameter", "viaDrill", "current", "maxLength", "impedance"] {
+            for k in ["width", "minWidth", "clearance", "edgeClearance", "holeClearance", "viaDiameter", "viaDrill", "current", "maxLength", "impedance"] {
                 put(&mut out, k, positive(el, k, false)?);
             }
             put(&mut out, "criticality", unit("criticality")?);
             put(&mut out, "maxVias", max_vias);
+            if let (Some(min), Some(w)) = (num(el, "minWidth", false)?, num(el, "width", false)?) {
+                if min > w {
+                    return Err(format!("{}: {} is at most width", at(el), rust_name("minWidth")));
+                }
+            }
+            let rules = |v: &Json| matches!(v, Json::Obj(e) if !e.is_empty() && e.iter().all(|(k, x)| ["clearance", "width", "minWidth"].contains(&k.as_str()) && finite(x).is_some_and(|x| x > 0.0)));
+            if let Some(inner) = plain(el, "inner", rules, "the rules on inner copper layers: { clearance, width, minWidth } (mm)")? {
+                out.push(("inner".into(), inner));
+            }
+            let spokes = num(el, "minSpokes", false)?;
+            if spokes.is_some_and(|v| v.fract() != 0.0 || !(0.0..=4.0).contains(&v)) {
+                return Err(format!("{}: {} is a whole number from 0 to 4", at(el), rust_name("minSpokes")));
+            }
+            put(&mut out, "minSpokes", spokes);
             if let (Some(d), Some(h)) = (num(el, "viaDiameter", false)?, num(el, "viaDrill", false)?) {
                 if d <= h {
                     return Err(format!("{}: {} is more than {}", at(el), rust_name("viaDiameter"), rust_name("viaDrill")));
