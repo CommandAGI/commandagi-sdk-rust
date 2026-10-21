@@ -64,6 +64,8 @@
 //!                                                revolute, prismatic, cylindrical, planar, screw, spherical, universal
 //! mate().id().kind().a().b().axis() …            a mate between two components of an assembly (`assembly.mates`)
 //! sheet().id().size().scale().projection().views(…) …      an engineering drawing sheet of the document (`drawings`)
+//! check().id().kind().bodies().against().sweep(…) …      a check the design must pass (`checks`; a sweep moves a joint)
+//! accept().id().check().body().other().region().max_volume().reason()   a finding accepted on purpose (`accepted`)
 //! slot().name(…).value(…)                       any other field of the document, whole
 //! ```
 //!
@@ -115,6 +117,10 @@ elements! {
     item: leaf;
     /// One assembly step: `assemble().id("s1").order(1).parts(["b", "tape"]).by("in-house").minutes(2)`.
     assemble: leaf;
+    /// A check the design must pass: `check().id("stroke").kind("interference").sweep(json(r#"{"joint": "ramJ"}"#))`.
+    check: leaf;
+    /// A finding accepted on purpose: `accept().id("a1").check("clash").body("Sleeve").other("Ram").max_volume(3200).reason(…)`.
+    accept: leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
     feature: leaf;
     /// A sketch: its points, segments, constraints and projections.
@@ -221,6 +227,11 @@ attributes! {
         hole; shaft; intent;
         /// A stack-up check's chain (`["+pocket", "-width"]`), limit (`{"min": 0.05, "max": 0.5}`), method, samples and seed.
         chain; limit; method; samples; seed;
+        /// A check's bodies compared against others, its smallest shared volume (mm³), and its sweep over a joint's
+        /// range: `sweep(json(r#"{"joint": "ramJ", "step": 10}"#))`.
+        against; min_volume; sweep;
+        /// An accept's or a permit's check, body, other body of a pair, largest shared volume (mm³) and reason.
+        check; body; other; max_volume; reason; region; severity;
     }
 }
 

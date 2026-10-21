@@ -343,3 +343,21 @@ fn a_sheets_section_view_has_its_cutting_plane_and_a_detail_view_enlarges_anothe
         r#"sheet().id("s"): view b is a detail of b, which is a detail itself"#
     );
 }
+
+#[test]
+fn a_check_sweeps_a_joint_over_its_limits_and_a_pair_accept_is_bounded_by_its_volume() {
+    // PCBC-14, PCBC-18: the TypeScript and Python SDKs read the same fields.
+    let g = graph(
+        assembly([
+            check().id("stroke").kind("interference").against(["Crown"]).sweep(json(r#"{"joint": "ramJ", "step": 10}"#)),
+            accept().id("sleeve").check("stroke").body("Sleeve").other("Ram").max_volume(3200).reason("the ram is drawn as its envelope"),
+        ])
+        .name("Press"),
+    );
+    assert_eq!(node(&g, "checks").get("inputs").unwrap().text(), r#"{"value":[{"id":"stroke","kind":"interference","against":["Crown"],"sweep":{"joint":"ramJ","step":10}}]}"#);
+    assert_eq!(node(&g, "accepted").get("inputs").unwrap().text(), r#"{"value":[{"id":"sleeve","check":"stroke","body":"Sleeve","other":"Ram","maxVolume":3200,"reason":"the ram is drawn as its envelope"}]}"#);
+    assert_eq!(
+        bad(assembly([check().id("s").kind("interference").sweep(json(r#"{"joint": "ramJ", "samples": 1}"#))]).name("P")),
+        r#"check().id("s"): sweep/samples: must be at least 2 (got 1)"#
+    );
+}
