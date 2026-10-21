@@ -30,12 +30,14 @@ fn a_structural_study_is_its_question_with_each_site_by_its_path() {
     let root = study([
         material().grade("PETG").poisson(0.38),
         fixture().id("mount").type_("fixed").faces(face(r#"{"normal": [0, 0, -1]}"#)),
+        fixture().id("hinge").type_("fixed").faces(face(r#"{"normal": [-1, 0, 0]}"#)).region(json(r#"{"inBox": {"min": [0, -5, 0], "max": [0, 5, 0]}}"#)),
         load_case([
             force().id("grip").faces(face(r#"{"farthest": [1, 0, 0]}"#)).total([-40, 0, 0]),
             pressure().id("air").faces(face(r#"{"normal": [0, 1, 0]}"#)).value(0.1),
         ])
         .id("clamp"),
         mesh().order(2).size(2).refine([1.0, 0.7, 0.5]),
+        solver().kind("calculix").analysis("static").timeout(1800),
         criterion().id("safety").quantity("vonMises.max").limit("yield / 2"),
         revise().parameter("thickness").min(3).max(8),
     ])
@@ -48,11 +50,13 @@ fn a_structural_study_is_its_question_with_each_site_by_its_path() {
     let golden = Json::parse(
         r#"{"kind":"structural","part":"Jaw.3d.tsx","units":"mm-N-MPa-t",
           "material":{"grade":"PETG","poisson":0.38},
-          "fixtures":[{"id":"mount","type":"fixed","faces":{"kind":"face","select":{"normal":[0,0,-1]}}}],
+          "fixtures":[{"id":"mount","type":"fixed","faces":{"kind":"face","select":{"normal":[0,0,-1]}}},
+            {"id":"hinge","type":"fixed","faces":{"kind":"face","select":{"normal":[-1,0,0]}},"region":{"inBox":{"min":[0,-5,0],"max":[0,5,0]}}}],
           "loadCases":[{"id":"clamp","loads":[
             {"type":"force","id":"grip","faces":{"kind":"face","select":{"farthest":[1,0,0]}},"total":[-40,0,0]},
             {"type":"pressure","id":"air","faces":{"kind":"face","select":{"normal":[0,1,0]}},"value":0.1}]}],
           "mesh":{"order":2,"size":2,"refine":[1,0.7,0.5]},
+          "solver":{"kind":"calculix","analysis":"static","timeout":1800},
           "criteria":[{"id":"safety","quantity":"vonMises.max","limit":"yield / 2"}],
           "revise":[{"parameter":"thickness","min":3,"max":8}]}"#,
     )
@@ -63,12 +67,14 @@ fn a_structural_study_is_its_question_with_each_site_by_its_path() {
         .with("", site(line, 16))
         .with("material", site(line + 1, 9))
         .with("fixture#mount", site(line + 2, 9))
-        .with("loadCase#clamp", site(line + 3, 9))
-        .with("loadCase#clamp/force#grip", site(line + 4, 13))
-        .with("loadCase#clamp/pressure#air", site(line + 5, 13))
-        .with("mesh", site(line + 8, 9))
-        .with("criterion#safety", site(line + 9, 9))
-        .with("revise#thickness", site(line + 10, 9));
+        .with("fixture#hinge", site(line + 3, 9))
+        .with("loadCase#clamp", site(line + 4, 9))
+        .with("loadCase#clamp/force#grip", site(line + 5, 13))
+        .with("loadCase#clamp/pressure#air", site(line + 6, 13))
+        .with("mesh", site(line + 9, 9))
+        .with("solver", site(line + 10, 9))
+        .with("criterion#safety", site(line + 11, 9))
+        .with("revise#thickness", site(line + 12, 9));
     assert_eq!(sources.text(), expected.text());
 }
 

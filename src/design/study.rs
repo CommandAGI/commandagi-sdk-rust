@@ -33,7 +33,7 @@
 //! The document a study declares:
 //!
 //! ```text
-//! { kind, part, units, title?, material?, fixtures?: [{ id, type, faces }], loadCases?: [{ id, loads: [{ type:
+//! { kind, part, units, title?, material?, fixtures?: [{ id, type, faces, region? }], loadCases?: [{ id, loads: [{ type:
 //!   "force" | "pressure", id, faces, total | value }] }], mesh?, solver?, criteria?: [{ id, quantity, limit, region?,
 //!   loadCase?, note? }], revise?: [{ parameter, min, max }] }
 //! ```
@@ -107,11 +107,14 @@ attributes! {
         refine;
         /// The analysis: `"static"`.
         analysis;
+        /// Seconds one solve may take (CalculiX); the kernel's own limit (900 s) when not given.
+        timeout;
         /// What a criterion reads: `"vonMises.max"`, `"displacement.max"`, `"displacement.z.min"`.
         quantity;
         /// A number, or an expression of the material's `yield`, `tensile`, `E`: `"yield / 2"`.
         limit;
-        /// Where a criterion reads: `json(r#"{"faces": …}"#)`, `{"inBox": {"min", "max"}}`, `{"not": …}`.
+        /// Where a criterion reads: `json(r#"{"faces": …}"#)`, `{"inBox": {"min", "max"}}`, `{"not": …}`; the part of a
+        /// fixture's faces it holds: `{"inBox": {"min", "max"}}`.
         region;
         /// The load case a criterion reads.
         load_case;
@@ -190,12 +193,12 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("criterion", IN_STUDY).key("id").required(&["id", "quantity", "limit"]).attrs(&["id", "quantity", "limit", "region", "loadCase", "note"]),
         TagRule::new("revise", IN_STUDY).key("parameter").required(&["parameter", "min", "max"]).attrs(&["parameter", "min", "max"]),
         TagRule::new("material", IN_STUDY).single().required(&["grade"]).attrs(&["grade", "body", "poisson"]),
-        TagRule::new("fixture", IN_STUDY).key("id").required(FIXTURE).attrs(FIXTURE),
+        TagRule::new("fixture", IN_STUDY).key("id").required(FIXTURE).attrs(&["id", "type", "faces", "region"]),
         TagRule::new("loadCase", IN_STUDY).key("id").required(&["id"]).attrs(&["id"]),
         TagRule::new("force", &["loadCase"]).key("id").required(FACES_LOAD).attrs(FACES_LOAD),
         TagRule::new("pressure", &["loadCase"]).key("id").required(PRESSURE).attrs(PRESSURE),
         TagRule::new("mesh", IN_STUDY).single().attrs(&["order", "size", "refine"]),
-        TagRule::new("solver", IN_STUDY).single().attrs(&["kind", "analysis"]),
+        TagRule::new("solver", IN_STUDY).single().attrs(&["kind", "analysis", "timeout"]),
         TagRule::new("fluid", IN_STUDY).single().required(&["nu"]).attrs(&["nu", "body"]),
         TagRule::new("inlet", IN_STUDY).single().required(&["faces", "velocity"]).attrs(&["faces", "velocity"]),
         TagRule::new("outlet", IN_STUDY).single().required(&["faces"]).attrs(&["faces"]),
