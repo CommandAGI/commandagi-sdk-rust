@@ -7,7 +7,7 @@
 //! # The conventions every family module keeps
 //!
 //! One module per TypeScript vocabulary file, named as the Python module is (`schematic` for `sheet.ts`, `pcb`,
-//! `threed`, `fab`, `office`, `twod`, `media`, `ontology`, `business`, `tasks`, `monitors`, `records`, `postal`, `pdf`, `study`, `testplans`, `firmware`, `systems`, `agents`). A module is
+//! `threed`, `fab`, `office`, `twod`, `media`, `ontology`, `business`, `tasks`, `monitors`, `records`, `postal`, `pdf`, `study`, `testplans`, `firmware`, `systems`, `flows`, `agents`). A module is
 //! mostly three things, in this order:
 //!
 //! 1. **Its tags**, with [`element::elements!`]: one `#[track_caller]` constructor per tag, named snake case of the
@@ -40,6 +40,7 @@ pub mod documents;
 pub mod element;
 pub mod fab;
 pub mod firmware;
+pub mod flows;
 pub mod ir;
 pub mod json;
 pub mod media;
@@ -95,7 +96,7 @@ pub struct Family {
 }
 
 /// Every family a file's root may be. A root tag names one family.
-pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY, threed::FAMILY, pcb::FAMILY, office::FAMILY, ontology::FAMILY, business::FAMILY, tasks::FAMILY, monitors::FAMILY, records::FAMILY, postal::FAMILY, pdf::FAMILY, twod::FAMILY, media::FAMILY, study::FAMILY, testplans::FAMILY, firmware::FAMILY, systems::FAMILY, agents::FAMILY];
+pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY, threed::FAMILY, pcb::FAMILY, office::FAMILY, ontology::FAMILY, business::FAMILY, tasks::FAMILY, monitors::FAMILY, records::FAMILY, postal::FAMILY, pdf::FAMILY, twod::FAMILY, media::FAMILY, study::FAMILY, testplans::FAMILY, firmware::FAMILY, systems::FAMILY, flows::FAMILY, agents::FAMILY];
 
 /// Declare a document from its root element: the family of the root's tag reads it.
 pub fn declare(root: El) -> Result<Declared, String> {
