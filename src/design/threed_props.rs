@@ -1381,6 +1381,25 @@ impl ToJson for ComponentFootprint {
     }
 }
 
+/// One body of a placed 3D document moved in its file's frame (`<externalPart moves>`).
+#[derive(Clone, Debug)]
+pub struct PlacedMove {
+    /// The body or the placed file, by the id, the name or the part number its own file gives it (`*` matches any text).
+    pub body: String,
+    /// Its move, in the placed file's frame.
+    pub placement: Placement,
+}
+
+impl ToJson for PlacedMove {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("body", self.body.to_json());
+        o.set("placement", self.placement.to_json());
+        o
+    }
+}
+
 /// A LINKED (not embedded) part reference. Unlike ImportFeature — which copies the foreign STEP/IGES bytes into the document — an `ExternalPartRef` only records *where* to find another Drive file (by id or name) and reloads it on open. This keeps a part reusable across assemblies and lets a part edit propagate to every place it's used. The reference system (`cad/references.ts`) turns these into `FileRef`s (`role:"part"`); the editor resolves + meshes them. Foreign solids carry an `importer` ("step"/"iges") so the resolver knows to run the import path rather than run a `.3d.tsx`.
 #[derive(Clone, Debug)]
 pub struct ExternalPartProps {
@@ -1407,6 +1426,10 @@ pub struct ExternalPartProps {
     pub local_placement: Option<Placement>,
     /// THE PADS THIS PLACEMENT PRODUCES, when it is a placed electronic component.
     pub footprint: Option<ComponentFootprint>,
+    /// A placed 3D document: what of it is left out here, each by the id, the name or the part number its own file gives it (`*` matches any text): a body it makes, a file it places, a fastener stack. What its file says of a body left out (an `<accept>`, a `<permitted>`) goes with it. One frame in every station, each station with its own deck: `omit={["deck"]}`.
+    pub omit: Option<Vec<String>>,
+    /// A placed 3D document: bodies it makes or files it places, each moved in its file's frame before the placement (a lid opened, a ram lowered), by the id, the name or the part number its own file gives it. What its file says of the body (an `<accept>` or `<permitted>` region, in the body's own frame) moves with it; its fastener stacks stay.
+    pub moves: Option<Vec<PlacedMove>>,
     /// How the linked part's bodies combine with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -1449,6 +1472,12 @@ impl ToJson for ExternalPartProps {
         }
         if let Some(v) = &self.footprint {
             o.set("footprint", v.to_json());
+        }
+        if let Some(v) = &self.omit {
+            o.set("omit", v.to_json());
+        }
+        if let Some(v) = &self.moves {
+            o.set("moves", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
