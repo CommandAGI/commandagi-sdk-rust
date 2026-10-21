@@ -1,6 +1,6 @@
 [package]
 name = "commandagi"
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 description = "The CommandAGI SDK for Rust: CommandAGI documents (a schematic sheet, …) declared as code that is their source of truth."
 license = "MIT"
