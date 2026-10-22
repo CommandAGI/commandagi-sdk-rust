@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::threed`: the `curve` element, a curve in space (a spline through points with optional end
+  tangents, a polyline with bends, a helix), and a `sweep` along it (`path` `{ "curve": … }`) with `frame` and `twist`,
+  the same fields as the TypeScript SDK's `<curve>` and `<sweep>`. Needs a 3D service of this version.
+
 - `commandagi::design::mounts`: a thread's mounted tasks as `mounts.rs` in its run folder,
   `mounts([mount().label(…)…])`, the same document as the TypeScript SDK's `mounts.tsx`. A mount names one task
   (`task`), or a list (`folder`, `project`, or a query: `assignee`, `labels`, `status`); a mount that names both, or

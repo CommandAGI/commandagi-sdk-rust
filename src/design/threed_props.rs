@@ -71,6 +71,7 @@ pub const THREED_FEATURES: &[&str] = &[
     "extrude",
     "revolve",
     "sweep",
+    "curve",
     "loft",
     "fillet",
     "chamfer",
@@ -128,6 +129,7 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("extrude", "ExtrudeProps"),
     ("revolve", "RevolveProps"),
     ("sweep", "SweepProps"),
+    ("curve", "CurveProps"),
     ("loft", "LoftProps"),
     ("fillet", "FilletProps"),
     ("chamfer", "ChamferProps"),
@@ -779,16 +781,52 @@ impl RevolveProps {
     }
 }
 
+/// How the profile turns along the path. "minimal": only as much as the path turns, with no roll about it (a rotation-minimizing frame); "frenet": it keeps its place against the path's principal normal (a flat yarn stays flat on a helix's cylinder; not defined where the path is straight); "up": its frame keeps `up` as the binormal (a level path stays level); "guide": its frame points at the `guide` curve.
+/// Default: `"minimal"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SweepPropsFrame {
+    /// `"minimal"`
+    Minimal,
+    /// `"frenet"`
+    Frenet,
+    /// `"up"`
+    Up,
+    /// `"guide"`
+    Guide,
+}
+
+impl ToJson for SweepPropsFrame {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            SweepPropsFrame::Minimal => "minimal",
+            SweepPropsFrame::Frenet => "frenet",
+            SweepPropsFrame::Up => "up",
+            SweepPropsFrame::Guide => "guide",
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SweepProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// The cross-section that is swept.
+    /// The cross-section that is swept. A region with holes sweeps a hollow solid (a hose, a tube).
     pub profile: ProfileRef,
-    /// Path comes from another sketch's open/closed chain.
-    pub path: ProfileRef,
+    /// What the profile follows: a sketch's open or closed chain on its plane (`{ sketch }`), or a curve in space (`{ curve }`, the id of a `curve` feature). The profile stays where it is drawn and turns with the path: draw it on the curve's own plane (`plane={{ type: "datum", plane: <the curve's id> }}`) to start where the curve starts.
+    pub path: Json,
+    /// How the profile turns along the path. "minimal": only as much as the path turns, with no roll about it (a rotation-minimizing frame); "frenet": it keeps its place against the path's principal normal (a flat yarn stays flat on a helix's cylinder; not defined where the path is straight); "up": its frame keeps `up` as the binormal (a level path stays level); "guide": its frame points at the `guide` curve.
+    /// Default: `"minimal"`.
+    pub frame: Option<SweepPropsFrame>,
+    /// The direction the profile's frame keeps as its binormal.
+    /// Default: `[0,0,1]`.
+    pub up: Option<Vec3>,
+    /// The `curve` feature the profile's frame points at, by id.
+    pub guide: Option<String>,
+    /// How far the profile turns about the path from its start to its end, evenly along its length (a twisted bar, a cable's lay). For a path that is an open curve, with frame "minimal".
+    /// Unit: rad.
+    pub twist: Option<f64>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -807,6 +845,18 @@ impl ToJson for SweepProps {
         }
         o.set("profile", self.profile.to_json());
         o.set("path", self.path.to_json());
+        if let Some(v) = &self.frame {
+            o.set("frame", v.to_json());
+        }
+        if let Some(v) = &self.up {
+            o.set("up", v.to_json());
+        }
+        if let Some(v) = &self.guide {
+            o.set("guide", v.to_json());
+        }
+        if let Some(v) = &self.twist {
+            o.set("twist", v.to_json());
+        }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
         }
@@ -825,6 +875,155 @@ impl SweepProps {
     #[track_caller]
     pub fn el(self) -> El {
         let mut el = El::new("sweep");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// What the curve is. "spline": a smooth cubic through `points` (C2, interpolated); "polyline": straight lines through `points`, each corner rounded to `bendRadius` (sharp without it); "helix": `turns` turns of `radius` and `pitch` about `axis`.
+/// Default: `"spline"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CurvePropsKind {
+    /// `"spline"`
+    Spline,
+    /// `"polyline"`
+    Polyline,
+    /// `"helix"`
+    Helix,
+}
+
+impl ToJson for CurvePropsKind {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            CurvePropsKind::Spline => "spline",
+            CurvePropsKind::Polyline => "polyline",
+            CurvePropsKind::Helix => "helix",
+        })
+    }
+}
+
+/// A CURVE IN SPACE: a path that is not drawn on one plane (a hose, a wire lead, a tendon housing, a braid yarn), what a sweep follows (`path={{ curve: <id> }}`) or points its profile at (`guide`). It makes no body. It is also a plane, under its own id: the plane normal to the curve at its start (origin: the start; normal: the curve's direction there; x-axis: `xAxis`), so a profile sketch drawn on it (`plane={{ type: "datum", plane: <id> }}`) starts the sweep where the curve starts.
+#[derive(Clone, Debug)]
+pub struct CurveProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// What the curve is. "spline": a smooth cubic through `points` (C2, interpolated); "polyline": straight lines through `points`, each corner rounded to `bendRadius` (sharp without it); "helix": `turns` turns of `radius` and `pitch` about `axis`.
+    /// Default: `"spline"`.
+    pub kind: Option<CurvePropsKind>,
+    /// The points it passes through, in order.
+    /// Unit: mm.
+    pub points: Option<Vec<Vec3>>,
+    /// The direction it leaves the first point (only the direction counts).
+    pub start_tangent: Option<Vec3>,
+    /// The direction it arrives at the last point (only the direction counts).
+    pub end_tangent: Option<Vec3>,
+    /// Back to the first point: a periodic spline, a closed polyline.
+    pub closed: Option<bool>,
+    /// The radius each corner of the polyline is rounded to.
+    /// Unit: mm.
+    pub bend_radius: Option<f64>,
+    /// Where the helix's axis starts: the helix starts at this height.
+    /// Unit: mm.
+    /// Default: `[0,0,0]`.
+    pub origin: Option<Vec3>,
+    /// The helix's axis: it rises along it.
+    /// Default: `[0,0,1]`.
+    pub axis: Option<Vec3>,
+    /// The helix's radius (from the axis to the curve).
+    /// Unit: mm.
+    /// Default: `10`.
+    pub radius: Option<f64>,
+    /// How far the helix rises in one turn.
+    /// Unit: mm.
+    /// Default: `5`.
+    pub pitch: Option<f64>,
+    /// How many turns.
+    /// Default: `3`.
+    pub turns: Option<f64>,
+    /// Right-handed (the default) or left-handed.
+    /// Default: `true`.
+    pub right_handed: Option<bool>,
+    /// The direction from the axis to where the helix starts.
+    /// Default: `[1,0,0]`.
+    pub start: Option<Vec3>,
+    /// The x-axis of the curve's start plane (projected onto it): which way a profile drawn there faces. Absent: world z projected onto the plane, or world x where the curve starts along z.
+    pub x_axis: Option<Vec3>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for CurveProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        if let Some(v) = &self.kind {
+            o.set("kind", v.to_json());
+        }
+        if let Some(v) = &self.points {
+            o.set("points", v.to_json());
+        }
+        if let Some(v) = &self.start_tangent {
+            o.set("startTangent", v.to_json());
+        }
+        if let Some(v) = &self.end_tangent {
+            o.set("endTangent", v.to_json());
+        }
+        if let Some(v) = &self.closed {
+            o.set("closed", v.to_json());
+        }
+        if let Some(v) = &self.bend_radius {
+            o.set("bendRadius", v.to_json());
+        }
+        if let Some(v) = &self.origin {
+            o.set("origin", v.to_json());
+        }
+        if let Some(v) = &self.axis {
+            o.set("axis", v.to_json());
+        }
+        if let Some(v) = &self.radius {
+            o.set("radius", v.to_json());
+        }
+        if let Some(v) = &self.pitch {
+            o.set("pitch", v.to_json());
+        }
+        if let Some(v) = &self.turns {
+            o.set("turns", v.to_json());
+        }
+        if let Some(v) = &self.right_handed {
+            o.set("rightHanded", v.to_json());
+        }
+        if let Some(v) = &self.start {
+            o.set("start", v.to_json());
+        }
+        if let Some(v) = &self.x_axis {
+            o.set("xAxis", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl CurveProps {
+    /// The `curve` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("curve");
         if let Json::Obj(entries) = self.to_json() {
             for (k, v) in entries {
                 el = el.with_attr(k, v);
