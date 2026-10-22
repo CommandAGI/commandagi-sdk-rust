@@ -70,7 +70,7 @@ attributes! {
     /// The fields of the systems' records, chained on their elements.
     pub trait SystemsAttrs {
         name; description; id; text; rationale; method; verified_by; design; parent;
-        voltage; source; input; output; efficiency; part; rail; mode; current; power;
+        voltage; source; input; output; efficiency; part; rail; mode; current; power; peak_current; peak_power; peak;
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
         parts; channel; origin; defines; pins; params; files;
@@ -88,9 +88,9 @@ pub const REQUIREMENT_FIELDS: &[&str] = &["id", "text", "rationale", "method", "
 pub const MODE_FIELDS: &[&str] = &["id", "description"];
 pub const RAIL_FIELDS: &[&str] = &["id", "voltage", "description", "source"];
 pub const CONVERTER_FIELDS: &[&str] = &["id", "input", "output", "efficiency", "source"];
-pub const LOAD_FIELDS: &[&str] = &["id", "part", "rail", "mode", "current", "power", "voltage", "source"];
+pub const LOAD_FIELDS: &[&str] = &["id", "part", "rail", "mode", "current", "power", "voltage", "peakCurrent", "peakPower", "source"];
 pub const CONTRIBUTION_FIELDS: &[&str] = &["id", "quantity", "part", "value", "unit", "qty", "mode", "rail", "source"];
-pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "per", "currency", "design", "resistance", "margin", "source", "description"];
+pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "peak", "per", "currency", "design", "resistance", "margin", "source", "description"];
 pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", "at", "required", "description"];
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
@@ -245,7 +245,7 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
             "converter" => need(matches!(c.attr("efficiency"), Some(Json::Num(e)) if *e > 0.0 && *e <= 1.0), || format!("{w}: efficiency is a number in (0, 1] (0.88 for 88 %)"))?,
             "load" => {
                 need(c.attr("current").is_some() || c.attr("power").is_some(), || format!("{w}: a load states its current (A) or its power (W)"))?;
-                for k in ["current", "power", "voltage"] {
+                for k in ["current", "power", "voltage", "peakCurrent", "peakPower"] {
                     need(c.attr(k).is_none() || num(c.attr(k)), || format!("{w}: {k} is a number"))?;
                 }
             }
@@ -265,6 +265,9 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
                 if q == Some("power") {
                     need(string(c.attr("rail")) && string(c.attr("mode")), || format!("{w}: a power budget names its rail and its mode"))?;
                 }
+                need(c.attr("peak").is_none() || (matches!(c.attr("peak"), Some(Json::Bool(_))) && q == Some("power")), || {
+                    format!("{w}: peak is true or false, on a power budget (each load at its peakCurrent or peakPower)")
+                })?;
                 if q == Some("cost") {
                     need(string(c.attr("design")), || format!(r#"{w}: a cost budget names the design whose logistics roll-up it reads (design="cad/Assembly.3d.rs")"#))?;
                 }

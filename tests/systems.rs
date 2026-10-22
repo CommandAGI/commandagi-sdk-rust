@@ -49,10 +49,11 @@ fn a_system_is_its_records_as_written() {
             rail().id("+5V").voltage(5).source("USB"),
             rail().id("VBAT").voltage(3.8),
             converter().id("U3").input("+5V").output("VBAT").efficiency(0.88).source("estimate"),
-            load().id("modem").part("U4").rail("VBAT").mode("lte").current(0.67).source("datasheet table 35"),
+            load().id("modem").part("U4").rail("VBAT").mode("lte").current(0.67).peak_current(0.9).source("datasheet table 35"),
             contribution().id("shell").quantity("mass").part("P1").value(15.2).unit("g").source("check-fit.mjs"),
             bom().ref_("bom.csv"),
             budget().id("power").quantity("power").rail("+5V").mode("lte").limit(10).unit("W").margin(0.2),
+            budget().id("peak").quantity("power").rail("+5V").mode("lte").peak(true).limit(10).unit("W"),
             check().id("link").kind("interface").of("Link.interface.rs"),
         ])
         .name("Cam"),
@@ -65,7 +66,10 @@ fn a_system_is_its_records_as_written() {
     assert_eq!(keys, ["name", "modes", "rails", "converters", "loads", "contributions", "boms", "budgets", "checks"]);
     assert_eq!(doc.get("rails"), Some(&j(r#"[{"id": "+5V", "voltage": 5, "source": "USB"}, {"id": "VBAT", "voltage": 3.8}]"#)));
     assert_eq!(doc.get("boms"), Some(&j(r#"[{"ref": "bom.csv"}]"#)));
+    assert_eq!(doc.get("loads"), Some(&j(r#"[{"id": "modem", "part": "U4", "rail": "VBAT", "mode": "lte", "current": 0.67, "peakCurrent": 0.9, "source": "datasheet table 35"}]"#)));
     let cases: Vec<(El, &str)> = vec![
+        (budget().id("b").quantity("mass").limit(1).peak(true), "peak is true or false, on a power budget"),
+        (load().id("l").part("U1").rail("r").mode("m").current(1).peak_current("2 A"), "peakCurrent is a number"),
         (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, or a quantity's name"#),
         (budget().id("b").quantity("exhaust-flow").limit(600), r#"budget().id("b"): a quantity of exhaust-flow states its unit"#),
         (contribution().id("c").quantity("exhaust-flow").part("P").value(35).source("datasheet"), r#"contribution().id("c"): a quantity of exhaust-flow states its unit"#),
