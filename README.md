@@ -51,6 +51,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::ontology` | a world, a device definition, a dashboard, a geo project, a node graph |
 | `commandagi::design::business` | a company, an RFC, a case |
 | `commandagi::design::tasks` | a task, a project |
+| `commandagi::design::mounts` | a thread's mounted tasks (`mounts.rs`, in the thread's run folder) |
 | `commandagi::design::monitors` | a monitor |
 | `commandagi::design::agents` | an agent harness, an agent |
 | `commandagi::design::records` | a contract, a product instance |
