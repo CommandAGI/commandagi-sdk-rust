@@ -98,6 +98,7 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
             param().id("baud").value(115200).unit("Bd"),
             side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]),
             side().id("firmware").ref_("fw/config.h").defines(json(r#"{"BOARD": 1}"#)).pins(json(r#"{"RX_PIN": 4}"#)).params(json(r#"{"BAUD": "baud"}"#)),
+            side().id("host").ref_("devices/cam/definition.tsx").channel("modem").params(json(r#"{"baud": "baud"}"#)),
         ])
         .name("Header"),
     );
@@ -112,12 +113,17 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         doc.get("sides").and_then(|s| if let Json::Arr(a) = s { a.get(1).cloned() } else { None }),
         Some(j(r#"{"id": "firmware", "ref": "fw/config.h", "defines": {"BOARD": 1}, "pins": {"RX_PIN": 4}, "params": {"BAUD": "baud"}}"#))
     );
+    assert_eq!(
+        doc.get("sides").and_then(|s| if let Json::Arr(a) = s { a.get(2).cloned() } else { None }),
+        Some(j(r#"{"id": "host", "ref": "devices/cam/definition.tsx", "channel": "modem", "params": {"baud": "baud"}}"#))
+    );
     let cases: Vec<(El, &str)> = vec![
         (pin().number(0).signal("x"), "number is the pin's number, 1, 2, 3"),
         (pin().number(1).signal("x").at([1.0]), "at is [x, y] mm"),
         (hole().id("h").at([0.0, 0.0, 0.0]), r#"hole().id("h"): at is [x, y] mm"#),
         (message().id("m"), "a message has its text, its code, or both"),
-        (side().id("s").ref_("x").kind("mechanical"), "kind must be one of circuit, 3d, firmware"),
+        (side().id("s").ref_("x").kind("mechanical"), "kind must be one of circuit, 3d, firmware, definition"),
+        (side().id("s").ref_("x").channel(3), "channel is the id of a channel of the device definition"),
         (frame().unit("in"), "positions are in mm"),
     ];
     for (el, message) in cases {

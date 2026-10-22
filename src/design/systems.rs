@@ -73,7 +73,7 @@ attributes! {
         voltage; source; input; output; efficiency; part; rail; mode; current; power;
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
-        parts; origin; defines; pins; params; files;
+        parts; channel; origin; defines; pins; params; files;
     }
 }
 
@@ -82,7 +82,7 @@ pub(crate) const FAMILY: Family = Family { module: "systems", roots: &["requirem
 pub const VERIFICATION_METHODS: &[&str] = &["test", "analysis", "inspection", "demonstration"];
 pub const BUDGET_QUANTITIES: &[&str] = &["mass", "power", "cost", "thermal"];
 pub const SYSTEM_CHECK_KINDS: &[&str] = &["interface", "trace"];
-pub const SIDE_KINDS: &[&str] = &["circuit", "3d", "firmware"];
+pub const SIDE_KINDS: &[&str] = &["circuit", "3d", "firmware", "definition"];
 
 pub const REQUIREMENT_FIELDS: &[&str] = &["id", "text", "rationale", "method", "verifiedBy", "design", "parent"];
 pub const MODE_FIELDS: &[&str] = &["id", "description"];
@@ -95,7 +95,7 @@ pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", 
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
 pub const PARAM_FIELDS: &[&str] = &["id", "value", "unit", "description"];
-pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "origin", "defines", "pins", "params", "files", "description"];
+pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "defines", "pins", "params", "files", "description"];
 const ROOT_FIELDS: &[&str] = &["name", "description"];
 
 const REQUIREMENTS: Vocabulary = Vocabulary {
@@ -303,6 +303,7 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
                 need(c.attr("kind").is_none() || one_of(c.attr("kind"), SIDE_KINDS), || format!("{w}: kind must be one of {} (got {})", SIDE_KINDS.join(", "), said(c.attr("kind"))))?;
                 need(c.attr("origin").is_none() || pair(c.attr("origin"), 2) || pair(c.attr("origin"), 3), || format!("{w}: origin is where the interface's frame sits in this side's frame, [x, y] or [x, y, z] mm"))?;
                 need(c.attr("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
+                need(c.attr("channel").is_none() || string(c.attr("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
             }
             _ => {}
         }
