@@ -21,3 +21,4 @@
 
 pub mod abi;
 pub mod design;
+pub mod git;
