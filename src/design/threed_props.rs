@@ -925,6 +925,35 @@ impl ToJson for SplineTangent {
     }
 }
 
+/// How hard a given tangent holds (build123d's tangent scalars): its speed, in lengths of the chord-length parameter. 1 is the natural spline; more holds the direction longer (a looser end), less lets the curve turn sooner (a tighter one). One number for every given tangent, or one per given tangent in order along the spline: the start's, the inner ones' (by point), the end's.
+/// Default: `1`.
+#[derive(Clone, Debug)]
+pub enum CurvePropsTangentScale {
+    Number(f64),
+    Numbers(Vec<f64>),
+}
+
+impl ToJson for CurvePropsTangentScale {
+    fn to_json(&self) -> Json {
+        match self {
+            CurvePropsTangentScale::Number(x) => x.to_json(),
+            CurvePropsTangentScale::Numbers(x) => x.to_json(),
+        }
+    }
+}
+
+impl From<f64> for CurvePropsTangentScale {
+    fn from(x: f64) -> CurvePropsTangentScale {
+        CurvePropsTangentScale::Number(x)
+    }
+}
+
+impl From<Vec<f64>> for CurvePropsTangentScale {
+    fn from(x: Vec<f64>) -> CurvePropsTangentScale {
+        CurvePropsTangentScale::Numbers(x)
+    }
+}
+
 /// A CURVE IN SPACE: a path that is not drawn on one plane (a hose, a wire lead, a tendon housing, a braid yarn), what a sweep follows (`path={{ curve: <id> }}`) or points its profile at (`guide`). It makes no body. It is also a plane, under its own id: the plane normal to the curve at its start (origin: the start; normal: the curve's direction there; x-axis: `xAxis`), so a profile sketch drawn on it (`plane={{ type: "datum", plane: <id> }}`) starts the sweep where the curve starts.
 #[derive(Clone, Debug)]
 pub struct CurveProps {
@@ -944,9 +973,9 @@ pub struct CurveProps {
     pub end_tangent: Option<Vec3>,
     /// The directions it passes inner points in (only the direction counts): the spline is cut there into C2 pieces that meet in that direction at one speed (C1). Not for a closed spline.
     pub tangents: Option<Vec<SplineTangent>>,
-    /// How hard every given tangent holds (build123d's tangent scalars): its speed, in lengths of the chord-length parameter. 1 is the natural spline; more holds the direction longer (a looser end), less lets the curve turn sooner (a tighter one).
+    /// How hard a given tangent holds (build123d's tangent scalars): its speed, in lengths of the chord-length parameter. 1 is the natural spline; more holds the direction longer (a looser end), less lets the curve turn sooner (a tighter one). One number for every given tangent, or one per given tangent in order along the spline: the start's, the inner ones' (by point), the end's.
     /// Default: `1`.
-    pub tangent_scale: Option<f64>,
+    pub tangent_scale: Option<CurvePropsTangentScale>,
     /// Back to the first point: a periodic spline, a closed polyline.
     pub closed: Option<bool>,
     /// The radius each corner of the polyline is rounded to.

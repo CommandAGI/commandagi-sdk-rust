@@ -153,6 +153,21 @@ pub fn validate(schema: &Json, value: &Json, defs: &Json, path: &str) -> Result<
                 return Ok(results.swap_remove(holds[0]));
             }
         }
+        // A union of kinds (`number | number[]`): when one option only is of the value's kind, it says what is wrong.
+        let mut of_kind = Vec::new();
+        for (i, o) in options.iter().enumerate() {
+            let fits = match resolve(o, defs)?.get("type") {
+                Some(Json::Str(t)) => type_matches(t, value),
+                Some(Json::Arr(ts)) => ts.iter().filter_map(Json::as_str).any(|t| type_matches(t, value)),
+                _ => false,
+            };
+            if fits {
+                of_kind.push(i);
+            }
+        }
+        if of_kind.len() == 1 {
+            return Ok(results.swap_remove(of_kind[0]));
+        }
         return Ok(vec![Issue::new(path, IssueCode::AnyOf, None, Some(Json::from(kind_of(value))))]);
     }
     let types: Vec<&str> = match s.get("type") {
