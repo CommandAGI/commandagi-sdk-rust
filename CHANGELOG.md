@@ -4,7 +4,7 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
-## Unreleased
+## 0.6.8 (2026-10-23)
 
 Added
 
