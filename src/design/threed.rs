@@ -322,8 +322,8 @@ const NOT_FEATURES: &[&str] = &[
 pub const SKETCH_SEGMENTS: &[&str] = &["line", "circle", "arc", "spline", "ellipse", "ellipseArc"];
 /// The datum planes every 3D document has (`3d-core/document.ts` basePlanes): id, name, origin, normal, xAxis, builtin.
 pub const BUILTIN_PLANES: &[(&str, &str, [f64; 3], [f64; 3], [f64; 3], &str)] = &[
-    ("plane_xy", "Front (XY)", [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0], "XY"),
-    ("plane_xz", "Top (XZ)", [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0], "XZ"),
+    ("plane_xy", "Top (XY)", [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0], "XY"),
+    ("plane_xz", "Front (XZ)", [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0], "XZ"),
     ("plane_yz", "Right (YZ)", [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], "YZ"),
 ];
 /// The document's view fields a root element may hold (the graph's `meta`), beside `name`.
