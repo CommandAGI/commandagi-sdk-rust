@@ -382,3 +382,22 @@ fn an_envelope_declares_its_mounting_holes_and_a_library_its_sizes() {
         r#"body().id("valve"): engineering/mountingHoles/0/diameter: is required"#
     );
 }
+
+#[test]
+fn every_refused_element_of_a_file_is_named_in_one_run() {
+    // IC1-02: one line each, in the file's order, so a file with ten mistakes needs one run, not ten.
+    let engineering = |process: &str, more: &str| json(&format!(r#"{{"partNumber": "X", "material": "6061-T6", "process": "{process}"{more}}}"#));
+    let said = bad(part([
+        body().id("b4").engineering(engineering("sheet-metal", "")),
+        body().id("b6").engineering(engineering("cnc-milling", r#", "notes": "x""#)),
+        parameter().name("w").value("6"),
+        extrude().id("e1").distance(-1.0),
+    ])
+    .name("P"));
+    let lines: Vec<&str> = said.lines().collect();
+    assert_eq!(lines.len(), 4, "{said}");
+    assert!(lines[0].starts_with(r#"body().id("b4"): engineering/process: must be one of"#) && lines[0].ends_with(r#"(got "sheet-metal")"#), "{said}");
+    assert_eq!(lines[1], r#"body().id("b6"): engineering/notes: is not one of its fields"#);
+    assert_eq!(lines[2], r#"parameter().name("w"): value is a number"#);
+    assert!(lines[3].starts_with(r#"extrude().id("e1"): "#), "{said}");
+}

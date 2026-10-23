@@ -26,6 +26,11 @@ Added
 - The materials data has the fastener grades `A2-70`, `A4-70`, `8.8` and `12.9` (each row's source says where its
   numbers were read): a screw whose stack names one of them has a mass.
 
+Fixed
+
+- `commandagi::design::threed`: a 3D document names every refused element in one run, one line each in the file's
+  order, as the TypeScript and Python SDKs do. It stopped at the first (IC1-02).
+
 ## 0.6.7 (2026-10-23)
 
 Added

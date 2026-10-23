@@ -563,233 +563,250 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
     let mut body_sources = Sources::new();
     let mut declared: Vec<&El> = Vec::new();
     let mut lists: Vec<(usize, Vec<Json>, Sources)> = Vec::new();
+    // Every element is read, and every one refused is named together: a file with ten mistakes needs one run, not ten.
+    let mut refused: Vec<String> = Vec::new();
     for el in root.child_elements() {
-        match el.tag {
-            "parameter" => {
-                no_children(el)?;
-                let pname = match el.attr("name") {
-                    Some(Json::Str(p)) if !p.is_empty() && slug(p) == *p => p.clone(),
-                    _ => return Err(format!("{} needs a name (letters, digits, _ . -)", at(el))),
-                };
-                for (k, _) in &el.attrs {
-                    if !["name", "bindings"].contains(&k.as_str()) && !PARAM_FIELDS.contains(&k.as_str()) {
-                        return Err(format!("{}: {} is not read on a parameter", at(el), rust_name(k)));
-                    }
-                }
-                if !matches!(el.attr("value"), Some(Json::Num(_))) {
-                    return Err(format!("{}: value is a number", at(el)));
-                }
-                if let Some(tol) = el.attr("tolerance") {
-                    if let Some(problem) = super::tolerances::tolerance_problem(tol) {
-                        return Err(format!("{}: tolerance: {problem}", at(el)));
-                    }
-                }
-                claim(&mut owner, &pname, format!("parameter \"{pname}\""))?;
-                let mut inputs = fields(el, &["name", "bindings"])?;
-                let bindings = match el.attr("bindings") {
-                    None => Json::Arr(Vec::new()),
-                    Some(b) => {
-                        plain(b, &format!("{} bindings", at(el)))?;
-                        b.clone()
-                    }
-                };
-                let ok = match &bindings {
-                    Json::Arr(list) => list.iter().all(|b| matches!(b.get("target"), Some(Json::Str(_))) && matches!(b.get("field"), Some(Json::Str(_)))),
-                    _ => false,
-                };
-                if !ok {
-                    return Err(format!("{}: bindings are [{{ target, field }}]", at(el)));
-                }
-                if matches!(&bindings, Json::Arr(l) if !l.is_empty()) {
-                    inputs.retain(|(k, _)| k != "drives");
-                    inputs.push(("drives".into(), bindings));
-                }
-                nodes.push((pname.clone(), node(&pname, "input", Some(&pname), Json::Obj(inputs), source_meta(el))));
-            }
-            "plane" => {
-                no_children(el)?;
-                let id = id_of(el)?;
-                claim(&mut owner, &id, format!("plane \"{id}\""))?;
-                let mut rest = fields(el, &["id"])?;
-                let label = take(&mut rest, "name");
-                nodes.push((id.clone(), node(&id, "plane", label.as_ref().and_then(Json::as_str), Json::Obj(rest), source_meta(el))));
-            }
-            "body" => {
-                no_children(el)?;
-                let id = id_of(el)?;
-                if bodies.iter().any(|(b, _)| *b == id) {
-                    return Err(format!("two body() elements are called {id}"));
-                }
-                let mut body = fields(el, &["id"])?;
-                for (k, v) in body.iter_mut() {
-                    if k == "engineering" {
-                        *v = check_value(el, "PartEngineering", v, "engineering")?;
-                    }
-                }
-                bodies.push((id.clone(), Json::Obj(body)));
-                body_sources.put(id, el);
-            }
-            t if THREED_LISTS.iter().any(|l| l.0 == t) => {
-                no_children(el)?;
-                let id = id_of(el)?;
-                let kind = THREED_LISTS.iter().position(|l| l.0 == t).unwrap_or_default();
-                if !lists.iter().any(|l| l.0 == kind) {
-                    lists.push((kind, Vec::new(), Sources::new()));
-                }
-                let Some(held) = lists.iter_mut().find(|l| l.0 == kind) else { continue };
-                if held.1.iter().any(|x| x.get("id").and_then(Json::as_str) == Some(id.as_str())) {
-                    return Err(format!("two {}() elements are called {id}", fn_name(t)));
-                }
-                let item = check_value(el, THREED_LISTS[kind].3, &Json::Obj(fields(el, &[])?), "")?;
-                if t == "sheet" {
-                    let problems = sheet_view_problems(&item);
-                    if !problems.is_empty() {
-                        return Err(format!("{}: {}", at(el), problems.join("; ")));
-                    }
-                }
-                held.1.push(item);
-                held.2.put(format!("{t}:{id}"), el);
-            }
-            "slot" => {
-                no_children(el)?;
-                let field = match el.attr("name") {
-                    Some(Json::Str(f)) if f.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && f.chars().all(word_char) => f.clone(),
-                    _ => return Err(format!("{} needs the name of a document field", at(el))),
-                };
-                if NOT_SLOTS.contains(&field.as_str()) {
-                    return Err(format!("{}: {field} is not a slot (it has its own element or attribute)", at(el)));
-                }
-                for (k, _) in &el.attrs {
-                    if k != "name" && k != "value" {
-                        return Err(format!("{}: {} is not read on a slot (its value is value)", at(el), rust_name(k)));
-                    }
-                }
-                claim(&mut owner, &field, format!("the document's {field}"))?;
-                // An absent value is `undefined` in TypeScript, which the node's JSON leaves out.
-                let value = el.attr("value").cloned();
-                if let Some(v) = &value {
-                    plain(v, &format!("{} value", at(el)))?;
-                }
-                let inputs = if OBJECT_SLOTS.contains(&field.as_str()) {
-                    match &value {
-                        Some(v @ Json::Obj(_)) => {
-                            if let Some(l) = THREED_LISTS.iter().find(|l| l.1 == field && v.get(l.2).is_some()) {
-                                return Err(format!("{}: {} are written as {}() elements", at(el), l.2, fn_name(l.0)));
-                            }
-                            v.clone()
+        let read = (|| -> Result<(), String> {
+            match el.tag {
+                "parameter" => {
+                    no_children(el)?;
+                    let pname = match el.attr("name") {
+                        Some(Json::Str(p)) if !p.is_empty() && slug(p) == *p => p.clone(),
+                        _ => return Err(format!("{} needs a name (letters, digits, _ . -)", at(el))),
+                    };
+                    for (k, _) in &el.attrs {
+                        if !["name", "bindings"].contains(&k.as_str()) && !PARAM_FIELDS.contains(&k.as_str()) {
+                            return Err(format!("{}: {} is not read on a parameter", at(el), rust_name(k)));
                         }
-                        _ => return Err(format!("{}: the document's {field} is an object", at(el))),
                     }
-                } else {
-                    match value {
-                        Some(v) => Json::obj().with("value", v),
-                        None => Json::obj(),
+                    if !matches!(el.attr("value"), Some(Json::Num(_))) {
+                        return Err(format!("{}: value is a number", at(el)));
                     }
-                };
-                nodes.push((field.clone(), node(&field, &format!("3d.{field}"), None, inputs, source_meta(el))));
-            }
-            t if THREED_FEATURES.contains(&t) => declared.push(el),
-            "feature" => {
-                let t = match el.attr("type") {
-                    Some(Json::Str(t))
-                        if t.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && t.chars().all(|c| word_char(c) || c == '.' || c == '-') =>
-                    {
-                        t.clone()
+                    if let Some(tol) = el.attr("tolerance") {
+                        if let Some(problem) = super::tolerances::tolerance_problem(tol) {
+                            return Err(format!("{}: tolerance: {problem}", at(el)));
+                        }
                     }
-                    _ => return Err(format!("{} needs the feature's type", at(el))),
-                };
-                if THREED_FEATURES.contains(&t.as_str()) || NOT_FEATURES.contains(&t.as_str()) {
-                    return Err(format!("{}: a {t} is written {}(…)", at(el), fn_name(&t)));
+                    claim(&mut owner, &pname, format!("parameter \"{pname}\""))?;
+                    let mut inputs = fields(el, &["name", "bindings"])?;
+                    let bindings = match el.attr("bindings") {
+                        None => Json::Arr(Vec::new()),
+                        Some(b) => {
+                            plain(b, &format!("{} bindings", at(el)))?;
+                            b.clone()
+                        }
+                    };
+                    let ok = match &bindings {
+                        Json::Arr(list) => list.iter().all(|b| matches!(b.get("target"), Some(Json::Str(_))) && matches!(b.get("field"), Some(Json::Str(_)))),
+                        _ => false,
+                    };
+                    if !ok {
+                        return Err(format!("{}: bindings are [{{ target, field }}]", at(el)));
+                    }
+                    if matches!(&bindings, Json::Arr(l) if !l.is_empty()) {
+                        inputs.retain(|(k, _)| k != "drives");
+                        inputs.push(("drives".into(), bindings));
+                    }
+                    nodes.push((pname.clone(), node(&pname, "input", Some(&pname), Json::Obj(inputs), source_meta(el))));
                 }
-                declared.push(el);
+                "plane" => {
+                    no_children(el)?;
+                    let id = id_of(el)?;
+                    claim(&mut owner, &id, format!("plane \"{id}\""))?;
+                    let mut rest = fields(el, &["id"])?;
+                    let label = take(&mut rest, "name");
+                    nodes.push((id.clone(), node(&id, "plane", label.as_ref().and_then(Json::as_str), Json::Obj(rest), source_meta(el))));
+                }
+                "body" => {
+                    no_children(el)?;
+                    let id = id_of(el)?;
+                    if bodies.iter().any(|(b, _)| *b == id) {
+                        return Err(format!("two body() elements are called {id}"));
+                    }
+                    let mut body = fields(el, &["id"])?;
+                    for (k, v) in body.iter_mut() {
+                        if k == "engineering" {
+                            *v = check_value(el, "PartEngineering", v, "engineering")?;
+                        }
+                    }
+                    bodies.push((id.clone(), Json::Obj(body)));
+                    body_sources.put(id, el);
+                }
+                t if THREED_LISTS.iter().any(|l| l.0 == t) => {
+                    no_children(el)?;
+                    let id = id_of(el)?;
+                    let kind = THREED_LISTS.iter().position(|l| l.0 == t).unwrap_or_default();
+                    if !lists.iter().any(|l| l.0 == kind) {
+                        lists.push((kind, Vec::new(), Sources::new()));
+                    }
+                    let Some(held) = lists.iter_mut().find(|l| l.0 == kind) else { return Ok(()) };
+                    if held.1.iter().any(|x| x.get("id").and_then(Json::as_str) == Some(id.as_str())) {
+                        return Err(format!("two {}() elements are called {id}", fn_name(t)));
+                    }
+                    let item = check_value(el, THREED_LISTS[kind].3, &Json::Obj(fields(el, &[])?), "")?;
+                    if t == "sheet" {
+                        let problems = sheet_view_problems(&item);
+                        if !problems.is_empty() {
+                            return Err(format!("{}: {}", at(el), problems.join("; ")));
+                        }
+                    }
+                    held.1.push(item);
+                    held.2.put(format!("{t}:{id}"), el);
+                }
+                "slot" => {
+                    no_children(el)?;
+                    let field = match el.attr("name") {
+                        Some(Json::Str(f)) if f.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && f.chars().all(word_char) => f.clone(),
+                        _ => return Err(format!("{} needs the name of a document field", at(el))),
+                    };
+                    if NOT_SLOTS.contains(&field.as_str()) {
+                        return Err(format!("{}: {field} is not a slot (it has its own element or attribute)", at(el)));
+                    }
+                    for (k, _) in &el.attrs {
+                        if k != "name" && k != "value" {
+                            return Err(format!("{}: {} is not read on a slot (its value is value)", at(el), rust_name(k)));
+                        }
+                    }
+                    claim(&mut owner, &field, format!("the document's {field}"))?;
+                    // An absent value is `undefined` in TypeScript, which the node's JSON leaves out.
+                    let value = el.attr("value").cloned();
+                    if let Some(v) = &value {
+                        plain(v, &format!("{} value", at(el)))?;
+                    }
+                    let inputs = if OBJECT_SLOTS.contains(&field.as_str()) {
+                        match &value {
+                            Some(v @ Json::Obj(_)) => {
+                                if let Some(l) = THREED_LISTS.iter().find(|l| l.1 == field && v.get(l.2).is_some()) {
+                                    return Err(format!("{}: {} are written as {}() elements", at(el), l.2, fn_name(l.0)));
+                                }
+                                v.clone()
+                            }
+                            _ => return Err(format!("{}: the document's {field} is an object", at(el))),
+                        }
+                    } else {
+                        match value {
+                            Some(v) => Json::obj().with("value", v),
+                            None => Json::obj(),
+                        }
+                    };
+                    nodes.push((field.clone(), node(&field, &format!("3d.{field}"), None, inputs, source_meta(el))));
+                }
+                t if THREED_FEATURES.contains(&t) => declared.push(el),
+                "feature" => {
+                    let t = match el.attr("type") {
+                        Some(Json::Str(t))
+                            if t.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && t.chars().all(|c| word_char(c) || c == '.' || c == '-') =>
+                        {
+                            t.clone()
+                        }
+                        _ => return Err(format!("{} needs the feature's type", at(el))),
+                    };
+                    if THREED_FEATURES.contains(&t.as_str()) || NOT_FEATURES.contains(&t.as_str()) {
+                        return Err(format!("{}: a {t} is written {}(…)", at(el), fn_name(&t)));
+                    }
+                    declared.push(el);
+                }
+                "part" | "assembly" => {
+                    return Err(format!("{}() is a document of its own: place its file with external_part() (file_name, importer \"3d\"; its bodies keep their names under the placement)", fn_name(el.tag)))
+                }
+                _ => return Err(format!("{}() is not read in a 3D document (see commandagi::design::threed)", fn_name(el.tag))),
             }
-            "part" | "assembly" => {
-                return Err(format!("{}() is a document of its own: place its file with external_part() (file_name, importer \"3d\"; its bodies keep their names under the placement)", fn_name(el.tag)))
-            }
-            _ => return Err(format!("{}() is not read in a 3D document (see commandagi::design::threed)", fn_name(el.tag))),
+            Ok(())
+        })();
+        if let Err(e) = read {
+            refused.push(e);
         }
     }
     for el in declared {
-        let id = id_of(el)?;
-        claim(&mut owner, &id, format!("feature \"{id}\""))?;
-        let generic = el.tag == "feature";
-        if !generic && el.attr("type").is_some() {
-            return Err(format!("{}: the tag is the feature's type", at(el)));
-        }
-        let kind = if generic { el.attr("type").and_then(Json::as_str).unwrap_or_default().to_string() } else { el.tag.to_string() };
-        let mut rest = fields(el, if generic { &["id", "type"] } else { &["id"] })?;
-        let label = take(&mut rest, "name");
-        let suppressed = take(&mut rest, "suppressed");
-        if suppressed.as_ref().is_some_and(|s| !matches!(s, Json::Bool(_))) {
-            return Err(format!("{}: suppressed is true or false", at(el)));
-        }
-        let mut inputs = rest;
-        let mut sources = Sources::new();
-        if el.tag == "sketch" {
-            if inputs.iter().any(|(k, _)| k == "sketch") {
-                return Err(format!("{}: a sketch's points, segments and constraints are its child elements", at(el)));
+        let read = (|| -> Result<(), String> {
+            let id = id_of(el)?;
+            claim(&mut owner, &id, format!("feature \"{id}\""))?;
+            let generic = el.tag == "feature";
+            if !generic && el.attr("type").is_some() {
+                return Err(format!("{}: the tag is the feature's type", at(el)));
             }
-            let (sketch, s) = sketch_of(el)?;
-            inputs.push(("sketch".into(), sketch));
-            sources = s;
-        }
-        // A hole that names a standard size ("M4 close fit") has that size's diameter and head (standards.rs).
-        if el.tag == "hole" && inputs.iter().any(|(k, v)| k == "size" && matches!(v, Json::Str(_))) {
-            if let Json::Obj(sized) = sized_hole(&Json::Obj(inputs.clone())).map_err(|e| format!("{}: {e}", at(el)))? {
-                inputs = sized;
+            let kind = if generic { el.attr("type").and_then(Json::as_str).unwrap_or_default().to_string() } else { el.tag.to_string() };
+            let mut rest = fields(el, if generic { &["id", "type"] } else { &["id"] })?;
+            let label = take(&mut rest, "name");
+            let suppressed = take(&mut rest, "suppressed");
+            if suppressed.as_ref().is_some_and(|s| !matches!(s, Json::Bool(_))) {
+                return Err(format!("{}: suppressed is true or false", at(el)));
             }
-        }
-        if !generic {
-            let mut feature = vec![("type".to_string(), Json::from(kind.as_str())), ("id".to_string(), Json::from(id.as_str()))];
-            feature.push(("name".into(), label.clone().unwrap_or_else(|| Json::from(id.as_str()))));
-            if let Some(s) = &suppressed {
-                feature.push(("suppressed".into(), s.clone()));
-            }
-            feature.extend(inputs.iter().cloned());
-            if let Json::Obj(filled) = check_feature(el, Json::Obj(feature))? {
-                inputs = filled.into_iter().filter(|(k, _)| !matches!(k.as_str(), "type" | "id" | "name" | "suppressed")).collect();
-            }
-        }
-        if el.tag != "sketch" {
-            no_children(el)?;
-            if el.tag == "code" {
-                // A code feature's `inputs` are ports of its node, beside `source` and `consumes` (the document graph's rule).
-                let code_inputs = take(&mut inputs, "inputs");
-                if code_inputs.as_ref().is_some_and(|c| !matches!(c, Json::Obj(_))) {
-                    return Err(format!("{}: inputs is an object", at(el)));
+            let mut inputs = rest;
+            let mut sources = Sources::new();
+            if el.tag == "sketch" {
+                if inputs.iter().any(|(k, _)| k == "sketch") {
+                    return Err(format!("{}: a sketch's points, segments and constraints are its child elements", at(el)));
                 }
-                if let Some((k, _)) = inputs.iter().find(|(k, _)| k != "source" && k != "consumes") {
-                    return Err(format!("{}: a code feature has source, inputs and consumes, not {}", at(el), rust_name(k)));
+                let (sketch, s) = sketch_of(el)?;
+                inputs.push(("sketch".into(), sketch));
+                sources = s;
+            }
+            // A hole that names a standard size ("M4 close fit") has that size's diameter and head (standards.rs).
+            if el.tag == "hole" && inputs.iter().any(|(k, v)| k == "size" && matches!(v, Json::Str(_))) {
+                if let Json::Obj(sized) = sized_hole(&Json::Obj(inputs.clone())).map_err(|e| format!("{}: {e}", at(el)))? {
+                    inputs = sized;
                 }
-                if let Some(Json::Obj(entries)) = code_inputs {
-                    for (k, v) in entries {
-                        inputs.retain(|(n, _)| *n != k);
-                        inputs.push((k, v));
+            }
+            if !generic {
+                let mut feature = vec![("type".to_string(), Json::from(kind.as_str())), ("id".to_string(), Json::from(id.as_str()))];
+                feature.push(("name".into(), label.clone().unwrap_or_else(|| Json::from(id.as_str()))));
+                if let Some(s) = &suppressed {
+                    feature.push(("suppressed".into(), s.clone()));
+                }
+                feature.extend(inputs.iter().cloned());
+                if let Json::Obj(filled) = check_feature(el, Json::Obj(feature))? {
+                    inputs = filled.into_iter().filter(|(k, _)| !matches!(k.as_str(), "type" | "id" | "name" | "suppressed")).collect();
+                }
+            }
+            if el.tag != "sketch" {
+                no_children(el)?;
+                if el.tag == "code" {
+                    // A code feature's `inputs` are ports of its node, beside `source` and `consumes` (the document graph's rule).
+                    let code_inputs = take(&mut inputs, "inputs");
+                    if code_inputs.as_ref().is_some_and(|c| !matches!(c, Json::Obj(_))) {
+                        return Err(format!("{}: inputs is an object", at(el)));
+                    }
+                    if let Some((k, _)) = inputs.iter().find(|(k, _)| k != "source" && k != "consumes") {
+                        return Err(format!("{}: a code feature has source, inputs and consumes, not {}", at(el), rust_name(k)));
+                    }
+                    if let Some(Json::Obj(entries)) = code_inputs {
+                        for (k, v) in entries {
+                            inputs.retain(|(n, _)| *n != k);
+                            inputs.push((k, v));
+                        }
                     }
                 }
             }
+            let mut n = Json::obj().with("id", id.as_str()).with("type", kind.as_str());
+            n.set("label", match &label {
+                Some(Json::Str(l)) => l.as_str(),
+                _ => id.as_str(),
+            });
+            if let Some(s) = suppressed {
+                n.set("disabled", s);
+            }
+            n.set("inputs", Json::Obj(inputs));
+            let mut meta = Json::obj();
+            if let Some(s) = el.source_json() {
+                meta.set("source", s);
+            }
+            if !sources.is_empty() {
+                meta.set("sources", sources.json());
+            }
+            if meta != Json::obj() {
+                n.set("meta", meta);
+            }
+            nodes.push((id.clone(), n));
+            order.push(Json::from(id.as_str()));
+            Ok(())
+        })();
+        if let Err(e) = read {
+            refused.push(e);
         }
-        let mut n = Json::obj().with("id", id.as_str()).with("type", kind.as_str());
-        n.set("label", match &label {
-            Some(Json::Str(l)) => l.as_str(),
-            _ => id.as_str(),
-        });
-        if let Some(s) = suppressed {
-            n.set("disabled", s);
-        }
-        n.set("inputs", Json::Obj(inputs));
-        let mut meta = Json::obj();
-        if let Some(s) = el.source_json() {
-            meta.set("source", s);
-        }
-        if !sources.is_empty() {
-            meta.set("sources", sources.json());
-        }
-        if meta != Json::obj() {
-            n.set("meta", meta);
-        }
-        nodes.push((id.clone(), n));
-        order.push(Json::from(id.as_str()));
+    }
+    if !refused.is_empty() {
+        return Err(refused.join("\n"));
     }
     for (id, label, origin, normal, x_axis, builtin) in BUILTIN_PLANES {
         if owner.iter().any(|(o, _)| o == id) || !builtins.contains(id) {
