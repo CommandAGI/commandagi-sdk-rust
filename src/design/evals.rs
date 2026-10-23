@@ -23,7 +23,9 @@
 //!
 //! References are refs: a path relative to the eval file's folder, or an absolute address. `metrics` names the metric
 //! files the eval reads; a case's `task` names the `.task.tsx` whose title and text the agent is handed. A case with no
-//! task file says its `instruction` itself; a case says one of the two. `frozen` is the digest an eval is frozen at
+//! task file says its `instruction` itself; a case says one of the two. `objective` and `scoring`'s `weights` name metric
+//! files by ref as well: `{"kind": "metric", "metric": "<ref>"}`, `{"kind": "linear", "terms": [{"metric": "<ref>",
+//! "weight": 2}], "bias": 0}` or a `function`; the weights are keyed by ref. `frozen` is the digest an eval is frozen at
 //! (`sha256:<hex>`). Nothing adds a default: what the file does not say, the document does not have. A run gives back
 //! `{format, document, sources}` beside an empty graph; `sources` names each case's site by its slug
 //! (`case#undock-and-lap`).
@@ -185,6 +187,52 @@ pub fn eval_case_of(t: &DocTree) -> Result<Json, String> {
     Ok(fields(t, EVAL_CASE_FIELDS))
 }
 
+/// A metric named in `objective`: a ref (`metric`), never a node id (`metricId`).
+fn metric_named(t: &DocTree, at: &str, v: &Json) -> Result<(), String> {
+    if !matches!(v, Json::Obj(_)) {
+        return Err(format!("{} {} is an object, not {}", call(t), at, v.text()));
+    }
+    if v.get("metricId").is_some() {
+        return Err(format!("{} {} names its metric file by ref (metric), not by node id (metricId)", call(t), at));
+    }
+    match v.get("metric") {
+        Some(Json::Str(s)) if !s.trim().is_empty() => Ok(()),
+        m => Err(format!("{} {}.metric is a metric file's ref, not {}", call(t), at, said(m))),
+    }
+}
+
+fn objective(t: &DocTree) -> Result<(), String> {
+    let Some(o) = t.attr("objective") else { return Ok(()) };
+    let kind = match o.get("kind") {
+        Some(Json::Str(k)) => k.as_str(),
+        _ => return Err(format!("{} objective is {{ kind: \"metric\" | \"linear\" | \"function\", … }}, not {}", call(t), o.text())),
+    };
+    if kind == "metric" {
+        metric_named(t, "objective", o)?;
+    }
+    if kind == "linear" {
+        let terms = match o.get("terms") {
+            Some(Json::Arr(terms)) if !terms.is_empty() => terms,
+            _ => return Err(format!("{} objective.terms is a list of {{ metric, weight }}", call(t))),
+        };
+        for (i, term) in terms.iter().enumerate() {
+            metric_named(t, &format!("objective.terms[{i}]"), term)?;
+            if let Some(w) = term.get("weight").filter(|w| !matches!(w, Json::Num(n) if n.is_finite())) {
+                return Err(format!("{} objective.terms[{i}].weight is a number, not {}", call(t), w.text()));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn weights(t: &DocTree) -> Result<(), String> {
+    match t.attr("scoring").and_then(|s| s.get("weights")) {
+        None => Ok(()),
+        Some(Json::Obj(entries)) if entries.iter().all(|(_, w)| matches!(w, Json::Num(n) if n.is_finite())) => Ok(()),
+        Some(w) => Err(format!("{} scoring.weights is {{ \"<metric file ref>\": <number> }}, not {}", call(t), w.text())),
+    }
+}
+
 fn eval_of(t: &DocTree) -> Result<Json, String> {
     for k in ["slug", "domain", "version", "description", "rung"] {
         text(t, k)?;
@@ -192,6 +240,8 @@ fn eval_of(t: &DocTree) -> Result<Json, String> {
     for k in ["scoring", "objective", "provenance"] {
         object(t, k)?;
     }
+    objective(t)?;
+    weights(t)?;
     texts(t, "metrics")?;
     texts(t, "axes")?;
     number(t, "repeats", true)?;

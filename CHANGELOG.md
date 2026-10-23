@@ -41,6 +41,13 @@ Added
 - The materials data has the fastener grades `A2-70`, `A4-70`, `8.8` and `12.9` (each row's source says where its
   numbers were read): a screw whose stack names one of them has a mass.
 
+Changed (a document written for 0.6.7 may need an edit)
+
+- `commandagi::design::evals`: an eval's `.objective(..)` and its `.scoring(..)` weights name metric files by ref, as
+  `.metrics(..)` does: `{"kind": "metric", "metric": "Lap time.metric.tsx"}`, a linear term's `metric`, and weights
+  keyed by ref. An objective that names a metric by node id (`metricId`) is refused with why. The same as the
+  TypeScript SDK's.
+
 Fixed
 
 - `commandagi::design::threed`: a 3D document names every refused element in one run, one line each in the file's
