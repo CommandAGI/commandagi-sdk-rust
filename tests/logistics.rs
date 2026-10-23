@@ -188,3 +188,26 @@ fn a_3d_documents_item_and_assemble_are_lists_of_the_document_and_body_engineeri
     assert!(refused(body().id("b").engineering(json(r#"{"lifecycle": {"status": "dead"}}"#))).contains("status"));
     assert!(refused(slot().name("items").value(json("[]"))).contains("items is not a slot"));
 }
+
+#[test]
+fn a_3d_documents_product_is_a_list_of_the_document_and_stock_and_shutoff_are_engineering_fields() {
+    use commandagi::design::threed::*;
+    let compliance = r#"{"eccn":"EAR99","certifications":["CE"]}"#;
+    let shipping = r#"{"hsCode":"9026.80","packaged":{"size":[120,90,60],"grams":240},"packaging":"carton"}"#;
+    let base = r#"{"process": "fdm-printing", "make": {"shop": "S", "stock": {"name": "PETG, 1 kg spool", "perPart": 0.05}}}"#;
+    let gas = r#"{"process": "purchased", "chemical": {"substance": "silane", "shutoff": "a detector closes the valve"}}"#;
+    let g = graph_of(
+        part([
+            product().id("kit").name("Sensor kit").compliance(json(compliance)).shipping(json(shipping)),
+            item().id("base").name("Base").engineering(json(base)),
+            item().id("sih4").name("Silane").engineering(json(gas)),
+        ])
+        .name("P"),
+    );
+    let value = node(&g, "products").get("inputs").and_then(|i| i.get("value")).unwrap().text();
+    assert_eq!(value, format!(r#"[{{"id":"kit","name":"Sensor kit","compliance":{compliance},"shipping":{shipping}}}]"#));
+    let refused = |el: El| bad(part([el]).name("P"));
+    assert!(refused(product().id("kit")).contains("name"));
+    assert!(refused(item().id("b").name("B").engineering(json(r#"{"make": {"stock": {"name": "S", "perPart": 0}}}"#))).contains("perPart"));
+    assert!(refused(slot().name("products").value(json("[]"))).contains("products is not a slot"));
+}
