@@ -8,6 +8,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::threed_props`: `CurveProps { tangents: Some(vec![SplineTangent { at, direction }]),
+  tangent_scale, .. }`, a spline's direction at an inner point (the spline is C1 there) and how hard every given
+  tangent holds (1 is the natural spline). `PathPatternProps { path: {"curve": ...} }` places its copies along a curve
+  in space, and `align_to_path` turns each by the curve's rotation-minimizing frame. A sweep's `twist` now turns the
+  profile on top of the Frenet and up frames too.
 - `commandagi::design::evals` (`commandagi.design.evals`): an eval and a metric in code, `<eval>` with `<case>`
   children and `<metric>`, the same documents as the TypeScript SDK's `evals.ts`. A case names its task file (`task`,
   a ref) or says its `instruction`; `metrics` and `acceptanceMetric` are refs; `frozen` is the digest the eval is

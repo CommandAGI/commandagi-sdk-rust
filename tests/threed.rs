@@ -401,3 +401,56 @@ fn every_refused_element_of_a_file_is_named_in_one_run() {
     assert_eq!(lines[2], r#"parameter().name("w"): value is a number"#);
     assert!(lines[3].starts_with(r#"extrude().id("e1"): "#), "{said}");
 }
+
+#[test]
+fn a_splines_inner_tangents_and_a_path_pattern_along_a_curve() {
+    // The TypeScript and Python SDKs read the same elements to the same inputs.
+    use commandagi::design::threed_props::*;
+    let lead = CurveProps {
+        id: "lead".into(),
+        name: None,
+        kind: Some(CurvePropsKind::Spline),
+        points: Some(vec![[0.0, 0.0, 0.0], [20.0, 5.0, 10.0], [40.0, 0.0, 30.0]]),
+        start_tangent: None,
+        end_tangent: None,
+        tangents: Some(vec![SplineTangent { at: 1, direction: [1.0, 0.0, 1.0] }]),
+        tangent_scale: Some(1.5),
+        closed: None,
+        bend_radius: None,
+        origin: None,
+        axis: None,
+        radius: None,
+        pitch: None,
+        turns: None,
+        right_handed: None,
+        start: None,
+        x_axis: None,
+        suppressed: None,
+        consumes: None,
+    };
+    let beads = PathPatternProps {
+        id: "beads".into(),
+        name: None,
+        seed_feature: "bead".into(),
+        path: parse(r#"{"curve": "lead"}"#),
+        count: Some(6),
+        align_to_path: Some(true),
+        suppressed: None,
+        consumes: None,
+    };
+    let bead = SphereProps {
+        id: "bead".into(),
+        name: None,
+        center: Some([0.0, 0.0, 0.0]),
+        radius: Some(1.0),
+        operation: Some(BooleanMode::New),
+        suppressed: None,
+        consumes: None,
+    };
+    let g = graph(part([lead.el(), bead.el(), beads.el()]).name("Lead"));
+    assert_eq!(
+        node(&g, "lead").get("inputs").unwrap().text(),
+        r#"{"kind":"spline","points":[[0,0,0],[20,5,10],[40,0,30]],"tangents":[{"at":1,"direction":[1,0,1]}],"tangentScale":1.5}"#
+    );
+    assert_eq!(node(&g, "beads").get("inputs").unwrap().text(), r#"{"seedFeature":"bead","path":{"curve":"lead"},"count":6,"alignToPath":true}"#);
+}

@@ -824,7 +824,7 @@ pub struct SweepProps {
     pub up: Option<Vec3>,
     /// The `curve` feature the profile's frame points at, by id.
     pub guide: Option<String>,
-    /// How far the profile turns about the path from its start to its end, evenly along its length (a twisted bar, a cable's lay). For a path that is an open curve, with frame "minimal".
+    /// How far the profile turns about the path from its start to its end, evenly along its length (a twisted bar, a cable's lay), on top of the frame: "minimal", "frenet" or "up". For a path that is an open, smooth curve.
     /// Unit: rad.
     pub twist: Option<f64>,
     /// How the solid combines with the bodies before it.
@@ -906,6 +906,25 @@ impl ToJson for CurvePropsKind {
     }
 }
 
+/// A spline's direction at one of its inner points.
+#[derive(Clone, Debug)]
+pub struct SplineTangent {
+    /// Which point, by its index in `points` (not the first or the last: those are `startTangent` and `endTangent`).
+    pub at: i64,
+    /// The direction there (only the direction counts).
+    pub direction: Vec3,
+}
+
+impl ToJson for SplineTangent {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("at", self.at.to_json());
+        o.set("direction", self.direction.to_json());
+        o
+    }
+}
+
 /// A CURVE IN SPACE: a path that is not drawn on one plane (a hose, a wire lead, a tendon housing, a braid yarn), what a sweep follows (`path={{ curve: <id> }}`) or points its profile at (`guide`). It makes no body. It is also a plane, under its own id: the plane normal to the curve at its start (origin: the start; normal: the curve's direction there; x-axis: `xAxis`), so a profile sketch drawn on it (`plane={{ type: "datum", plane: <id> }}`) starts the sweep where the curve starts.
 #[derive(Clone, Debug)]
 pub struct CurveProps {
@@ -923,6 +942,11 @@ pub struct CurveProps {
     pub start_tangent: Option<Vec3>,
     /// The direction it arrives at the last point (only the direction counts).
     pub end_tangent: Option<Vec3>,
+    /// The directions it passes inner points in (only the direction counts): the spline is cut there into C2 pieces that meet in that direction at one speed (C1). Not for a closed spline.
+    pub tangents: Option<Vec<SplineTangent>>,
+    /// How hard every given tangent holds (build123d's tangent scalars): its speed, in lengths of the chord-length parameter. 1 is the natural spline; more holds the direction longer (a looser end), less lets the curve turn sooner (a tighter one).
+    /// Default: `1`.
+    pub tangent_scale: Option<f64>,
     /// Back to the first point: a periodic spline, a closed polyline.
     pub closed: Option<bool>,
     /// The radius each corner of the polyline is rounded to.
@@ -978,6 +1002,12 @@ impl ToJson for CurveProps {
         }
         if let Some(v) = &self.end_tangent {
             o.set("endTangent", v.to_json());
+        }
+        if let Some(v) = &self.tangents {
+            o.set("tangents", v.to_json());
+        }
+        if let Some(v) = &self.tangent_scale {
+            o.set("tangentScale", v.to_json());
         }
         if let Some(v) = &self.closed {
             o.set("closed", v.to_json());
@@ -2178,12 +2208,12 @@ pub struct PathPatternProps {
     pub name: Option<String>,
     /// The feature whose bodies are patterned.
     pub seed_feature: String,
-    /// Sketch whose path (open or closed) defines the instance stations.
-    pub path: ProfileRef,
+    /// What the copies are placed along, evenly by length from its start: a sketch's open or closed chain (`{ sketch }`), or a curve in space (`{ curve }`, the id of a `curve` feature).
+    pub path: Json,
     /// How many copies along the path.
     /// Default: `5`.
     pub count: Option<i64>,
-    /// Rotate each copy to follow the path tangent.
+    /// Turn each copy as the path turns from its start: on a sketch, about the sketch's normal; on a curve in space, by the curve's rotation-minimizing frame (no roll about the path).
     pub align_to_path: Option<bool>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
