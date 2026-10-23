@@ -83,20 +83,24 @@ fn a_release_is_its_files_check_verdicts_and_outputs_in_order() {
     .id("plate-A")
     .rev("A")
     .of("../..")
+    .frozen("files")
     .created_at(1792000000000_i64);
     let (format, doc, _) = document(root);
     assert_eq!(format, "release");
     assert_eq!(
         doc,
         j(&format!(
-            r#"{{"id": "plate-A", "rev": "A", "of": "../..", "createdAt": 1792000000000,
+            r#"{{"id": "plate-A", "rev": "A", "of": "../..", "frozen": "files", "createdAt": 1792000000000,
                 "files": [{{"path": "cad/Plate.3d.rs", "digest": "{a}"}}],
                 "checks": [{{"file": "cad/Plate.3d.rs", "id": "interference", "kind": "interference", "status": "passed"}}],
                 "outputs": [{{"path": "outputs/Plate.step", "digest": "{b}", "from": "cad/Plate.3d.rs", "kind": "step"}}]}}"#
         ))
     );
-    assert!(bad(release([file().path("x").digest("abc")]).id("r").rev("A").of(".")).contains("digest is its content's SHA-256"));
-    assert!(bad(release([check().file("x").id("i").kind("k").status("ok")]).id("r").rev("A").of(".")).contains("status is passed, failed, skipped, accepted"));
+    assert!(bad(release([file().path("x").digest("abc")]).id("r").rev("A").of(".").frozen("files")).contains("digest is its content's SHA-256"));
+    assert!(bad(release([check().file("x").id("i").kind("k").status("ok")]).id("r").rev("A").of(".").frozen("files")).contains("status is passed, failed, skipped, accepted"));
+    let (_, nested, _) = document(release([]).id("r").rev("A").of("../..").frozen("files/product"));
+    assert_eq!(nested.get("frozen"), Some(&Json::from("files/product")));
+    assert!(bad(release([]).id("r").rev("A").of(".").frozen("../files")).contains("frozen is a folder beside the record"));
     let (_, unit, _) = document(instance([]).serial("S").product_id("p").release("../releases/A/A.release.rs"));
     assert_eq!(unit.get("release"), Some(&Json::from("../releases/A/A.release.rs")));
 }

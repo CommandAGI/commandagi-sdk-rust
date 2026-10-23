@@ -54,7 +54,7 @@ attributes! {
         principal; role; acted_by; agent; sig; signed_at;
         serial; product_id; model; release;
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
-        rev; of; product; note; previous; path; digest; file; status; accepted; reason; from;
+        rev; of; frozen; product; note; previous; path; digest; file; status; accepted; reason; from;
     }
 }
 
@@ -65,7 +65,7 @@ pub const CONTRACT_FIELDS: &[&str] = &["id", "terms", "createdAt"];
 /// The fields of a product instance (`ProductInstance`), but its events. `release`: the release it was built from.
 pub const INSTANCE_FIELDS: &[&str] = &["serial", "productId", "model", "release"];
 /// The fields of a hardware release, but its lists.
-pub const RELEASE_FIELDS: &[&str] = &["id", "rev", "of", "product", "createdAt", "by", "note", "previous"];
+pub const RELEASE_FIELDS: &[&str] = &["id", "rev", "of", "frozen", "product", "createdAt", "by", "note", "previous"];
 /// The fields of one frozen file of a release.
 pub const RELEASE_FILE_FIELDS: &[&str] = &["path", "digest"];
 /// The fields of one check verdict of a release.
@@ -105,7 +105,7 @@ const RELEASE: Vocabulary = Vocabulary {
     noun: "a hardware release",
     root: "release",
     tags: &[
-        TagRule::new("release", &[]).required(&["id", "rev", "of"]).attrs(RELEASE_FIELDS),
+        TagRule::new("release", &[]).required(&["id", "rev", "of", "frozen"]).attrs(RELEASE_FIELDS),
         TagRule::new("file", &["release"]).key("path").required(&["path", "digest"]).attrs(RELEASE_FILE_FIELDS),
         TagRule::new("check", &["release"]).required(&["file", "id", "kind", "status"]).attrs(RELEASE_CHECK_FIELDS),
         TagRule::new("output", &["release"]).key("path").required(&["path", "digest"]).attrs(RELEASE_OUTPUT_FIELDS),
@@ -138,6 +138,11 @@ fn release_of(t: &DocTree) -> Result<Json, String> {
             let said = c.get("status").map(Json::text).unwrap_or_else(|| "undefined".into());
             return Err(format!("{at}: a check's status is {}, not {said}", RELEASE_CHECK_STATUSES.join(", ")));
         }
+    }
+    let frozen_ok = matches!(t.attr("frozen"), Some(Json::Str(f)) if !f.is_empty() && !f.starts_with('/') && f.split('/').all(|p| !p.is_empty() && p != "." && p != ".."));
+    if !frozen_ok {
+        let said = t.attr("frozen").map(Json::text).unwrap_or_else(|| "undefined".into());
+        return Err(format!("{at}: frozen is a folder beside the record (files, files/<the folder's names>), not {said}"));
     }
     match t.attr("createdAt") {
         None => {}
