@@ -30,6 +30,10 @@ Fixed
 
 - `commandagi::design::threed`: a 3D document names every refused element in one run, one line each in the file's
   order, as the TypeScript and Python SDKs do. It stopped at the first (IC1-02).
+- The T-slot sections have the maker's 45° web again: `cavity_floor_width` is 5.88 (5 Series) and 9.17 (HFS6-3030).
+  0.6.6 had it, but 0.6.7's standards data was generated from tables that never took the fix (5.6 and 8.5), so
+  HFS5-2080's ix was 5.04 % over MISUMI's again. The repository's tables now hold it: each section's area, ix, iy and
+  mass are within 3.1 % of MISUMI's, and the repository's test holds 5 %.
 
 ## 0.6.7 (2026-10-23)
 
