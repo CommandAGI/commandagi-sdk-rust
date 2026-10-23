@@ -14,9 +14,12 @@ Added
   in space, and `align_to_path` turns each by the curve's rotation-minimizing frame. A sweep's `twist` now turns the
   profile on top of the Frenet and up frames too.
 - `commandagi::design::threed`: `product().id().name().part_number().compliance(…).shipping(…)`, the product as it is
-  sold (its certifications, tariff heading, packed size and mass; the document's `products`); `library()`; `make.stock`
+  sold (its certifications, tariff heading, packed size and mass; the document's `products`); `make.stock`
   (the stock a made part uses, bought by its own offers); a process chemical's `shutoff`. The same as the TypeScript
   SDK's `<product>`.
+- `commandagi::design::threed`: `permitted()`, `fastener()` and `library()`, the elements the TypeScript and Python
+  SDKs already had, with their attributes (`.process()`, `.edge_dir()`, `.clamped()`, `.receiver()`, `.washer()`,
+  `.nut()`, `.grip()`, `.fit()`, `.min_engagement()`, `.torque()`, `.part_number()`, `.match_()`, `.sizes()`).
 - `commandagi::design::evals` (`commandagi.design.evals`): an eval and a metric in code, `<eval>` with `<case>`
   children and `<metric>`, the same documents as the TypeScript SDK's `evals.ts`. A case names its task file (`task`,
   a ref) or says its `instruction`; `metrics` and `acceptanceMetric` are refs; `frozen` is the digest the eval is

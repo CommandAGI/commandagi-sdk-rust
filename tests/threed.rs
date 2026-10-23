@@ -345,6 +345,29 @@ fn a_sheets_section_view_has_its_cutting_plane_and_a_detail_view_enlarges_anothe
 }
 
 #[test]
+fn checks_accepts_permits_and_fasteners_are_the_documents_lists() {
+    // The TypeScript and Python SDKs read the same fields (test_threed.py, threed.test.ts).
+    let stack = |length: f64| {
+        assembly([
+            box_().id("base").name("Base").center([0, 0, 5]).size([40, 40, 10]).operation("new"),
+            fastener().id("f1").part("iso-4762-m6").length(length).at([0, 0, 20]).clamped(["Lid"]).receiver("Base").min_engagement(1.5),
+            permitted().id("cut").check("edges").body("Panel*").process("laser-cutting").edge_dir([0, 0, 1]).reason("a laser cut"),
+        ])
+        .name("Stack")
+    };
+    let g = graph(stack(18.0));
+    assert_eq!(
+        node(&g, "fasteners").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"f1","part":"iso-4762-m6","length":18,"at":[0,0,20],"clamped":["Lid"],"receiver":"Base","minEngagement":1.5}]}"#
+    );
+    assert_eq!(
+        node(&g, "permitted").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"cut","check":"edges","body":"Panel*","process":"laser-cutting","edgeDir":[0,0,1],"reason":"a laser cut"}]}"#
+    );
+    assert!(bad(stack(-1.0)).contains("length"));
+}
+
+#[test]
 fn a_check_sweeps_a_joint_over_its_limits_and_a_pair_accept_is_bounded_by_its_volume() {
     // PCBC-14, PCBC-18: the TypeScript and Python SDKs read the same fields.
     let g = graph(
@@ -367,7 +390,7 @@ fn an_envelope_declares_its_mounting_holes_and_a_library_its_sizes() {
     // The TypeScript and Python SDKs read the same fields (IC2-13, CORE-29).
     let engineering = r#"{"process":"purchased","envelope":true,"mountingHoles":[{"at":[-10,0,0],"axis":[0,0,-1],"diameter":5,"depth":12}]}"#;
     let library = |sizes: &str| {
-        El::new("library").with_attr("id", "shcs").with_attr("match", "ISO 4762 * A2-70").with_attr("engineering", json(r#"{"process":"purchased"}"#)).with_attr("sizes", json(sizes))
+        library().id("shcs").match_("ISO 4762 * A2-70").engineering(json(r#"{"process":"purchased"}"#)).sizes(json(sizes))
     };
     let sizes = r#"[{"size":"M4x25","partNumber":"MF-SHCS-M4x0025-A2","priceBreaks":[{"quantity":1,"unitPrice":0.2}]}]"#;
     let g = graph(assembly([body().id("valve").engineering(json(engineering)), library(sizes)]).name("A"));

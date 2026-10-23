@@ -60,7 +60,6 @@
 //!                                                the box, or another design by `ref` (a board's .pcb.rs)
 //! assemble().id().order().parts([…]).fasteners([…]).tools([…]).fixture().by().minutes().rate_per_hour()
 //!          .currency().instruction()             one assembly step (`assemblySteps`)
-//! library().id().match_().engineering(…)       the data of every library fastener piece whose designation matches
 //! product().id().name().compliance(…).shipping(…) the product as it is sold (`products`): its certifications, its
 //!                                                tariff heading, its packed size and mass
 //! joint().id().kind().a().b().anchor().axis().limits() …   a joint between two bodies (`dynamics.joints`): fixed,
@@ -69,6 +68,12 @@
 //! sheet().id().size().scale().projection().views(…) …      an engineering drawing sheet of the document (`drawings`)
 //! check().id().kind().bodies().against().sweep(…) …      a check the design must pass (`checks`; a sweep moves a joint)
 //! accept().id().check().body().other().region().max_volume().reason()   a finding accepted on purpose (`accepted`)
+//! permitted().id().check().body().process().edge_dir().region().reason()   findings a process or a purpose permits
+//!                                                (`permitted`)
+//! fastener().id().part().length().at().axis().clamped([…]).receiver().washer().nut() …   a fastener stack: a library
+//!                                                screw placed through clamped bodies into a receiver (`fasteners`)
+//! library().id().match_().engineering(…).sizes(…)   the data of every library fastener piece whose designation
+//!                                                matches (`library`): its supplier and price, given once
 //! slot().name(…).value(…)                       any other field of the document, whole
 //! ```
 //!
@@ -120,14 +125,18 @@ elements! {
     item: leaf;
     /// One assembly step: `assemble().id("s1").order(1).parts(["b", "tape"]).by("in-house").minutes(2)`.
     assemble: leaf;
-    /// The data of every library fastener piece whose designation matches: `library().id("a2").match_("ISO 4017 * A2-70").engineering(…)`.
-    library: leaf;
     /// The product as it is sold: `product().id("cam").name("Camera").shipping(json(r#"{"hsCode": "8525.89"}"#))`.
     product: leaf;
     /// A check the design must pass: `check().id("stroke").kind("interference").sweep(json(r#"{"joint": "ramJ"}"#))`.
     check: leaf;
     /// A finding accepted on purpose: `accept().id("a1").check("clash").body("Sleeve").other("Ram").max_volume(3200).reason(…)`.
     accept: leaf;
+    /// Findings a process or a purpose permits: `permitted().id("cut").check("edges").body("Panel*").process("laser-cutting").reason(…)`.
+    permitted: leaf;
+    /// A fastener stack: `fastener().id("f1").part("iso-4762-m6").length(18).at([0, 0, 20]).clamped(["Lid"]).receiver("Base")`.
+    fastener: leaf;
+    /// The data of every library fastener piece whose designation matches: `library().id("shcs").match_("ISO 4762 * A2-70")`.
+    library: leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
     feature: leaf;
     /// A sketch: its points, segments, constraints and projections.
@@ -240,7 +249,13 @@ attributes! {
         /// An accept's or a permit's check, body, other body of a pair, largest shared volume (mm³) and reason.
         check; body; other; max_volume; reason; region; severity;
         /// A product's number, compliance and shipping: `product().id("kit").shipping(json(r#"{"hsCode": "8525.89"}"#))`.
-        part_number; compliance; shipping;
+        compliance; shipping;
+        /// A permit's process and the direction of the edges it permits.
+        process; edge_dir;
+        /// A fastener stack's clamped bodies, receiver, washer, nut, grip, fit, least thread engagement, torque and part number.
+        clamped; receiver; washer; nut; grip; fit; min_engagement; torque; part_number;
+        /// A library entry's designation pattern and its sizes.
+        match_; sizes;
     }
 }
 
