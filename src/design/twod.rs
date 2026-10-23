@@ -68,7 +68,7 @@ elements! {
     painting: children;
     /// A photo: its layer stack, bottom first.
     photo: children;
-    /// A nest: its sheet, stock, options and parts.
+    /// A nest: its sheet, stock, options, parts and engraves.
     nest: children;
     /// A drawing's layer (its shapes), or a paint document's pixel layer (its strokes and mask).
     layer: children;
@@ -182,6 +182,9 @@ elements! {
     options: leaf;
     /// A nest's part: `part().id("tab").quantity(2).outline([[0, 0], [10, 0], [10, 5]])`.
     part: leaf;
+    /// An image burned on a nest's first sheet:
+    /// `engrave().id("logo").src("logo.png").x_mm(20).y_mm(20).width_mm(60).height_mm(30).dpi(254).dither("ordered")`.
+    engrave: leaf;
 }
 
 attributes! {
@@ -483,6 +486,20 @@ attributes! {
         holes;
         /// The file a nest's part was imported from: `json(r#"{"file": "disc.svg"}"#)`.
         source;
+        /// An engrave's left edge on the sheet (mm).
+        x_mm;
+        /// An engrave's lower edge on the sheet (mm).
+        y_mm;
+        /// An engrave's dither: "none", "ordered" or "floyd-steinberg".
+        dither;
+        /// An engrave's power for the darkest pixel (%).
+        power_pct;
+        /// An engrave's lasing threshold (%).
+        min_power_pct;
+        /// An engrave's feed (mm/min).
+        feed_mm_min;
+        /// How many times an engrave is burned.
+        passes;
     }
 }
 
@@ -1271,6 +1288,7 @@ impl Doc {
         self.s = Some(Scope::new(&format!("nest:{}", slug(&title)), Json::obj().with("domain", "nest").with("name", title)));
         let mut one: Vec<(String, Json)> = Vec::new();
         let mut parts = Vec::new();
+        let mut engraves = Vec::new();
         for el in root.child_elements() {
             if ONE.contains(&el.tag) {
                 if one.iter().any(|(k, _)| k == el.tag) {
@@ -1283,14 +1301,19 @@ impl Doc {
                     return Err(format!("{}: a part has an id (the name its placements and overrides use)", place(el)));
                 }
                 parts.push(self.add(el, "nest.part", attrs(el, &[])?)?);
+            } else if el.tag == "engrave" {
+                if el.attr("id").and_then(Json::as_str).is_none() {
+                    return Err(format!("{}: an engrave has an id (the name the nest's code uses)", place(el)));
+                }
+                engraves.push(self.add(el, "nest.engrave", attrs(el, &[])?)?);
             } else {
-                return Err(format!("{} is not read in a nest (it has sheet(), stock(), options(), part())", tag(el.tag)));
+                return Err(format!("{} is not read in a nest (it has sheet(), stock(), options(), part(), engrave())", tag(el.tag)));
             }
         }
         if let Some(k) = ONE.iter().find(|k| !one.iter().any(|(t, _)| t == *k)) {
             return Err(format!("a nest needs its {}", tag(k)));
         }
-        let Json::Obj(inputs) = spread(spread(a, one), wires("parts", &parts)) else { unreachable!() };
+        let Json::Obj(inputs) = spread(spread(spread(a, one), wires("parts", &parts)), wires("engraves", &engraves)) else { unreachable!() };
         let doc = self.scope().add("nest.doc", inputs, Some("nest"), None, meta(root))?;
         Ok(self.build(&doc))
     }

@@ -182,6 +182,30 @@ fn a_mask_is_the_one_layer_it_holds_and_carries_its_call() {
 }
 
 #[test]
+fn a_nest_engrave_is_a_nest_engrave_node_on_the_engraves_channel() {
+    let g = graph(
+        nest([
+            sheet().width_mm(300).height_mm(200).margin_mm(5),
+            stock().material_id("plywood").thickness_mm(3).machine(json(r#"{"powerW": 40}"#)),
+            options().resolution_mm(1),
+            engrave().id("logo").src("logo.png").x_mm(20).y_mm(20).width_mm(60).height_mm(30).dpi(254).dither("ordered"),
+        ])
+        .safe_z_mm(5),
+    );
+    assert_eq!(
+        inputs(&g, "nest"),
+        golden(&format!(r#"{{"safeZMm": 5, "sheet": {}, "stock": {}, "options": {}, "engraves.1": {}}}"#, w("nest.sheet"), w("nest.stock"), w("nest.options"), w("logo")))
+    );
+    let mut logo = node(&g, "logo").clone();
+    assert!(logo.remove("meta").is_some(), "the engrave carries its call");
+    assert_eq!(
+        logo.text(),
+        golden(r#"{"id": "logo", "type": "nest.engrave", "inputs": {"src": "logo.png", "xMm": 20, "yMm": 20, "widthMm": 60, "heightMm": 30, "dpi": 254, "dither": "ordered"}}"#)
+    );
+    assert_eq!(bad(nest([sheet(), stock(), options(), engrave().src("a.png")])), "engrave(): an engrave has an id (the name the nest's code uses)");
+}
+
+#[test]
 fn a_nest_declares_its_sheet_stock_options_and_parts() {
     let g = graph(
         nest([
