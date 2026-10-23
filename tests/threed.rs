@@ -437,7 +437,7 @@ fn a_splines_inner_tangents_and_a_path_pattern_along_a_curve() {
         start_tangent: None,
         end_tangent: None,
         tangents: Some(vec![SplineTangent { at: 1, direction: [1.0, 0.0, 1.0] }]),
-        tangent_scale: Some(1.5),
+        tangent_scale: Some(1.5.into()),
         closed: None,
         bend_radius: None,
         origin: None,
@@ -470,10 +470,22 @@ fn a_splines_inner_tangents_and_a_path_pattern_along_a_curve() {
         suppressed: None,
         consumes: None,
     };
-    let g = graph(part([lead.el(), bead.el(), beads.el()]).name("Lead"));
+    let g = graph(part([lead.clone().el(), bead.el(), beads.el()]).name("Lead"));
     assert_eq!(
         node(&g, "lead").get("inputs").unwrap().text(),
         r#"{"kind":"spline","points":[[0,0,0],[20,5,10],[40,0,30]],"tangents":[{"at":1,"direction":[1,0,1]}],"tangentScale":1.5}"#
     );
     assert_eq!(node(&g, "beads").get("inputs").unwrap().text(), r#"{"seedFeature":"bead","path":{"curve":"lead"},"count":6,"alignToPath":true}"#);
+    // One scale per given tangent, in order along the spline: the start's, the inner one's, the end's.
+    let each = |scales: Vec<f64>| CurveProps {
+        id: "c".into(),
+        start_tangent: Some([1.0, 0.0, 0.0]),
+        end_tangent: Some([0.0, 0.0, 1.0]),
+        tangent_scale: Some(scales.into()),
+        ..lead.clone()
+    };
+    let g = graph(part([each(vec![2.0, 1.0, 0.5]).el()]).name("P"));
+    assert_eq!(node(&g, "c").get("inputs").unwrap().get("tangentScale").unwrap().text(), "[2,1,0.5]");
+    let refused = bad(part([each(vec![2.0, 0.0, 0.5]).el()]).name("P"));
+    assert!(refused.contains("tangentScale/1: must be greater than 0"), "{refused}");
 }
