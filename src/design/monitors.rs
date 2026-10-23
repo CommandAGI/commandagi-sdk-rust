@@ -406,7 +406,6 @@ fn derive_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("{w} a port is a word, not \"{port}\""));
         }
         match folder {
-            Json::Str(f) if f == "." || f == "./" => return Err(format!("{w} inputs.{port} names this monitor; a derive takes other monitors' records")),
             Json::Str(f) if !f.is_empty() => {}
             other => return Err(format!("{w} inputs.{port} is a monitor's folder, not {}", other.text())),
         }

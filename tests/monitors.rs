@@ -109,7 +109,8 @@ fn a_derive_and_a_discover() {
     assert_eq!(doc.get("derives"), Some(&j(r#"[{"id": "vwap", "op": "vwap", "inputs": {"trades": "../trades"}, "params": {"window": "1m"}}]"#)));
     assert_eq!(monitor_with_defaults(&doc).get("derives"), Some(&j(r#"[{"id": "vwap", "op": "vwap", "inputs": {"trades": "../trades"}, "params": {"window": "1m"}, "since": null}]"#)));
     assert!(declare(monitor([derive().id("d").op("last").inputs(json("{}"))])).unwrap_err().contains("inputs maps each port"));
-    assert!(declare(monitor([derive().id("d").op("last").inputs(json(r#"{"records": "."}"#))])).unwrap_err().contains("names this monitor"));
+    // A port may name this monitor (an exploit's lifecycle from its own reads), as in the TypeScript SDK.
+    declare(monitor([derive().id("d").op("consolidate").inputs(json(r#"{"own": "./"}"#))])).unwrap();
 
     let (_, mirror) = document(
         monitor([
