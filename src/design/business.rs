@@ -68,7 +68,7 @@ elements! {
 attributes! {
     /// The fields of a company, an RFC and a case, chained on their elements.
     pub trait BusinessAttrs {
-        name; about; files; dashboard;
+        name; about; postal_address; files; dashboard;
         jurisdiction; form; tax_classification; formed; fiscal_year_end; ids; operates_in; conditions;
         kind; id; issued; expires; file; journal; ocf; folder;
         procedure; title; body; target; engine_json; summary;
@@ -110,7 +110,7 @@ const fn spec(tag: &'static str, props: &'static [(&'static str, Kind)], require
 const BUSINESS_TAGS: &[TagSpec] = &[
     TagSpec {
         tag: "Company",
-        props: &[("name", Text), ("about", Text), ("files", Texts), ("dashboard", Text)],
+        props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters")],
         many: &[("registrations", "Registration")],
@@ -333,10 +333,15 @@ pub fn company_of(node: &BusinessNode) -> Json {
     } else {
         Json::obj().with("enabled", false)
     };
-    Json::obj()
+    let company = Json::obj()
         .with("format", "commandagi-company")
         .with("name", or_null(node.prop("name")))
-        .with("about", node.prop("about").cloned().unwrap_or_else(|| "".into()))
+        .with("about", node.prop("about").cloned().unwrap_or_else(|| "".into()));
+    let company = match node.prop("postalAddress") {
+        Some(p) => company.with("postalAddress", p.clone()),
+        None => company,
+    };
+    company
         .with("files", node.prop("files").cloned().unwrap_or(Json::Arr(Vec::new())))
         .with("dashboard", or_null(node.prop("dashboard")))
         .with("entity", entity)
