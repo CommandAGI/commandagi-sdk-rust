@@ -4,6 +4,15 @@ One entry for each release. A release is the tag `v<version>` in this repository
 project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
+## Unreleased
+
+Added
+
+- `commandagi::design::evals` (`commandagi.design.evals`): an eval and a metric in code, `<eval>` with `<case>`
+  children and `<metric>`, the same documents as the TypeScript SDK's `evals.ts`. A case names its task file (`task`,
+  a ref) or says its `instruction`; `metrics` and `acceptanceMetric` are refs; `frozen` is the digest the eval is
+  frozen at. In Rust: `eval([case()…])` and `metric()`, with the attributes in snake case (`.acceptance_metric(…)`).
+
 ## 0.6.7 (2026-10-23)
 
 Added
