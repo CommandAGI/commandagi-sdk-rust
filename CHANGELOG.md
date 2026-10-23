@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::monitors`: `derive()` (an operator over other monitors' records, a folder per port) and
+  `discover()` (each thing a monitor's records name gets a folder and a thread of its own; its `into` is written
+  `into_`); a monitor's `same_as`, a source's `vantage` and a follow's `where_`. A monitor's document always has
+  `derives` and `discovers`. The same as the TypeScript SDK's `<derive>`, `<discover>`, `sameAs`, `vantage` and `where`.
 - `commandagi::design::twod`: `engrave().id(..).src("logo.png").x_mm(..).y_mm(..).width_mm(..).height_mm(..).dpi(..)
   .dither("ordered")` in a `nest([...])`, an image burned on the first sheet (with `.power_pct()`, `.min_power_pct()`,
   `.feed_mm_min()`, `.passes()`). The same as the TypeScript SDK's `<engrave>`.

@@ -18,9 +18,28 @@
 //! # commandagi::design::declare(corporation("0001045810", "NVDA", "NVIDIA")).unwrap();
 //! ```
 //!
-//! A follow names the followed monitor's folder, relative to this monitor's folder. A follow's `match` is written
-//! `match_` (a Rust keyword). Nothing adds a default: what the file does not say, the document does not have. A
-//! monitor's `sources`, `follows` and `wakes` are always lists.
+//! A follow names the followed monitor's folder, relative to this monitor's folder. A follow's `match` and `where` are
+//! written `match_` and `where_` (Rust keywords), and a discover's `into` is written `into_` (`Into::into` has the
+//! name). Nothing adds a default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes` and `discovers` are always lists.
+//!
+//! A `derive` folds other monitors' records into this one's, each port named to a folder; a `discover` gives each thing
+//! its records name a folder and a thread of its own, an instance of a class (`<file>#<Component>`):
+//!
+//! ```
+//! use commandagi::design::monitors::*;
+//!
+//! let security = monitor([
+//!     derive().id("vwap").op("vwap").inputs(json(r#"{"trades": "../trades"}"#)).params(json(r#"{"window": "1m"}"#)),
+//!     discover()
+//!         .of(json(r#"["./kev", "./cve-feed"]"#))
+//!         .into_("./exploits")
+//!         .when(json(r#"[{"class": "security.kev"}]"#))
+//!         .slug(json(r#"{"paths": ["data.cve", "data.id"], "pattern": "^CVE-"}"#))
+//!         .class("../exploit.tsx#Exploit")
+//!         .props(json(r#"{"cve": "$slug"}"#)),
+//! ]);
+//! # commandagi::design::declare(security).unwrap();
+//! ```
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, fn_name};
@@ -36,27 +55,37 @@ elements! {
     follows: leaf;
     /// A wake: wake the thread's agent when a matching record arrives.
     wake: leaf;
+    /// A derived stream: an operator folds the records of other monitors into records of this one.
+    derive: leaf;
+    /// A discover: each thing a record names that has no folder yet gets one, an instance of a class.
+    discover: leaf;
 }
 
 attributes! {
     /// The fields of a monitor and its parts, chained on their elements.
     pub trait MonitorsAttrs {
-        id; title; class; about; readme;
+        id; title; class; about; readme; same_as;
         adapter; params; every; via; exit; host; mode; retain; since;
-        session; snapshot; profile; keep; max_cost_per_day; unit;
-        monitor; match_; prompt;
+        session; snapshot; profile; keep; max_cost_per_day; unit; vantage;
+        monitor; match_; where_; prompt;
+        op; inputs;
+        into_ = "into"; of; when; slug; props; name; max;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "monitors", roots: &["monitor"], declare };
 
-pub const MONITOR_FIELDS: &[&str] = &["title", "class", "about", "readme"];
+pub const MONITOR_FIELDS: &[&str] = &["title", "class", "about", "readme", "sameAs"];
 pub const SOURCE_FIELDS: &[&str] = &[
     "id", "adapter", "params", "every", "via", "exit", "host", "mode", "retain", "since", "session", "snapshot", "profile",
-    "keep", "maxCostPerDay", "unit",
+    "keep", "maxCostPerDay", "unit", "vantage",
 ];
-pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match"];
+pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match", "where"];
 pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
+pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
+pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max"];
+/// The most new folders a discover writes a tick.
+pub const DISCOVER_MAX: u32 = 50;
 /// The paths a source's reads take (docs/sources.md § fetch paths).
 pub const VIAS: &[&str] = &["worker", "host", "vpn", "browser", "vm", "android-vm", "phone"];
 /// The paths that launch a machine from a snapshot (a logged-in state), and so cost money per read.
@@ -75,6 +104,8 @@ const MONITOR: Vocabulary = Vocabulary {
         TagRule::new("source", &["monitor"]).key("id").required(&["id", "adapter", "every"]).attrs(SOURCE_FIELDS),
         TagRule::new("follows", &["monitor"]).key("monitor").required(&["monitor"]).attrs(FOLLOW_FIELDS),
         TagRule::new("wake", &["monitor"]).required(&["prompt"]).attrs(WAKE_FIELDS),
+        TagRule::new("derive", &["monitor"]).key("id").required(&["id", "op", "inputs"]).attrs(DERIVE_FIELDS),
+        TagRule::new("discover", &["monitor"]).required(&["slug", "class"]).attrs(DISCOVER_FIELDS),
     ],
     from_tree: monitor_of,
 };
@@ -174,7 +205,7 @@ pub fn unit_ref_ok(u: &str) -> bool {
 }
 
 fn source_of(t: &DocTree) -> Result<Json, String> {
-    for k in ["id", "adapter", "exit", "host", "retain", "since", "session", "snapshot", "profile", "keep", "unit"] {
+    for k in ["id", "adapter", "exit", "host", "retain", "since", "session", "snapshot", "profile", "keep", "unit", "vantage"] {
         word(t, k, "id")?;
     }
     let w = call(t, "id");
@@ -278,24 +309,208 @@ fn source_of(t: &DocTree) -> Result<Json, String> {
     Ok(said(t, SOURCE_FIELDS))
 }
 
+/// A subject: `<scheme>:<id>` (`cik:0001045810`, `ticker:NVDA`, `fomc:`).
+pub fn subject_ok(s: &str) -> bool {
+    let Some((scheme, id)) = s.split_once(':') else { return false };
+    let b = scheme.as_bytes();
+    !b.is_empty()
+        && b[0].is_ascii_lowercase()
+        && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+        && !id.contains(char::is_whitespace)
+}
+
+fn ident_ok(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty() && (b[0].is_ascii_alphabetic() || b[0] == b'_') && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_')
+}
+
+/// A data path: words joined by `.` (`data.cve`, `fromName`).
+fn data_path_ok(s: &str) -> bool {
+    s.split('.').all(ident_ok)
+}
+
+/// A word: letters, digits, `_` and `-`, not starting with `_` or `-`.
+fn word_ok(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty() && b[0].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-')
+}
+
+/// A follow's filter: `name=value` terms joined by `,` (`conversation=123`).
+fn where_ok(s: &str) -> bool {
+    s.split(',').enumerate().all(|(i, term)| {
+        let term = if i == 0 { term } else { term.trim_start() };
+        let Some((name, value)) = term.split_once('=') else { return false };
+        let b = name.as_bytes();
+        !b.is_empty() && b[0].is_ascii_alphabetic() && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'.') && !value.is_empty()
+    })
+}
+
+/// A class: its file (`.ts`, `.tsx`, `.js`, `.jsx`), `#`, its exported name (`../exploit.tsx#Exploit`).
+fn class_ref_ok(s: &str) -> bool {
+    let Some((file, name)) = s.split_once('#') else { return false };
+    let stem_ok = [".tsx", ".jsx", ".ts", ".js"].iter().any(|e| file.strip_suffix(e).is_some_and(|stem| !stem.is_empty()));
+    let n = name.as_bytes();
+    stem_ok
+        && !file.contains(char::is_whitespace)
+        && !n.is_empty()
+        && n.len() <= 60
+        && n[0].is_ascii_uppercase()
+        && n.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_')
+}
+
+const WHEN_OPS: &[&str] = &["eq", "ne", "gt", "gte", "lt", "lte", "in", "glob", "contains", "exists"];
+
+/// The shape of a `when` (the platform reads its meaning: packages/domain/world/predicate.js in the repository).
+fn when_shape(when: &Json) -> Option<String> {
+    let list: Vec<&Json> = match when {
+        Json::Arr(a) => a.iter().collect(),
+        one => vec![one],
+    };
+    if list.is_empty() || list.len() > 16 {
+        return Some("one condition, or a list of one to 16".into());
+    }
+    for c in list {
+        let Json::Obj(terms) = c else {
+            return Some(format!("a condition is an object of terms ({{\"class\": \"security.kev\"}}), not {}", c.text()));
+        };
+        for (name, test) in terms {
+            let named = matches!(name.as_str(), "class" | "about" | "key" | "title")
+                || name.strip_prefix("data.").is_some_and(data_path_ok);
+            if !named {
+                return Some(format!("\"{name}\" is class, about, key, title or a data path (data.cvss3)"));
+            }
+            if let Json::Obj(ops) = test {
+                if let Some((op, _)) = ops.iter().find(|(op, _)| !WHEN_OPS.contains(&op.as_str())) {
+                    return Some(format!("{name}: {op} is not an operator ({})", WHEN_OPS.join(", ")));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn derive_of(t: &DocTree) -> Result<Json, String> {
+    for k in ["id", "op", "since"] {
+        word(t, k, "id")?;
+    }
+    let w = call(t, "id");
+    if !str_attr(t, "id").is_some_and(word_ok) {
+        return Err(format!("{w} id is a word (letters, digits, _ and -)"));
+    }
+    let Some(Json::Obj(inputs)) = t.attr("inputs").filter(|i| matches!(i, Json::Obj(e) if !e.is_empty())) else {
+        let said = t.attr("inputs").map(Json::text).unwrap_or_else(|| "undefined".into());
+        return Err(format!("{w} inputs maps each port to a monitor's folder ({{\"quotes\": \"../quotes\"}}), not {said}"));
+    };
+    for (port, folder) in inputs {
+        if !word_ok(port) {
+            return Err(format!("{w} a port is a word, not \"{port}\""));
+        }
+        match folder {
+            Json::Str(f) if f == "." || f == "./" => return Err(format!("{w} inputs.{port} names this monitor; a derive takes other monitors' records")),
+            Json::Str(f) if !f.is_empty() => {}
+            other => return Err(format!("{w} inputs.{port} is a monitor's folder, not {}", other.text())),
+        }
+    }
+    if let Some(p) = t.attr("params").filter(|p| !matches!(p, Json::Null | Json::Obj(_))) {
+        return Err(format!("{w} params is an object ({{\"window\": \"1m\"}}), not {}", p.text()));
+    }
+    if let Some(d) = str_attr(t, "since") {
+        if !day_ok(d) {
+            return Err(format!("{w} since is a day (\"2024-01-01\"), not \"{d}\""));
+        }
+    }
+    Ok(said(t, DERIVE_FIELDS))
+}
+
+fn discover_of(t: &DocTree) -> Result<Json, String> {
+    for k in ["into", "class", "name"] {
+        word(t, k, "into")?;
+    }
+    let w = format!("discover().into(\"{}\")", str_attr(t, "into").unwrap_or("./"));
+    let shown = |k: &str| t.attr(k).map(Json::text).unwrap_or_else(|| "undefined".into());
+    let of_ok = match t.attr("of") {
+        None | Some(Json::Null) => true,
+        Some(Json::Str(s)) => !s.is_empty(),
+        Some(Json::Arr(a)) => !a.is_empty() && a.iter().all(|x| matches!(x, Json::Str(s) if !s.is_empty())),
+        _ => false,
+    };
+    if !of_ok {
+        return Err(format!("{w} of is a monitor's folder or a list of them ([\"../kev\", \"../cve-feed\"]), not {}", shown("of")));
+    }
+    if let Some(when) = t.attr("when").filter(|v| !matches!(v, Json::Null)) {
+        if let Some(bad) = when_shape(when) {
+            return Err(format!("{w} when: {bad}"));
+        }
+    }
+    let slug_ok = match t.attr("slug") {
+        Some(Json::Str(s)) => data_path_ok(s),
+        Some(slug @ Json::Obj(entries)) => {
+            matches!(slug.get("paths"), Some(Json::Arr(p)) if !p.is_empty() && p.iter().all(|x| x.as_str().is_some_and(data_path_ok)))
+                && entries.iter().all(|(k, _)| k == "paths" || k == "pattern")
+        }
+        _ => false,
+    };
+    if !slug_ok {
+        return Err(format!("{w} slug is a data path (data.cve) or {{ paths: [...], pattern }}, not {}", shown("slug")));
+    }
+    if !str_attr(t, "class").is_some_and(class_ref_ok) {
+        return Err(format!("{w} class is the class file and its exported name (\"../exploit.tsx#Exploit\"), not {}", shown("class")));
+    }
+    if str_attr(t, "name").is_some_and(|n| !data_path_ok(n)) {
+        return Err(format!("{w} name is a data path (fromName), not {}", shown("name")));
+    }
+    match t.attr("props") {
+        None | Some(Json::Null) => {}
+        Some(Json::Obj(props)) => {
+            for (k, v) in props {
+                let kb = k.as_bytes();
+                let key_ok = !kb.is_empty() && kb[0].is_ascii_lowercase() && kb.iter().all(u8::is_ascii_alphanumeric);
+                if !key_ok || !v.as_str().is_some_and(|p| p == "$slug" || data_path_ok(p)) {
+                    return Err(format!("{w} props.{k} is a data path or \"$slug\", not {}", v.text()));
+                }
+            }
+        }
+        Some(other) => return Err(format!("{w} props maps each prop to a data path ({{\"conversation\": \"conversation\"}}), not {}", other.text())),
+    }
+    if let Some(m) = t.attr("max").filter(|v| !matches!(v, Json::Null)) {
+        if !matches!(m, Json::Num(n) if n.fract() == 0.0 && *n >= 1.0 && *n <= DISCOVER_MAX as f64) {
+            return Err(format!("{w} max is a whole number from 1 to {DISCOVER_MAX}, not {}", m.text()));
+        }
+    }
+    Ok(said(t, DISCOVER_FIELDS))
+}
+
 fn monitor_of(t: &DocTree) -> Result<Json, String> {
-    for k in MONITOR_FIELDS {
+    for k in MONITOR_FIELDS.iter().filter(|k| **k != "sameAs") {
         word(t, k, "title")?;
+    }
+    match t.attr("sameAs") {
+        None | Some(Json::Null) => {}
+        Some(Json::Arr(a)) if a.iter().all(|s| s.as_str().is_some_and(subject_ok)) => {}
+        Some(v) => return Err(format!("monitor() sameAs is a list of subjects (\"ticker:NVDA\"), not {}", v.text())),
     }
     let mut sources = Vec::new();
     let mut follows = Vec::new();
+    let mut derives = Vec::new();
     let mut wakes = Vec::new();
+    let mut discovers = Vec::new();
     for c in &t.children {
         match c.tag {
             "source" => sources.push(source_of(c)?),
             "follows" => {
-                word(c, "monitor", "monitor")?;
-                word(c, "match", "monitor")?;
+                for k in ["monitor", "match", "where"] {
+                    word(c, k, "monitor")?;
+                }
+                if let Some(w) = str_attr(c, "where").filter(|w| !where_ok(w)) {
+                    return Err(format!("{} where is name=value terms joined by \",\" (conversation=123), not \"{w}\"", call(c, "monitor")));
+                }
                 if matches!(c.attr("monitor"), Some(Json::Str(m)) if m == "." || m == "./") {
                     return Err(format!("{} names this monitor; a follow names another monitor's folder", call(c, "monitor")));
                 }
                 follows.push(said(c, FOLLOW_FIELDS));
             }
+            "derive" => derives.push(derive_of(c)?),
+            "discover" => discovers.push(discover_of(c)?),
             _ => {
                 word(c, "match", "match")?;
                 word(c, "prompt", "match")?;
@@ -306,7 +521,9 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
     let mut out = said(t, MONITOR_FIELDS);
     out.set("sources", Json::Arr(sources));
     out.set("follows", Json::Arr(follows));
+    out.set("derives", Json::Arr(derives));
     out.set("wakes", Json::Arr(wakes));
+    out.set("discovers", Json::Arr(discovers));
     Ok(out)
 }
 
@@ -332,20 +549,55 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
             out.set("host", or_null(s, "host"));
             out.set("mode", s.get("mode").cloned().unwrap_or_else(|| Json::Str("poll".into())));
             out.set("retain", if stream { s.get("retain").cloned().unwrap_or_else(|| Json::Str("derived".into())) } else { Json::Null });
-            for k in ["since", "session", "snapshot", "profile", "keep", "maxCostPerDay", "unit"] {
+            for k in ["since", "session", "snapshot", "profile", "keep", "maxCostPerDay", "unit", "vantage"] {
                 out.set(k, or_null(s, k));
             }
             out
         })
         .collect();
-    let follows = list("follows").iter().map(|f| Json::obj().with("monitor", or_null(f, "monitor")).with("match", or_null(f, "match"))).collect();
+    let follows = list("follows")
+        .iter()
+        .map(|f| Json::obj().with("monitor", or_null(f, "monitor")).with("match", or_null(f, "match")).with("where", or_null(f, "where")))
+        .collect();
+    let derives = list("derives")
+        .iter()
+        .map(|d| {
+            Json::obj()
+                .with("id", or_null(d, "id"))
+                .with("op", or_null(d, "op"))
+                .with("inputs", or_null(d, "inputs"))
+                .with("params", d.get("params").cloned().unwrap_or_else(Json::obj))
+                .with("since", or_null(d, "since"))
+        })
+        .collect();
     let wakes = list("wakes").iter().map(|w| Json::obj().with("match", or_null(w, "match")).with("prompt", or_null(w, "prompt"))).collect();
+    let discovers = list("discovers")
+        .iter()
+        .map(|d| {
+            let of = match d.get("of") {
+                None | Some(Json::Null) => Json::Arr(Vec::new()),
+                Some(s @ Json::Str(_)) => Json::Arr(vec![s.clone()]),
+                Some(a) => a.clone(),
+            };
+            Json::obj()
+                .with("into", d.get("into").cloned().unwrap_or_else(|| Json::Str("./".into())))
+                .with("of", of)
+                .with("when", or_null(d, "when"))
+                .with("slug", or_null(d, "slug"))
+                .with("class", or_null(d, "class"))
+                .with("props", d.get("props").cloned().unwrap_or_else(Json::obj))
+                .with("name", or_null(d, "name"))
+                .with("max", d.get("max").cloned().unwrap_or(Json::Num(10.0)))
+        })
+        .collect();
     let mut out = Json::obj();
     for k in MONITOR_FIELDS {
-        out.set(k, or_null(m, k));
+        out.set(k, if *k == "sameAs" { m.get(k).cloned().unwrap_or_else(|| Json::Arr(Vec::new())) } else { or_null(m, k) });
     }
     out.set("sources", Json::Arr(sources));
     out.set("follows", Json::Arr(follows));
+    out.set("derives", Json::Arr(derives));
     out.set("wakes", Json::Arr(wakes));
+    out.set("discovers", Json::Arr(discovers));
     out
 }
