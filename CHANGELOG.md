@@ -8,6 +8,9 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::twod`: `engrave().id(..).src("logo.png").x_mm(..).y_mm(..).width_mm(..).height_mm(..).dpi(..)
+  .dither("ordered")` in a `nest([...])`, an image burned on the first sheet (with `.power_pct()`, `.min_power_pct()`,
+  `.feed_mm_min()`, `.passes()`). The same as the TypeScript SDK's `<engrave>`.
 - `commandagi::design::threed_props`: `CurveProps { tangents: Some(vec![SplineTangent { at, direction }]),
   tangent_scale, .. }`, a spline's direction at an inner point (the spline is C1 there) and how hard every given
   tangent holds (1 is the natural spline). `PathPatternProps { path: {"curve": ...} }` places its copies along a curve
