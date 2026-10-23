@@ -204,7 +204,7 @@ attributes! {
         a; actuator; african; age; align_to_path; anchor; angle; animation; annotations; area; armatures; asian; assembly;
         at; axis; axis_b; b; base; bend_radius; bias; bindings; bodies; body_id; bond_orders; bonds; both_sides;
         break_after; builtin; builtin_planes; by; cap; caucasian; cell; center; centreline; chains; closed; collapsed;
-        colormap; colors; comment; component; conductor; construction; consumes; control_points; count; count2;
+        colormap; colors; comment; component; conductor; construction; consumes; control_points; corner; count; count2;
         cupsize; currency; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
         draft_angle; drill_mm; dynamics; edge; edge_weights; edges; electrical; electron; elements; end; engineering; entities;
         environment; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
