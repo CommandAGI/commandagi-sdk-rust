@@ -1627,7 +1627,7 @@ pub struct ExternalPartProps {
     pub footprint: Option<ComponentFootprint>,
     /// A placed 3D document: what of it is left out here, each by the id, the name or the part number its own file gives it (`*` matches any text): a body it makes, a file it places, a fastener stack. What its file says of a body left out (an `<accept>`, a `<permitted>`) goes with it. One frame in every station, each station with its own deck: `omit={["deck"]}`.
     pub omit: Option<Vec<String>>,
-    /// A placed 3D document: bodies it makes or files it places, each moved in its file's frame before the placement (a lid opened, a ram lowered), by the id, the name or the part number its own file gives it. What its file says of the body (an `<accept>` or `<permitted>` region, in the body's own frame) moves with it; its fastener stacks stay.
+    /// A placed 3D document: bodies it makes or files it places, each moved in its file's frame before the placement (a lid opened, a ram lowered), by the id, the name or the part number its own file gives it. What its file says of the body (an `<accept>` or `<permitted>` region, in the body's own frame) moves with it, and so do its spare holes and the fastener stacks that hold only what one move moves.
     pub moves: Option<Vec<PlacedMove>>,
     /// How the linked part's bodies combine with the bodies before it.
     /// Default: `"new"`.
