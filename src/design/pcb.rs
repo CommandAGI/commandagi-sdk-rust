@@ -44,10 +44,11 @@
 //! kicad().version().generator().forms()
 //!                                   the KiCad forms the board carries for exchange and nothing else reads.
 //! net().name().code()               the KiCad net code of the schematic's net `name`.
-//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().chart().uuid().kicad()
+//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().ref_at().chart().uuid().kicad()
 //!                                   the schematic's part `name` on this board: one of the editor's own land patterns
 //!                                   (BOARD_FOOTPRINTS), or a library footprint by its ref ("Package_SO:SOIC-8") in
-//!                                   the `.pretty` folder `library` names.
+//!                                   the `.pretty` folder `library` names. `ref_at` [x, y] is where its reference
+//!                                   text sits (mm, in the footprint's own frame).
 //! trace().name().layer().width().points().from().to().net().surface().uuid().segment_uuids().kicad()
 //!                                   a copper run: its points ([[x, y], …]) on one copper layer, a finished width.
 //! arc().name().layer().width().points().from().to().net().uuid().kicad()
@@ -68,12 +69,17 @@
 //!                                   lays and the narrowest allowed, the gaps to copper, to the board edge and to a
 //!                                   hole, the rules on inner layers, the fewest thermal spokes a pad needs.
 //! diffpair().name().positive().negative().gap().width().impedance().max_skew()
-//! group().name().parts().region().near().max_distance().conviction().side()
+//! group().name().parts().region().near().max_distance().conviction().side().edge().mating()
 //!                                   parts placed together: in the box `region` [x0, y0, x1, y1], within
-//!                                   `max_distance` of `near` (".J1 > .pin5"); conviction 1 holds them fixed.
+//!                                   `max_distance` of `near` (".J1 > .pin5"); conviction 1 holds them fixed;
+//!                                   `side` "top", "bottom" or "any" (the placer turns a part over where that costs
+//!                                   less); `edge` the board edge they sit against ("left", "right", "top",
+//!                                   "bottom"), their `mating` side (in the footprint's own frame) facing out.
 //! keepout().name().points().layers().no()
 //!                                   a region where `no` ("track", "via", "component", "pour") may be.
 //! thermal().name().parts().watts().spacing().away_from().distance()
+//! bus().name().nets().pitch()       nets that run together ("D*" matches by prefix): where their tracks run side by
+//!                                   side they are parallel, `pitch` (mm) apart centre to centre.
 //! objective().weights()             the weight of each term of the layout score.
 //! ```
 //!
@@ -146,6 +152,8 @@ elements! {
     keepout: leaf;
     /// The heat parts dissipate, and the spacing it asks for.
     thermal: leaf;
+    /// Nets that run together, parallel where side by side: `bus().name("data").nets(["D*"]).pitch(0.6)`.
+    bus: leaf;
     /// The weight of each term of the layout score.
     objective: leaf;
     /// How the board is made: `fab().suppliers(json(…)).finish("ENIG").min_track(0.09).assembly(json(…))`.
@@ -231,6 +239,8 @@ attributes! {
         pcb_y;
         /// A component's rotation (degrees).
         pcb_rotation;
+        /// Where a component's reference text sits: `[x, y]` in mm, in the footprint's own frame.
+        ref_at;
         /// The face of the board's surface a component sits on.
         chart;
         /// A KiCad uuid.
@@ -297,8 +307,14 @@ attributes! {
         max_distance;
         /// How fixed a group is: 0 (free) to 1 (fixed where it is).
         conviction;
-        /// The side a group is on: "top" or "bottom".
+        /// The side a group is on: "top", "bottom" or "any" (the placer turns each part over where that costs less).
         side;
+        /// The board edge a group sits against: "left", "right", "top" or "bottom".
+        edge;
+        /// The side of a group's parts (in the footprint's own frame) that faces out of `edge`.
+        mating;
+        /// How far apart a bus's parallel tracks are, centre to centre (mm).
+        pitch;
         /// What a keep-out keeps out: `["track", "via", "component", "pour"]`.
         no;
         /// The heat each part dissipates (W).
@@ -368,11 +384,12 @@ pub const BOARD_LAYERS: &[(u32, &str, &str)] = &[(0, "F.Cu", "signal"), (31, "B.
 /// The drawings, by kind: how many points each has (none: a polygon, two or more).
 const GRAPHICS: &[(&str, Option<usize>)] = &[("line", Some(2)), ("arc", Some(3)), ("circle", Some(2)), ("rect", Some(2)), ("poly", None)];
 const CONDUCTORS: &[&str] = &["trace", "arc", "via", "pour"];
-const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net", "netclass", "diffpair", "group", "keepout", "thermal", "objective", "fab"];
+const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net", "netclass", "diffpair", "group", "keepout", "thermal", "bus", "objective", "fab"];
 /// The layout's constraints, each a board fact (`fact` is its tag), as the TypeScript SDK's.
-const CONSTRAINTS: &[&str] = &["netclass", "diffpair", "group", "keepout", "thermal", "objective"];
+const CONSTRAINTS: &[&str] = &["netclass", "diffpair", "group", "keepout", "thermal", "bus", "objective"];
 const NET_KINDS: &[&str] = &["signal", "power", "ground", "noisy", "sensitive", "highspeed"];
 const KEEPOUT_KINDS: &[&str] = &["track", "via", "component", "pour"];
+const EDGES: &[&str] = &["left", "right", "top", "bottom"];
 
 fn is_names(v: &Json) -> bool {
     matches!(v, Json::Arr(l) if !l.is_empty() && l.iter().all(|x| x.as_str().is_some_and(|s| !s.is_empty())))
@@ -472,7 +489,7 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
             }
         }
         "group" => {
-            refuse_unknown(el, &["name", "parts", "region", "near", "maxDistance", "conviction", "side"])?;
+            refuse_unknown(el, &["name", "parts", "region", "near", "maxDistance", "conviction", "side", "edge", "mating"])?;
             put(&mut out, "name", text_of(el, "name", true)?);
             put(&mut out, "parts", names("parts", true)?);
             put(&mut out, "region", plain(el, "region", is_box, "[x0, y0, x1, y1] in mm, x0 < x1 and y0 < y1")?);
@@ -488,10 +505,21 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
             put(&mut out, "maxDistance", max_distance);
             put(&mut out, "conviction", unit("conviction")?);
             let side = text_of(el, "side", false)?;
-            if side.as_deref().is_some_and(|s| s != "top" && s != "bottom") {
-                return Err(format!("{}: side is \"top\" or \"bottom\"", at(el)));
+            if side.as_deref().is_some_and(|s| s != "top" && s != "bottom" && s != "any") {
+                return Err(format!("{}: side is \"top\", \"bottom\" or \"any\"", at(el)));
             }
             put(&mut out, "side", side);
+            for k in ["edge", "mating"] {
+                let v = text_of(el, k, false)?;
+                if v.as_deref().is_some_and(|e| !EDGES.contains(&e)) {
+                    let edges: Vec<String> = EDGES.iter().map(|e| format!("\"{e}\"")).collect();
+                    return Err(format!("{}: {k} is {}", at(el), edges.join(", ")));
+                }
+                put(&mut out, k, v);
+            }
+            if has(&out, "mating") && !has(&out, "edge") {
+                return Err(format!("{}: mating needs edge", at(el)));
+            }
         }
         "keepout" => {
             refuse_unknown(el, &["name", "points", "layers", "no"])?;
@@ -516,6 +544,12 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
             if has(&out, "awayFrom") != has(&out, "distance") {
                 return Err(format!("{}: give away_from and distance together", at(el)));
             }
+        }
+        "bus" => {
+            refuse_unknown(el, &["name", "nets", "pitch"])?;
+            put(&mut out, "name", text_of(el, "name", true)?);
+            put(&mut out, "nets", names("nets", true)?);
+            put(&mut out, "pitch", positive(el, "pitch", false)?);
         }
         _ => {
             refuse_unknown(el, &["weights"])?;
@@ -1114,7 +1148,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
         let el: &El = el;
         match el.tag {
             "component" => {
-                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "chart", "uuid", "kicad"])?;
+                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "chart", "uuid", "kicad"])?;
                 let reference = el.attr("name").and_then(Json::as_str).unwrap_or_default().to_string();
                 let fp = el.attr("footprint");
                 let fp_text = fp.and_then(Json::as_str);
@@ -1156,6 +1190,15 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if x.is_none() && (rot.is_some() || side.is_some()) {
                     return Err(format!("{}: pcb_rotation and layer need pcb_x and pcb_y", at(el)));
                 }
+                // Where the reference text sits, in the footprint's own frame (its library's, on the top): the placer
+                // moves it off copper and off other references.
+                let ref_at = el.attr("refAt");
+                if ref_at.is_some_and(|v| !matches!(v, Json::Arr(l) if l.len() == 2 && l.iter().all(|n| finite(n).is_some()))) {
+                    return Err(format!("{}: ref_at is [x, y] in mm, in the footprint's own frame", at(el)));
+                }
+                if ref_at.is_some() && x.is_none() {
+                    return Err(format!("{}: ref_at needs pcb_x and pcb_y", at(el)));
+                }
                 let chart = text_of(el, "chart", false)?;
                 if chart.is_some() && surface.is_none() {
                     return Err(format!("{}: chart names a face of the board's surface, and the board() has no surface", at(el)));
@@ -1175,6 +1218,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if let (Some(x), Some(y)) = (x, y) {
                     let side = side.and_then(Json::as_str).unwrap_or("top");
                     inputs.push(("placement".into(), Json::obj().with("x", x).with("y", y).with("rot", rot.unwrap_or(0.0)).with("side", side)));
+                }
+                if let Some(r) = ref_at {
+                    inputs.push(("refAt".into(), r.clone()));
                 }
                 if let Some(c) = chart {
                     inputs.push(("surfaceMount".into(), Json::obj().with("chart", c)));

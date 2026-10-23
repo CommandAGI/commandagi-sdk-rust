@@ -12,6 +12,14 @@ Added
   children and `<metric>`, the same documents as the TypeScript SDK's `evals.ts`. A case names its task file (`task`,
   a ref) or says its `instruction`; `metrics` and `acceptanceMetric` are refs; `frozen` is the digest the eval is
   frozen at. In Rust: `eval([case()…])` and `metric()`, with the attributes in snake case (`.acceptance_metric(…)`).
+- `commandagi::design::pcb`: `group().side("any")` lets the placer turn each part over where that costs less, and
+  `group().edge(…).mating(…)` holds the group's parts against a board edge (`"left"`, `"right"`, `"top"`, `"bottom"`),
+  their `mating` side (in the footprint's own frame) out; `mating` needs `edge`.
+- `commandagi::design::pcb`: `component().ref_at([x, y])`, where the part's reference text sits (mm, in the
+  footprint's own frame); the layout moves each reference off copper and off the others and writes it here.
+- `commandagi::design::pcb`: `bus().name(…).nets(…).pitch(…)`, nets that run together: where their tracks run side by
+  side they are parallel, `pitch` (mm) apart centre to centre. The same element as the TypeScript SDK's `<bus>` and
+  the Python SDK's `bus(name, nets, pitch)`.
 
 ## 0.6.7 (2026-10-23)
 

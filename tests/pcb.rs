@@ -34,7 +34,7 @@ fn a_board_declares_its_outline_stack_footprints_and_copper() {
     let l0 = line!() + 1;
     let root = board_of(vec![
         component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
-        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom"),
+        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom").ref_at([0.0, -2.5]),
         component().name("V1").footprint("smd-0805"),
         trace().layer("F.Cu").width(0.2).points([[11, 10], [18, 14], [24, 10]]).from(".R1 > .pin2").to(".R2 > .1"),
         trace().layer("B.Cu").width(0.25).points([[18, 14], [18, 20]]).from(".VIA1"),
@@ -63,6 +63,8 @@ fn a_board_declares_its_outline_stack_footprints_and_copper() {
         compact(&format!(r#"{{"id":"fp_R1","type":"eda.footprint","inputs":{{"ref":"R1","footprint":"Authored:smd-0805","placement":{{"x":10,"y":10,"rot":0,"side":"top"}}}},"label":"R1","meta":{}}}"#, site(l0 + 1, 9)))
     );
     assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("placement")).unwrap().text(), r#"{"x":25,"y":10,"rot":90,"side":"bottom"}"#);
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refAt")).unwrap().text(), "[0,-2.5]");
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_at([0.0, 1.0])])).contains("ref_at needs pcb_x and pcb_y"));
     assert_eq!(node(&g, "fp_V1").get("inputs").and_then(|i| i.get("placement")), None, "a footprint with no pcb_x and pcb_y is not placed");
     assert_eq!(
         inputs(&g, "cu_1"),
@@ -180,8 +182,10 @@ fn the_layouts_constraints_are_board_facts() {
             netclass().name("supply").nets(["P24", "FIN*"]).kind("power").width(0.5).clearance(0.25).current(0.5).criticality(0.8).max_vias(2),
             diffpair().name("usb").positive("D+").negative("D-").gap(0.15).max_skew(0.5),
             group().name("in1").parts(["R1", "U1"]).region([10, 30, 30, 50]).near(".J1 > .pin5").max_distance(4).conviction(0.5),
+            group().name("io").parts(["J1"]).side("any").edge("left").mating("top"),
             keepout().name("label").points([[80, 20], [96, 20], [96, 28]]).no(["track", "via"]),
             thermal().name("fets").parts(["Q1", "Q2"]).watts(0.3).spacing(4).away_from(["U1"]).distance(6),
+            bus().name("data").nets(["D*"]).pitch(0.6),
             objective().weights(json(r#"{"wirelength": 1, "vias": 3}"#)),
         ])
         .width(100)
@@ -195,8 +199,10 @@ fn the_layouts_constraints_are_board_facts() {
             compact(r#"{"fact":"netclass","name":"supply","nets":["P24","FIN*"],"kind":"power","width":0.5,"clearance":0.25,"current":0.5,"criticality":0.8,"maxVias":2}"#),
             compact(r#"{"fact":"diffpair","name":"usb","positive":"D+","negative":"D-","gap":0.15,"maxSkew":0.5}"#),
             compact(r#"{"fact":"group","name":"in1","parts":["R1","U1"],"region":[10,30,30,50],"near":".J1 > .pin5","maxDistance":4,"conviction":0.5}"#),
+            compact(r#"{"fact":"group","name":"io","parts":["J1"],"side":"any","edge":"left","mating":"top"}"#),
             compact(r#"{"fact":"keepout","name":"label","points":[[80,20],[96,20],[96,28]],"no":["track","via"]}"#),
             compact(r#"{"fact":"thermal","name":"fets","parts":["Q1","Q2"],"watts":0.3,"spacing":4,"awayFrom":["U1"],"distance":6}"#),
+            compact(r#"{"fact":"bus","name":"data","nets":["D*"],"pitch":0.6}"#),
             compact(r#"{"fact":"objective","weights":{"wirelength":1,"vias":3}}"#),
         ]
     );
@@ -214,6 +220,10 @@ fn the_layouts_constraints_are_board_facts() {
     assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).min_spokes(1.5)])).contains("min_spokes is a whole number from 0 to 4"));
     assert!(bad(board_of(vec![group().name("g").parts(["R1"]).max_distance(3)])).contains("max_distance needs near"));
     assert!(bad(board_of(vec![group().name("g").parts(["R1"]).near("R1")])).contains("near is a part"));
+    assert!(bad(board_of(vec![group().name("g").parts(["J1"]).edge("front")])).contains(r#"edge is "left", "right", "top", "bottom""#));
+    assert!(bad(board_of(vec![group().name("g").parts(["J1"]).mating("top")])).contains("mating needs edge"));
+    assert!(bad(board_of(vec![bus().name("b").nets(["D0"]).pitch(-1)])).contains("pitch"));
+    assert!(bad(board_of(vec![bus().name("b").nets(["D0"]).width(0.2)])).contains("width"));
     assert!(bad(board_of(vec![objective().weights(json(r#"{"vias": 1}"#)), objective().weights(json(r#"{"vias": 2}"#))])).contains("one objective()"));
 }
 
