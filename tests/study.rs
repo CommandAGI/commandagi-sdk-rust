@@ -79,12 +79,13 @@ fn a_structural_study_is_its_question_with_each_site_by_its_path() {
 }
 
 #[test]
-fn a_flow_study_is_the_fluid_the_inlet_and_the_outlet_on_one_body() {
+fn a_flow_study_is_the_fluid_its_inlets_and_outlets_on_one_body() {
     let (format, doc, _) = document(
         study([
             fluid().nu(1e-6),
-            inlet().faces(face(r#"{"normal": [-1, 0, 0]}"#)).velocity(0.5),
-            outlet().faces(face(r#"{"normal": [1, 0, 0]}"#)),
+            inlet().id("inlet").faces(face(r#"{"normal": [-1, 0, 0]}"#)).velocity(0.5),
+            inlet().id("side").faces(face(r#"{"normal": [0, 1, 0]}"#)).velocity(0.2),
+            outlet().id("outlet").faces(face(r#"{"normal": [1, 0, 0]}"#)),
             flow_mesh().cells([20, 3, 3]).levels([1, 2, 4]),
             criterion().id("drop").quantity("pressureDrop").limit(2),
         ])
@@ -95,8 +96,9 @@ fn a_flow_study_is_the_fluid_the_inlet_and_the_outlet_on_one_body() {
     assert_eq!(format, "study");
     let golden = Json::parse(
         r#"{"kind": "flow", "part": "Channel.3d.tsx", "units": "m-kg-s", "fluid": {"nu": 1e-6},
-            "inlet": {"faces": {"kind": "face", "select": {"normal": [-1, 0, 0]}}, "velocity": 0.5},
-            "outlet": {"faces": {"kind": "face", "select": {"normal": [1, 0, 0]}}},
+            "inlets": [{"id": "inlet", "faces": {"kind": "face", "select": {"normal": [-1, 0, 0]}}, "velocity": 0.5},
+                {"id": "side", "faces": {"kind": "face", "select": {"normal": [0, 1, 0]}}, "velocity": 0.2}],
+            "outlets": [{"id": "outlet", "faces": {"kind": "face", "select": {"normal": [1, 0, 0]}}}],
             "flowMesh": {"cells": [20, 3, 3], "levels": [1, 2, 4]},
             "criteria": [{"id": "drop", "quantity": "pressureDrop", "limit": 2}]}"#,
     )

@@ -66,9 +66,9 @@ elements! {
     revise: leaf;
     /// A flow study's fluid: `fluid().nu(1e-6).body("body_0")` (kinematic viscosity, m²/s).
     fluid: leaf;
-    /// Where the fluid enters: `inlet().faces(json(…)).velocity(0.5)` (m/s, into the body).
+    /// Where the fluid enters, one or more: `inlet().id("inlet").faces(json(…)).velocity(0.5)` (m/s, into the body).
     inlet: leaf;
-    /// Where the fluid leaves (pressure 0): `outlet().faces(json(…))`.
+    /// Where the fluid leaves (pressure 0), one or more: `outlet().id("outlet").faces(json(…))`.
     outlet: leaf;
     /// A flow study's mesh: `flow_mesh().cells([20, 3, 3]).levels([1, 2, 4])`.
     flow_mesh = "flowMesh": leaf;
@@ -177,8 +177,8 @@ pub const STUDY_TAGS: &[StudyTag] = &[
     tag("mesh", "mesh", false, false, S),
     tag("solver", "solver", false, false, S),
     tag("fluid", "fluid", false, false, F),
-    tag("inlet", "inlet", false, false, F),
-    tag("outlet", "outlet", false, false, F),
+    tag("inlet", "inlets", true, false, F),
+    tag("outlet", "outlets", true, false, F),
     tag("flowMesh", "flowMesh", false, false, F),
 ];
 
@@ -204,8 +204,8 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("mesh", IN_STUDY).single().attrs(&["order", "size", "refine"]),
         TagRule::new("solver", IN_STUDY).single().attrs(&["kind", "analysis", "timeout"]),
         TagRule::new("fluid", IN_STUDY).single().required(&["nu"]).attrs(&["nu", "body"]),
-        TagRule::new("inlet", IN_STUDY).single().required(&["faces", "velocity"]).attrs(&["faces", "velocity"]),
-        TagRule::new("outlet", IN_STUDY).single().required(&["faces"]).attrs(&["faces"]),
+        TagRule::new("inlet", IN_STUDY).key("id").required(&["id", "faces", "velocity"]).attrs(&["id", "faces", "velocity"]),
+        TagRule::new("outlet", IN_STUDY).key("id").required(&["id", "faces"]).attrs(&["id", "faces"]),
         TagRule::new("flowMesh", IN_STUDY).single().required(&["cells"]).attrs(&["cells", "levels", "iterations", "wallModel"]),
     ],
     from_tree: study_from_tree,
