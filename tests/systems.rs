@@ -70,6 +70,7 @@ fn a_system_is_its_records_as_written() {
     let cases: Vec<(El, &str)> = vec![
         (budget().id("b").quantity("mass").limit(1).peak(true), "peak is true or false, on a power budget"),
         (load().id("l").part("U1").rail("r").mode("m").current(1).peak_current("2 A"), "peakCurrent is a number"),
+        (load().id("l").part("U1").rail("r").mode("m").power(1).duty(1.5), "duty is the share of time the load draws"),
         (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, or a quantity's name"#),
         (budget().id("b").quantity("exhaust-flow").limit(600), r#"budget().id("b"): a quantity of exhaust-flow states its unit"#),
         (contribution().id("c").quantity("exhaust-flow").part("P").value(35).source("datasheet"), r#"contribution().id("c"): a quantity of exhaust-flow states its unit"#),

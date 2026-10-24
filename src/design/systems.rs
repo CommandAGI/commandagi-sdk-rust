@@ -70,7 +70,7 @@ attributes! {
     /// The fields of the systems' records, chained on their elements.
     pub trait SystemsAttrs {
         name; description; id; text; rationale; method; verified_by; design; parent;
-        voltage; source; input; output; efficiency; part; rail; mode; current; power; peak_current; peak_power; peak;
+        voltage; source; input; output; efficiency; part; rail; mode; current; power; peak_current; peak_power; peak; inrush_current; duty;
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
         parts; channel; origin; defines; pins; params; files;
@@ -88,7 +88,7 @@ pub const REQUIREMENT_FIELDS: &[&str] = &["id", "text", "rationale", "method", "
 pub const MODE_FIELDS: &[&str] = &["id", "description"];
 pub const RAIL_FIELDS: &[&str] = &["id", "voltage", "description", "source"];
 pub const CONVERTER_FIELDS: &[&str] = &["id", "input", "output", "efficiency", "source"];
-pub const LOAD_FIELDS: &[&str] = &["id", "part", "rail", "mode", "current", "power", "voltage", "peakCurrent", "peakPower", "source"];
+pub const LOAD_FIELDS: &[&str] = &["id", "part", "rail", "mode", "current", "power", "voltage", "peakCurrent", "peakPower", "inrushCurrent", "duty", "source"];
 pub const CONTRIBUTION_FIELDS: &[&str] = &["id", "quantity", "part", "value", "unit", "qty", "mode", "rail", "source"];
 pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "peak", "per", "currency", "design", "resistance", "margin", "source", "description"];
 pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", "at", "required", "description"];
@@ -245,9 +245,10 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
             "converter" => need(matches!(c.attr("efficiency"), Some(Json::Num(e)) if *e > 0.0 && *e <= 1.0), || format!("{w}: efficiency is a number in (0, 1] (0.88 for 88 %)"))?,
             "load" => {
                 need(c.attr("current").is_some() || c.attr("power").is_some(), || format!("{w}: a load states its current (A) or its power (W)"))?;
-                for k in ["current", "power", "voltage", "peakCurrent", "peakPower"] {
+                for k in ["current", "power", "voltage", "peakCurrent", "peakPower", "inrushCurrent"] {
                     need(c.attr(k).is_none() || num(c.attr(k)), || format!("{w}: {k} is a number"))?;
                 }
+                need(c.attr("duty").is_none() || matches!(c.attr("duty"), Some(Json::Num(d)) if *d > 0.0 && *d <= 1.0), || format!("{w}: duty is the share of time the load draws, a number in (0, 1] (0.25 for 25 %)"))?;
             }
             "contribution" => {
                 quantity_of(c, &w)?;
