@@ -1688,6 +1688,8 @@ pub struct ExternalPartProps {
     pub omit: Option<Vec<String>>,
     /// A placed 3D document: bodies it makes or files it places, each moved in its file's frame before the placement (a lid opened, a ram lowered), by the id, the name or the part number its own file gives it (a placed file's id moves everything placed under it). What its file says of the body (an `<accept>` or `<permitted>` region, in the body's own frame) moves with it, and so do its spare holes and the fastener stacks that hold only what one move moves. An entry that names nothing of the file is an error.
     pub moves: Option<Vec<PlacedMove>>,
+    /// A placed 3D document at other values of its `<parameter>`s, each by its name: a library profile at its cut length (`inputs={{ length: 2830 }}`), a screw at its length. The file is built at those values for this placement alone; a name the file does not declare is an error of the placement.
+    pub inputs: Option<Vec<(String, f64)>>,
     /// How the linked part's bodies combine with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -1736,6 +1738,9 @@ impl ToJson for ExternalPartProps {
         }
         if let Some(v) = &self.moves {
             o.set("moves", v.to_json());
+        }
+        if let Some(v) = &self.inputs {
+            o.set("inputs", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
