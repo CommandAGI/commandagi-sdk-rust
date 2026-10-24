@@ -68,3 +68,10 @@ fn a_postcard_has_one_front_and_no_options() {
     assert!(bad(postcard([front()])).contains("needs image"));
     assert!(bad(postcard([]).color(true)).contains("color is not read"));
 }
+
+#[test]
+fn a_postcard_names_a_size_a_provider_prints() {
+    let (_, doc, _) = document(postcard([ada(), front().image("Austin.jpg")]).size("6x9"));
+    assert_eq!(doc.get("size").and_then(Json::as_str), Some("6x9"));
+    assert!(bad(postcard([ada(), front().image("Austin.jpg")]).size("5x7")).contains("size is 4x6, 6x9, 6x11"));
+}
