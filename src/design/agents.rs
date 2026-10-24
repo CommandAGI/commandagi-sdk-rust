@@ -63,7 +63,11 @@ attributes! {
         harness;
         /// A fork's parent: a ref to the parent agent's folder.
         parent;
-        name; model; effort; instructions; voice; voice_mode; tools; persona; color; icon; gender;
+        name; model;
+        /// The reasoning effort it runs at, in its harness's words (`"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`): a
+        /// CLI harness takes it as the CLI does (Claude Code `--effort`, Codex `model_reasoning_effort`).
+        effort;
+        instructions; voice; voice_mode; tools; persona; color; icon; gender;
     }
 }
 

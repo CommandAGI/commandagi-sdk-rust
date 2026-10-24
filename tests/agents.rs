@@ -43,9 +43,9 @@ fn a_harness_of_each_kind() {
 
 #[test]
 fn a_base_names_its_harness_and_a_fork_its_parent() {
-    let (format, base, _) = document(agent().harness("anthropic").model("anthropic/claude-opus-5-5").name("Claude Opus 5.5"));
+    let (format, base, _) = document(agent().harness("anthropic").model("anthropic/claude-opus-5-5").effort("medium").name("Claude Opus 5.5"));
     assert_eq!(format, "agent");
-    assert_eq!(base, j(r#"{"harness": "anthropic", "name": "Claude Opus 5.5", "model": "anthropic/claude-opus-5-5"}"#));
+    assert_eq!(base, j(r#"{"harness": "anthropic", "name": "Claude Opus 5.5", "model": "anthropic/claude-opus-5-5", "effort": "medium"}"#));
     let (_, fork, _) = document(
         agent()
             .parent("cloud://global/agents/claude-code")
