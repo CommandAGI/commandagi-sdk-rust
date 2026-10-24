@@ -76,7 +76,7 @@ fn paths_and_their_fields() {
              "sources": [{"id": "s", "adapter": "x-profile", "params": {}, "every": "1h", "via": "phone", "exit": null,
                "host": null, "mode": "poll", "retain": null, "since": null, "session": null, "snapshot": null,
                "profile": null, "keep": null, "maxCostPerDay": null, "unit": "../../../worlds/fleet/world.tsx#android-01",
-               "vantage": null}],
+               "vantage": null, "connection": null}],
              "follows": [], "derives": [], "wakes": [], "discovers": []}"#)
     );
     let refused = |part: El, words: &str| {

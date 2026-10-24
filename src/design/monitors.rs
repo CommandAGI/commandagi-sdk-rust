@@ -67,6 +67,8 @@ attributes! {
         id; title; class; about; readme; same_as;
         adapter; params; every; via; exit; host; mode; retain; since;
         session; snapshot; profile; keep; max_cost_per_day; unit; vantage;
+        /// The connected account it reads as (`gmail@jacobfv123@gmail.com`); the api worker (via="worker") reads it.
+        connection;
         monitor; match_; where_; prompt;
         op; inputs;
         into_ = "into"; of; when; slug; props; name; max;
@@ -78,7 +80,7 @@ pub(crate) const FAMILY: Family = Family { module: "monitors", roots: &["monitor
 pub const MONITOR_FIELDS: &[&str] = &["title", "class", "about", "readme", "sameAs"];
 pub const SOURCE_FIELDS: &[&str] = &[
     "id", "adapter", "params", "every", "via", "exit", "host", "mode", "retain", "since", "session", "snapshot", "profile",
-    "keep", "maxCostPerDay", "unit", "vantage",
+    "keep", "maxCostPerDay", "unit", "vantage", "connection",
 ];
 pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match", "where"];
 pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
@@ -205,10 +207,13 @@ pub fn unit_ref_ok(u: &str) -> bool {
 }
 
 fn source_of(t: &DocTree) -> Result<Json, String> {
-    for k in ["id", "adapter", "exit", "host", "retain", "since", "session", "snapshot", "profile", "keep", "unit", "vantage"] {
+    for k in ["id", "adapter", "exit", "host", "retain", "since", "session", "snapshot", "profile", "keep", "unit", "vantage", "connection"] {
         word(t, k, "id")?;
     }
     let w = call(t, "id");
+    if t.attr("connection").is_some() && t.attr("via").and_then(|v| v.as_str()).unwrap_or("worker") != "worker" {
+        return Err(format!("{w} connection names a connected account, which the api worker reads (via=\"worker\")"));
+    }
     if let Some(p) = t.attr("params") {
         if !matches!(p, Json::Obj(_)) {
             return Err(format!("{w} params is an object ({{\"series\": \"CPIAUCSL\"}}), not {}", p.text()));
@@ -548,7 +553,7 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
             out.set("host", or_null(s, "host"));
             out.set("mode", s.get("mode").cloned().unwrap_or_else(|| Json::Str("poll".into())));
             out.set("retain", if stream { s.get("retain").cloned().unwrap_or_else(|| Json::Str("derived".into())) } else { Json::Null });
-            for k in ["since", "session", "snapshot", "profile", "keep", "maxCostPerDay", "unit", "vantage"] {
+            for k in ["since", "session", "snapshot", "profile", "keep", "maxCostPerDay", "unit", "vantage", "connection"] {
                 out.set(k, or_null(s, k));
             }
             out
