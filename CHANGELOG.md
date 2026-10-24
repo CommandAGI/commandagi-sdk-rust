@@ -6,6 +6,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 ## Unreleased
 
+Added
+
+- An agent declares its `supervisor` (`<agent supervisor="agent:lead">`, `agent:<id>` or `person:<id>`): a thread's
+  membership takes it at join, and a person's supervise of that member overrides it.
+
 Fixed
 
 - 3D: a placed file's `<joint>`s come with it, as `<placement id>/<joint id>` at any depth (`dock_a/palletLift`,

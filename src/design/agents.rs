@@ -67,6 +67,9 @@ attributes! {
         /// The reasoning effort it runs at, in its harness's words (`"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`): a
         /// CLI harness takes it as the CLI does (Claude Code `--effort`, Codex `model_reasoning_effort`).
         effort;
+        /// Who answers the questions it gives on to `role:supervisor` (`agent:<id>` or `person:<id>`): a thread's
+        /// membership takes it at join, and a person's supervise of that member overrides it.
+        supervisor;
         instructions; voice; voice_mode; tools; persona; color; icon; gender;
     }
 }
@@ -86,7 +89,7 @@ pub const REALTIME_OUT: &[&str] = &["audio", "text", "tools"];
 pub const AUDIO_FORMATS: &[&str] = &["g711-ulaw@8000", "pcm16@8000", "pcm16@16000", "pcm16@24000"];
 pub const HARNESS_FIELDS: &[&str] = &["kind", "label", "provider", "cli", "runs", "tasks", "realtime", "family", "experimental", "homepage", "about"];
 pub const AGENT_FIELDS: &[&str] =
-    &["harness", "parent", "name", "model", "effort", "instructions", "voice", "voiceMode", "tools", "persona", "color", "icon", "gender"];
+    &["harness", "parent", "name", "model", "effort", "supervisor", "instructions", "voice", "voiceMode", "tools", "persona", "color", "icon", "gender"];
 pub const VOICE_MODES: &[&str] = &["off", "push-to-talk", "open-mic"];
 pub const REALTIME_FIELDS: &[&str] = &["in", "out", "audio", "fps", "hz", "minutes", "videoMinutes"];
 
@@ -233,10 +236,16 @@ fn harness_of(t: &DocTree) -> Result<Json, String> {
 }
 
 fn agent_of(t: &DocTree) -> Result<Json, String> {
-    for k in ["harness", "parent", "name", "model", "effort", "instructions", "voice", "color", "icon", "gender"] {
+    for k in ["harness", "parent", "name", "model", "effort", "supervisor", "instructions", "voice", "color", "icon", "gender"] {
         word(t, k)?;
     }
     one_of(t, "voiceMode", VOICE_MODES)?;
+    if let Some(s) = t.attr("supervisor").and_then(|v| v.as_str()) {
+        let ok = s.split_once(':').is_some_and(|(k, id)| (k == "agent" || k == "person") && !id.is_empty() && !id.contains(char::is_whitespace));
+        if !ok {
+            return Err(format!("<agent> supervisor is an agent or a person (\"agent:lead\", \"person:me\"), not {:?}", s));
+        }
+    }
     let (base, fork) = (t.attr("harness").is_some(), t.attr("parent").is_some());
     if base == fork {
         return Err(if base {

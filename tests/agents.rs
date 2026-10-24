@@ -46,6 +46,9 @@ fn a_base_names_its_harness_and_a_fork_its_parent() {
     let (format, base, _) = document(agent().harness("anthropic").model("anthropic/claude-opus-5-5").effort("medium").name("Claude Opus 5.5"));
     assert_eq!(format, "agent");
     assert_eq!(base, j(r#"{"harness": "anthropic", "name": "Claude Opus 5.5", "model": "anthropic/claude-opus-5-5", "effort": "medium"}"#));
+    let (_, led, _) = document(agent().parent("cloud://global/agents/claude-code").supervisor("agent:lead"));
+    assert_eq!(led, j(r#"{"parent": "cloud://global/agents/claude-code", "supervisor": "agent:lead"}"#));
+    assert!(bad(agent().parent("cloud://global/agents/claude-code").supervisor("lead")).contains("supervisor is an agent or a person"));
     let (_, fork, _) = document(
         agent()
             .parent("cloud://global/agents/claude-code")
