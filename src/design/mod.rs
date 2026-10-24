@@ -55,6 +55,7 @@ pub mod pdf;
 pub mod postal;
 pub(crate) mod read;
 pub mod records;
+pub mod routing;
 pub mod schema;
 pub mod schematic;
 pub mod source;
@@ -98,7 +99,7 @@ pub struct Family {
 }
 
 /// Every family a file's root may be. A root tag names one family.
-pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY, threed::FAMILY, pcb::FAMILY, office::FAMILY, ontology::FAMILY, business::FAMILY, tasks::FAMILY, mounts::FAMILY, evals::FAMILY, monitors::FAMILY, records::FAMILY, postal::FAMILY, pdf::FAMILY, twod::FAMILY, media::FAMILY, study::FAMILY, testplans::FAMILY, firmware::FAMILY, systems::FAMILY, flows::FAMILY, agents::FAMILY];
+pub const FAMILIES: &[Family] = &[schematic::FAMILY, fab::FAMILY, threed::FAMILY, pcb::FAMILY, office::FAMILY, ontology::FAMILY, business::FAMILY, tasks::FAMILY, mounts::FAMILY, evals::FAMILY, monitors::FAMILY, records::FAMILY, routing::FAMILY, postal::FAMILY, pdf::FAMILY, twod::FAMILY, media::FAMILY, study::FAMILY, testplans::FAMILY, firmware::FAMILY, systems::FAMILY, flows::FAMILY, agents::FAMILY];
 
 /// Declare a document from its root element: the family of the root's tag reads it.
 pub fn declare(root: El) -> Result<Declared, String> {
