@@ -246,6 +246,8 @@ attributes! {
         /// A check's bodies compared against others, its smallest shared volume (mm³), and its sweep over a joint's
         /// range: `sweep(json(r#"{"joint": "ramJ", "step": 10}"#))`.
         against; min_volume; sweep;
+        /// A registered check's own fields (a printer's nozzle, a tool's radius), as that check reads them.
+        options;
         /// An accept's or a permit's check, body, other body of a pair, largest shared volume (mm³) and reason.
         check; body; other; max_volume; reason; region; severity;
         /// A product's number, compliance and shipping: `product().id("kit").shipping(json(r#"{"hsCode": "8525.89"}"#))`.

@@ -386,6 +386,26 @@ fn a_check_sweeps_a_joint_over_its_limits_and_a_pair_accept_is_bounded_by_its_vo
 }
 
 #[test]
+fn a_manufacturability_check_reads_its_device_and_inline_limits() {
+    // The editor reads these kinds from the same fields (useDesignChecks); inline limits work in every SDK.
+    let g = graph(
+        assembly([
+            check().id("print").kind("printability").bodies(["Body"]).options(json(r#"{"maxAngle": 45, "minWall": 0.4}"#)),
+            check().id("cut").kind("mill").bodies(["Body"]).options(json(r#"{"travel": [300, 180, 45], "toolDiameters": [3, 6]}"#)),
+        ])
+        .name("Part"),
+    );
+    assert_eq!(
+        node(&g, "checks").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"print","kind":"printability","bodies":["Body"],"options":{"maxAngle":45,"minWall":0.4}},{"id":"cut","kind":"mill","bodies":["Body"],"options":{"travel":[300,180,45],"toolDiameters":[3,6]}}]}"#
+    );
+    assert_eq!(
+        bad(assembly([check().id("print").kind("printability").options(json(r#"["nozzle"]"#))]).name("P")),
+        r#"check().id("print"): options: must be object (got "array")"#
+    );
+}
+
+#[test]
 fn an_envelope_declares_its_mounting_holes_and_a_library_its_sizes() {
     // The TypeScript and Python SDKs read the same fields (IC2-13, CORE-29).
     let engineering = r#"{"process":"purchased","envelope":true,"mountingHoles":[{"at":[-10,0,0],"axis":[0,0,-1],"diameter":5,"depth":12}]}"#;
