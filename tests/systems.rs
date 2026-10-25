@@ -71,7 +71,7 @@ fn a_system_is_its_records_as_written() {
         (budget().id("b").quantity("mass").limit(1).peak(true), "peak is true or false, on a power budget"),
         (load().id("l").part("U1").rail("r").mode("m").current(1).peak_current("2 A"), "peakCurrent is a number"),
         (load().id("l").part("U1").rail("r").mode("m").power(1).duty(1.5), "duty is the share of time the load draws"),
-        (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, or a quantity's name"#),
+        (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, rf-link, or a quantity's name"#),
         (budget().id("b").quantity("exhaust-flow").limit(600), r#"budget().id("b"): a quantity of exhaust-flow states its unit"#),
         (contribution().id("c").quantity("exhaust-flow").part("P").value(35).source("datasheet"), r#"contribution().id("c"): a quantity of exhaust-flow states its unit"#),
         (budget().id("b").quantity("power").limit(1), "a power budget names its rail and its mode"),
@@ -89,6 +89,16 @@ fn a_system_is_its_records_as_written() {
         let said = bad(system([el]));
         assert!(said.contains(message), "{said}");
     }
+    // A link budget is a margin in dB: two power levels in dBm and the gains and losses in dB between them.
+    let (format, link) = document(system([
+        contribution().id("tx").quantity("rf-link").part("U4").value(23.0).unit("dBm").source("modem datasheet"),
+        contribution().id("antenna").quantity("rf-link").part("A1").value(2.0).unit("dB").source("antenna datasheet"),
+        contribution().id("path").quantity("rf-link").part("the room").value(-70.0).unit("dB").source("estimate: free space at 30 m"),
+        contribution().id("rx").quantity("rf-link").part("the network").value(-100.0).unit("dBm").source("estimate"),
+        budget().id("link").quantity("rf-link").limit(6.0).unit("dB"),
+    ]));
+    assert_eq!(format, "system");
+    assert_eq!(link.get("budgets"), Some(&j(r#"[{"id": "link", "quantity": "rf-link", "limit": 6.0, "unit": "dB"}]"#)));
 }
 
 #[test]

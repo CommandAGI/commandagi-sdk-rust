@@ -19,8 +19,10 @@
 //! is `verifiedBy`; `ref_` is `ref`). A requirement is named by a ref, never by an id alone (`Rover.req.rs#mass`). A
 //! side's maps are JSON: `.defines(json(r#"{"BOARD": 1}"#))`. Nothing adds a default. A `bom()` gives masses; a cost
 //! budget reads the logistics roll-up of the design it names (`.design("cad/Assembly.3d.rs")`: a 3D document, a
-//! schematic or a board with a cost check), the one source of cost, so no contribution is a cost. The checks are the
-//! host's (`commandagi check`, `commandagi trace`).
+//! schematic or a board with a cost check), the one source of cost, so no contribution is a cost. A link budget
+//! (`.quantity("rf-link")`) is its margin in dB: two contributions in dBm (the transmitter's power and the receiver's
+//! sensitivity) and the gains (positive) and losses (negative) in dB between them. The checks are the host's
+//! (`commandagi check`, `commandagi trace`).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
@@ -83,7 +85,7 @@ attributes! {
 pub(crate) const FAMILY: Family = Family { module: "systems", roots: &["requirements", "system", "interface"], declare };
 
 pub const VERIFICATION_METHODS: &[&str] = &["test", "analysis", "inspection", "demonstration"];
-pub const BUDGET_QUANTITIES: &[&str] = &["mass", "power", "cost", "thermal"];
+pub const BUDGET_QUANTITIES: &[&str] = &["mass", "power", "cost", "thermal", "rf-link"];
 pub const SYSTEM_CHECK_KINDS: &[&str] = &["interface", "trace"];
 pub const SIDE_KINDS: &[&str] = &["circuit", "3d", "firmware", "definition"];
 
