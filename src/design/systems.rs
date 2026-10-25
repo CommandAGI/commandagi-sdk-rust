@@ -73,7 +73,7 @@ attributes! {
         voltage; source; input; output; efficiency; part; rail; mode; current; power; peak_current; peak_power; peak; inrush_current; duty;
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
-        parts; channel; origin; defines; pins; params; files;
+        parts; channel; origin; rotation; face; defines; pins; params; files;
     }
 }
 
@@ -95,7 +95,9 @@ pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", 
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
 pub const PARAM_FIELDS: &[&str] = &["id", "value", "unit", "description"];
-pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "defines", "pins", "params", "files", "description"];
+pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "rotation", "face", "defines", "pins", "params", "files", "description"];
+/// The faces a side states: `front` (as drawn), or `back` (read from the mating part: the frame mirrored through its y axis).
+pub const SIDE_FACES: &[&str] = &["front", "back"];
 const ROOT_FIELDS: &[&str] = &["name", "description"];
 
 const REQUIREMENTS: Vocabulary = Vocabulary {
@@ -306,6 +308,8 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
             "side" => {
                 need(c.attr("kind").is_none() || one_of(c.attr("kind"), SIDE_KINDS), || format!("{w}: kind must be one of {} (got {})", SIDE_KINDS.join(", "), said(c.attr("kind"))))?;
                 need(c.attr("origin").is_none() || pair(c.attr("origin"), 2) || pair(c.attr("origin"), 3), || format!("{w}: origin is where the interface's frame sits in this side's frame, [x, y] or [x, y, z] mm"))?;
+                need(c.attr("rotation").is_none() || num(c.attr("rotation")), || format!("{w}: rotation is degrees counter-clockwise"))?;
+                need(c.attr("face").is_none() || one_of(c.attr("face"), SIDE_FACES), || format!("{w}: face must be one of {} (got {})", SIDE_FACES.join(", "), said(c.attr("face"))))?;
                 need(c.attr("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
                 need(c.attr("channel").is_none() || string(c.attr("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
             }
