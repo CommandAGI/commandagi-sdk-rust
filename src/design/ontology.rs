@@ -19,8 +19,8 @@
 //! children (`units` → `unit()`, `channels` → `channel()`, a scene's `bodies` → `body()`). The tags:
 //!
 //! ```text
-//! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, unit().uid …,
-//!   .links?                                                               view(), scene([body().id …])
+//! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, group().uid …,
+//!   .links?                                                               unit().uid …, view(), scene([body().id …])
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
@@ -54,6 +54,8 @@ elements! {
     world: children;
     /// A world's space: `.origin_mm([…]).size_mm([…])`.
     space: leaf;
+    /// What units stand in: a shelf level, a bench, a rack, a desk (`.uid("shelf-2").name(…).group(…)`).
+    group: leaf;
     /// A unit placed in a world: `.uid("arm").name("arm").device("…/definition.tsx")`.
     unit: leaf;
     /// A world's view.
@@ -129,7 +131,11 @@ pub(crate) const FAMILY: Family =
 pub const NODE_GRAPH_ID: &str = "nodegraph";
 /// The fields of a unit in a world's file (packages/domain/world/worlds.js). `serial`: the serial number of the one physical
 /// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports).
-pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "tilt_deg", "release"];
+pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "group", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "tilt_deg", "release"];
+/// The fields of a group in a world's file: what one unit stands in. `group` nests a group in another (a shelf holds its
+/// levels); `size_mm` with `position` and `rotation` is the box the world view draws. A group has no device and no
+/// channel: nothing runs or is granted on it.
+pub const GROUP_FIELDS: &[&str] = &["uid", "name", "description", "group", "size_mm", "position", "rotation"];
 /// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];
@@ -145,6 +151,7 @@ const WORLD: Vocabulary = Vocabulary {
     tags: &[
         TagRule::new("world", &[]).required(&["name", "kind"]).attrs(WORLD_FIELDS),
         TagRule::new("space", &["world"]).single().required(&["origin_mm", "size_mm"]).attrs(&["origin_mm", "size_mm"]),
+        TagRule::new("group", &["world"]).key("uid").required(&["uid", "name"]).attrs(GROUP_FIELDS),
         TagRule::new("unit", &["world"]).key("uid").required(&["uid", "name", "device"]).attrs(UNIT_FIELDS),
         TagRule::new("view", &["world"]).single(),
         TagRule::new("scene", &["world"]).single(),
@@ -258,6 +265,10 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
     let mut out = Json::Obj(own(&t.attrs, WORLD_FIELDS));
     if let Some(space) = t.single("space") {
         out.set("space", space.record());
+    }
+    let groups: Vec<Json> = kids(t, "group").map(DocTree::record).collect();
+    if !groups.is_empty() {
+        out.set("groups", Json::Arr(groups));
     }
     out.set("units", Json::Arr(kids(t, "unit").map(DocTree::record).collect()));
     if let Some(view) = t.single("view") {
