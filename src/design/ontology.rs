@@ -16,11 +16,11 @@
 //! ```
 //!
 //! A record is an element and its fields are the element's attributes, verbatim; a list of records is the parent's
-//! children (`units` → `unit()`, `channels` → `channel()`, a scene's `bodies` → `body()`). The tags:
+//! children (`units` → `unit()`, `channels` → `channel()`, a scene's `bodies` → `body()` and `cameras` → `camera()`). The tags:
 //!
 //! ```text
 //! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, unit().uid …,
-//!   .links?                                                               view(), scene([body().id …])
+//!   .links?                                                               view(), scene([body().id …, camera().id …])
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
@@ -62,6 +62,8 @@ elements! {
     scene: children;
     /// A body of a scene: `.id("cube").shape(json(…))`.
     body: leaf;
+    /// A camera of a scene or of a geo project: `.id("cam").at([0, -0.7, 1.0]).look_at([0, 0, 0.76]).fov_deg(50)`.
+    camera: leaf;
     /// A device definition: its channels.
     device: children;
     /// A channel of a device or a firmware (`firmware::firmware`): `.id("joints").dir("duplex").medium("records")`.
@@ -80,8 +82,7 @@ elements! {
     geoproject: children;
     /// A geo project's date range: `.start("2015-01").end("2030-01")`.
     date_range = "dateRange": leaf;
-    /// A geo project's camera.
-    camera: leaf;
+    // A geo project's camera: `camera().center_lng(40).center_lat(25).scale(320)` (the element is declared above).
     /// A file a geo project names: `.role("layer").path("…")`.
     reference: leaf;
     /// A node graph: its nodes and wires.
@@ -99,7 +100,9 @@ attributes! {
         name; kind; description; from; model; uid; device; serial; revision; domain; support; channels; manual_url; position; rotation;
         origin_mm = "origin_mm"; size_mm = "size_mm"; dimensions_mm = "dimensions_mm";
         hz; at; rot; vel; shape; mass; friction; restitution; angular_damping = "angular_damping"; gravity; scale;
-        backdrop; walls; grids; bodies; forces; particles; entities; relations; systems; robots; joints; links; kinematics;
+        backdrop; walls; grids; bodies; cameras; forces; particles; entities; relations; systems; robots; joints; links; kinematics;
+        /// A camera of a scene: the point it is aimed at, and its vertical field of view in degrees.
+        look_at = "look_at"; fov_deg = "fov_deg";
         dynamics; constraints; fidelity; motion; color; blend; balance; coupled; seals; release; optics; root;
         // A definition's and a channel's.
         id; type_; label; dir; medium; format; transport; interface; manufacturer; model_number = "model_number";
@@ -134,6 +137,9 @@ pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision"
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];
 const GEO_FIELDS: &[&str] = &["id", "name", "createdAt", "updatedAt", "description", "defaultWorkspace", "metadata"];
+/// A camera of a world's scene (packages/domain/world/sim.js CAMERA_FIELDS): where it stands and what it looks at
+/// (metres), and the picture it records. Its `id` is the uid of the unit whose `video` channel records it.
+const CAMERA_FIELDS: &[&str] = &["id", "at", "look_at", "up", "fov_deg", "width", "height"];
 /// A node's attributes that are not its ports.
 const NODE_ATTRS: &[&str] = &["id", "type", "label", "x", "y", "disabled", "output", "meta", "inputs"];
 const DASHBOARD_STRUCTURE: &[&str] = &["format", "layout", "panes", "params", "regions"];
@@ -149,6 +155,7 @@ const WORLD: Vocabulary = Vocabulary {
         TagRule::new("view", &["world"]).single(),
         TagRule::new("scene", &["world"]).single(),
         TagRule::new("body", &["scene"]).key("id").required(&["id"]),
+        TagRule::new("camera", &["scene"]).key("id").required(&["id"]).attrs(CAMERA_FIELDS),
     ],
     from_tree: world_of,
 };
@@ -265,9 +272,13 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
     }
     if let Some(scene) = t.single("scene") {
         let bodies: Vec<Json> = kids(scene, "body").map(DocTree::record).collect();
+        let cameras: Vec<Json> = kids(scene, "camera").map(DocTree::record).collect();
         let mut s = scene.record();
         if !bodies.is_empty() {
             s.set("bodies", Json::Arr(bodies));
+        }
+        if !cameras.is_empty() {
+            s.set("cameras", Json::Arr(cameras));
         }
         out.set("scene", s);
     }

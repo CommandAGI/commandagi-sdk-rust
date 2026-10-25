@@ -32,7 +32,11 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
     let file = world([
         space().origin_mm([0, 0, 0]).size_mm([4000, 3000, 2500]),
         arm,
-        scene([body().id("cube").shape(json(r#"{"type": "box", "hx": 0.02}"#)).at([0, 0, 1])]).hz(240),
+        scene([
+            body().id("cube").shape(json(r#"{"type": "box", "hx": 0.02}"#)).at([0, 0, 1]),
+            camera().id("cam").at([0.0, -0.7, 1.0]).look_at([0.0, 0.0, 0.76]).fov_deg(50),
+        ])
+        .hz(240),
     ])
     .name("Shop")
     .kind("simulation");
@@ -43,7 +47,8 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
         doc,
         j(r#"{"name": "Shop", "kind": "simulation", "space": {"origin_mm": [0, 0, 0], "size_mm": [4000, 3000, 2500]},
               "units": [{"uid": "arm", "name": "arm", "device": "../../devices/so-101/definition.tsx", "position": [100, 0, 0], "rotation": 90}],
-              "scene": {"hz": 240, "bodies": [{"id": "cube", "shape": {"type": "box", "hx": 0.02}, "at": [0, 0, 1]}]}}"#)
+              "scene": {"hz": 240, "bodies": [{"id": "cube", "shape": {"type": "box", "hx": 0.02}, "at": [0, 0, 1]}],
+                        "cameras": [{"id": "cam", "at": [0, -0.7, 1], "look_at": [0, 0, 0.76], "fov_deg": 50}]}}"#)
     );
     assert_eq!(sources.get(""), Some(&root_site));
     assert_eq!(sources.get("unit#arm"), Some(&arm_site));
@@ -60,6 +65,7 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
     assert!(bad(w(vec![unit().uid("a").name("a").device("d.json").speed(3)])).contains(r#"unit().uid("a"): speed is not read"#));
     assert!(bad(w(vec![unit().uid("a").name("a").device("d"), unit().uid("a").name("b").device("d")])).contains(r#"two unit() in world() have uid "a""#));
     assert!(bad(w(vec![body().id("b")])).contains("body() stands in scene(), not in world()"));
+    assert!(bad(w(vec![camera().id("cam")])).contains("camera() stands in scene(), not in world()"));
     assert!(bad(w(vec![node().id("n")])).contains("node() is not an element of a world"));
 }
 
