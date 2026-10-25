@@ -70,6 +70,9 @@ fn a_metric_is_one_element() {
     let (format, doc, _) = document(metric().slug("fleet-availability").probe(json(r#"{"kind": "event", "eventKind": "telemetry"}"#)).aggregation("rate").target(0.96));
     assert_eq!(format, "metric");
     assert_eq!(doc, Json::parse(r#"{"slug": "fleet-availability", "probe": {"kind": "event", "eventKind": "telemetry"}, "aggregation": "rate", "target": 0.96}"#).unwrap());
+    // A probe names a task by ref from the metric file, and that reads.
+    let (_, refs, _) = document(metric().slug("m").probe(json(r#"{"kind": "alignment", "reference": {"task": "../Tasks/Dock.task.tsx"}}"#)).aggregation("rate"));
+    assert_eq!(refs.get("probe").and_then(|p| p.get("reference")).and_then(|r| r.get("task")), Some(&Json::Str("../Tasks/Dock.task.tsx".into())));
 }
 
 #[test]
@@ -101,6 +104,19 @@ fn what_does_not_read_is_refused_with_why() {
         ),
         (declare(metric().slug("m").probe(json("{}")).aggregation("rate")).unwrap_err(), "probe is what to measure"),
         (declare(metric().slug("m").aggregation("rate")).unwrap_err(), "metric() needs probe"),
+        // A probe names a task or another metric by ref from the metric file, never by node id (as the reader refuses it).
+        (
+            declare(metric().slug("m").probe(json(r#"{"kind": "task", "taskId": "m1"}"#)).aggregation("rate")).unwrap_err(),
+            "probe names its task file by ref (task), not by node id (taskId)",
+        ),
+        (
+            declare(metric().slug("m").probe(json(r#"{"kind": "alignment", "reference": {"taskId": "m1"}}"#)).aggregation("rate")).unwrap_err(),
+            "probe names its task file by ref (reference.task), not by node id (taskId)",
+        ),
+        (
+            declare(metric().slug("m").probe(json(r#"{"kind": "composite", "inputs": [{"metricId": "m1", "weight": 2}]}"#)).aggregation("rate")).unwrap_err(),
+            "probe names each input's metric file by ref (metric), not by node id (metricId)",
+        ),
     ] {
         assert!(said.contains(why), "{why}: {said}");
     }

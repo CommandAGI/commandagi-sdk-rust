@@ -25,7 +25,10 @@
 //! files the eval reads; a case's `task` names the `.task.tsx` whose title and text the agent is handed. A case with no
 //! task file says its `instruction` itself; a case says one of the two. `objective` and `scoring`'s `weights` name metric
 //! files by ref as well: `{"kind": "metric", "metric": "<ref>"}`, `{"kind": "linear", "terms": [{"metric": "<ref>",
-//! "weight": 2}], "bias": 0}` or a `function`; the weights are keyed by ref. `frozen` is the digest an eval is frozen at
+//! "weight": 2}], "bias": 0}` or a `function`; the weights are keyed by ref. A metric's `probe` names a task file
+//! (`{"kind": "task", "task": "<ref>"}`, an `alignment`'s `reference.task`) or another metric file (a `composite` input's
+//! `metric`) by ref too; a probe that names one by node id (`taskId`, `metricId`) is refused, as the platform's routes
+//! and reader refuse it. `frozen` is the digest an eval is frozen at
 //! (`sha256:<hex>`). Nothing adds a default: what the file does not say, the document does not have. A run gives back
 //! `{format, document, sources}` beside an empty graph; `sources` names each case's site by its slug
 //! (`case#undock-and-lap`).
@@ -255,6 +258,27 @@ fn eval_of(t: &DocTree) -> Result<Json, String> {
     Ok(fields(t, EVAL_FIELDS).with("cases", Json::Arr(cases)))
 }
 
+/// A probe names a task or another metric by ref from the metric file (`task`, `reference.task`, an input's
+/// `metric`), never by node id.
+fn probe_refs(t: &DocTree) -> Result<(), String> {
+    let probe = match t.attr("probe") {
+        Some(probe) => probe,
+        None => return Ok(()),
+    };
+    if probe.get("taskId").is_some() {
+        return Err(format!("{} probe names its task file by ref (task), not by node id (taskId)", call(t)));
+    }
+    if probe.get("reference").and_then(|r| r.get("taskId")).is_some() {
+        return Err(format!("{} probe names its task file by ref (reference.task), not by node id (taskId)", call(t)));
+    }
+    if let Some(Json::Arr(inputs)) = probe.get("inputs") {
+        if inputs.iter().any(|i| i.get("metricId").is_some()) {
+            return Err(format!("{} probe names each input's metric file by ref (metric), not by node id (metricId)", call(t)));
+        }
+    }
+    Ok(())
+}
+
 fn metric_of(t: &DocTree) -> Result<Json, String> {
     for k in ["slug", "description", "aggregation", "role", "direction", "unit", "threadId"] {
         text(t, k)?;
@@ -265,6 +289,7 @@ fn metric_of(t: &DocTree) -> Result<Json, String> {
     if !has_kind(t.attr_of("probe")) {
         return Err(format!("{} probe is what to measure ({{ kind: \"event\", eventKind: \"telemetry\" }}), not {}", call(t), said(t.attr_of("probe"))));
     }
+    probe_refs(t)?;
     number(t, "target", false)?;
     Ok(fields(t, METRIC_FIELDS))
 }
