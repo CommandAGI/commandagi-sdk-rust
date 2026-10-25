@@ -34,7 +34,7 @@ fn a_board_declares_its_outline_stack_footprints_and_copper() {
     let l0 = line!() + 1;
     let root = board_of(vec![
         component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
-        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom").ref_at([0.0, -2.5]),
+        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom").ref_at([0.0, -2.5]).ref_rot(90.0),
         component().name("V1").footprint("smd-0805"),
         trace().layer("F.Cu").width(0.2).points([[11, 10], [18, 14], [24, 10]]).from(".R1 > .pin2").to(".R2 > .1"),
         trace().layer("B.Cu").width(0.25).points([[18, 14], [18, 20]]).from(".VIA1"),
@@ -64,7 +64,9 @@ fn a_board_declares_its_outline_stack_footprints_and_copper() {
     );
     assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("placement")).unwrap().text(), r#"{"x":25,"y":10,"rot":90,"side":"bottom"}"#);
     assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refAt")).unwrap().text(), "[0,-2.5]");
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refRot")).unwrap().text(), "90", "the reference text is turned a quarter where it sits");
     assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_at([0.0, 1.0])])).contains("ref_at needs pcb_x and pcb_y"));
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_rot(90.0)])).contains("ref_rot needs pcb_x and pcb_y"));
     assert_eq!(node(&g, "fp_V1").get("inputs").and_then(|i| i.get("placement")), None, "a footprint with no pcb_x and pcb_y is not placed");
     assert_eq!(
         inputs(&g, "cu_1"),
