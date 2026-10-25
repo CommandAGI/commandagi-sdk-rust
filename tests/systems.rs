@@ -89,6 +89,13 @@ fn a_system_is_its_records_as_written() {
         let said = bad(system([el]));
         assert!(said.contains(message), "{said}");
     }
+    // A load that names a circuit part states no current or power: the check reads the draw the part states.
+    let (named, _) = document(system([
+        mode().id("m"),
+        rail().id("r").voltage(3.3),
+        load().id("l").part("board.sch.tsx#U1").rail("r").mode("m"),
+    ]));
+    assert_eq!(named, "system");
     // A link budget is a margin in dB: two power levels in dBm and the gains and losses in dB between them.
     let (format, link) = document(system([
         contribution().id("tx").quantity("rf-link").part("U4").value(23.0).unit("dBm").source("modem datasheet"),

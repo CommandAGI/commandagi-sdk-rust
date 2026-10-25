@@ -51,11 +51,12 @@
 //!                                                                           not report them as pins on nothing
 //! … .spice(json(r#"[{"id", "model", "terminals"}]"#))                       on any part: the vendor SPICE packages it
 //!                                                                           binds, each formal by pin NUMBER
-//! … .part_number(…).manufacturer(…).mpn(…).rating(…)                        on any part but a ground: its engineering
+//! … .part_number(…).manufacturer(…).mpn(…).rating(…).draw("120 mA")        on any part but a ground: its engineering
 //!   .attrs(json(r#"{"Tolerance": "1%"}"#))                                  data, each a KiCad property of the part
 //!                                                                           (CommandAGI IPN, Manufacturer, MPN, Rating,
-//!                                                                           and attrs by their own names): the BOM and
-//!                                                                           the board's footprint carry them
+//!                                                                           its steady draw, and attrs by their own
+//!                                                                           names): the BOM and the board's footprint
+//!                                                                           carry them
 //! … .pinout_verified(…).footprint_verified(…).package_dimensions(…)        on any part: how its pinout and its pads
 //!                                                                           are known ("memory", "datasheet <url> p.
 //!                                                                           <page>, <YYYY-MM-DD>", "measured
@@ -175,6 +176,8 @@ attributes! {
         mpn;
         /// What a part is rated for (KiCad property `Rating`): `"0.125 W"`.
         rating;
+        /// A part's steady draw (KiCad property `Draw`): `"120 mA"` or `"1.2 W"`, the number with the unit it measures.
+        draw;
         /// How a part's pinout is known (KiCad property `Pinout Verified`):
         /// `"datasheet https://www.ti.com/lit/ds/symlink/sn74lvc1t45.pdf p. 3, 2026-10-15"`, `"memory"`, `"measured 2026-10-15"`.
         pinout_verified;

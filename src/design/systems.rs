@@ -253,7 +253,10 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
             "rail" => need(num(c.attr("voltage")), || format!("{w}: voltage is a number of volts"))?,
             "converter" => need(matches!(c.attr("efficiency"), Some(Json::Num(e)) if *e > 0.0 && *e <= 1.0), || format!("{w}: efficiency is a number in (0, 1] (0.88 for 88 %)"))?,
             "load" => {
-                need(c.attr("current").is_some() || c.attr("power").is_some(), || format!("{w}: a load states its current (A) or its power (W)"))?;
+                need(
+                    c.attr("current").is_some() || c.attr("power").is_some() || matches!(c.attr("part"), Some(Json::Str(p)) if p.contains('#')),
+                    || format!("{w}: a load states its current (A) or its power (W), or names a circuit part whose draw it reads (part=\"board.sch.tsx#U1\")"),
+                )?;
                 for k in ["current", "power", "voltage", "peakCurrent", "peakPower", "inrushCurrent"] {
                     need(c.attr(k).is_none() || num(c.attr(k)), || format!("{w}: {k} is a number"))?;
                 }

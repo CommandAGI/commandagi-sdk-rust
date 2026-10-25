@@ -5,6 +5,8 @@
 //! ```text
 //! .part_number(…).manufacturer(…).mpn(…).rating(…).attrs(json(…))   its engineering data (CommandAGI IPN,
 //!                                                                    Manufacturer, MPN, Rating, attrs by name)
+//! .draw("120 mA")                                                    its steady draw: the number with the unit it
+//!                                                                    measures ("1.2 W")
 //! .pinout_verified(…).footprint_verified(…)                         how its pinout and its pads are known ("memory",
 //!                                                                    "datasheet <url> p. <page>, <YYYY-MM-DD>",
 //!                                                                    "measured <YYYY-MM-DD>[, <how>]")
@@ -37,6 +39,7 @@ pub const PART_FIELDS: &[(&str, &str)] = &[
     ("manufacturer", "Manufacturer"),
     ("mpn", "MPN"),
     ("rating", "Rating"),
+    ("draw", "Draw"),
     ("pinoutVerified", "Pinout Verified"),
     ("footprintVerified", "Footprint Verified"),
     ("packageDimensions", "Package Dimensions"),
@@ -46,6 +49,7 @@ const FIELD_EXAMPLES: &[&str] = &[
     "Yageo",
     "RC0805FR-073KL",
     "0.125 W",
+    "120 mA",
     "datasheet https://www.ti.com/lit/ds/symlink/sn74lvc1t45.pdf p. 3, 2026-10-15",
     "measured 2026-10-15, calipers on the reel's part",
     "6 pins, pitch 0.95 mm, body 2.9 x 1.6 mm",
@@ -82,8 +86,14 @@ fn is_package(v: &str) -> bool {
     let Some(w) = rest.strip_suffix(" mm") else { return false };
     !pins.is_empty() && pins.bytes().all(|c| c.is_ascii_digit()) && is_number(pitch) && is_number(l) && is_number(w)
 }
+/// A part's steady draw: a number with the unit it measures, a current or a power (the TypeScript SDK's `DRAW`).
+fn is_draw(v: &str) -> bool {
+    let Some((number, unit)) = v.split_once(' ') else { return false };
+    is_number(number) && matches!(unit, "A" | "mA" | "uA" | "\u{b5}A" | "W" | "mW" | "uW" | "\u{b5}W")
+}
 fn in_grammar(prop: &str, v: &str) -> bool {
     match prop {
+        "draw" => is_draw(v),
         "pinoutVerified" | "footprintVerified" => is_verified(v),
         "packageDimensions" => is_package(v),
         _ => true,
@@ -112,7 +122,7 @@ const COUNTS: &[&str] = &["lifecycle.onHand", "lifecycle.reorderPoint"];
 const DATES: &[&str] = &["lifecycle.lastTimeBuy", "lifecycle.date"];
 const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "stock", "url", "source", "date"];
 /// The arguments a part's fields take (TypeScript names), in the order their forms are written.
-pub const FIELD_ARGUMENTS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs", "suppliers", "alternates", "datasheet", "lifecycle", "compliance", "shipping"];
+pub const FIELD_ARGUMENTS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "draw", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs", "suppliers", "alternates", "datasheet", "lifecycle", "compliance", "shipping"];
 /// Fields a part holds otherwise: its reference, its value, its footprint.
 const OWN_FIELDS: &[&str] = &["Reference", "Value", "Footprint"];
 
