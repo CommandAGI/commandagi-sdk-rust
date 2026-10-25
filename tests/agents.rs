@@ -29,11 +29,11 @@ fn api(realtime: &str) -> El {
 
 #[test]
 fn a_harness_of_each_kind() {
-    let root = harness().kind("cli").label("Claude Code").provider("anthropic").cli("claude").runs(["host", "vm"]);
+    let root = harness().kind("cli").label("Claude Code").provider("anthropic").cli("claude").runs(["host", "cloud"]);
     let site = root.source_json().unwrap();
     let (format, doc, sources) = document(root);
     assert_eq!(format, "harness");
-    assert_eq!(doc, j(r#"{"kind": "cli", "label": "Claude Code", "provider": "anthropic", "cli": "claude", "runs": ["host", "vm"]}"#));
+    assert_eq!(doc, j(r#"{"kind": "cli", "label": "Claude Code", "provider": "anthropic", "cli": "claude", "runs": ["host", "cloud"]}"#));
     assert_eq!(sources.get(""), Some(&site));
     let (_, program, _) = document(harness().kind("program").label("Symbolic Planner 001").family("symbolic").experimental(true).runs(["host"]));
     assert_eq!(program, j(r#"{"kind": "program", "label": "Symbolic Planner 001", "runs": ["host"], "family": "symbolic", "experimental": true}"#));
@@ -90,7 +90,7 @@ fn refusals_by_name() {
     assert!(bad(harness().kind("cli").label("X")).contains("names the program it starts"));
     assert!(bad(harness().kind("api").label("X")).contains("names its provider"));
     assert!(bad(harness().kind("program").label("X").cli("x")).contains("cli is for kind(\"cli\") only"));
-    assert!(bad(harness().kind("api").label("X").provider("p").runs(["cloud"])).contains("runs is a list of"));
+    assert!(bad(harness().kind("api").label("X").provider("p").runs(["laptop"])).contains("runs is a list of"));
     assert!(bad(harness().kind("robot").label("X")).contains("kind is"));
     assert!(bad(harness().kind("program").label("X").experimental("yes")).contains("experimental is true or false"));
     assert!(bad(harness().kind("api").label("X").provider("p").tasks(["chat"])).contains("tasks is a list of"));

@@ -50,9 +50,9 @@ attributes! {
     /// The fields of a harness and of an agent, chained on their elements.
     pub trait AgentsAttrs {
         kind; label; provider;
-        /// `kind("cli")` only: the program the host or the VM kernel starts.
+        /// `kind("cli")` only: the program the host starts, or the cloud's container.
         cli;
-        /// Where it runs today: `["host", "vm", "worker"]`; absent or empty: declared only.
+        /// Where it runs today: `["host", "vm", "cloud", "worker"]`; absent or empty: declared only.
         runs;
         /// `kind("api")` only: the tasks its model does, one in a turn.
         tasks;
@@ -79,7 +79,7 @@ pub(crate) const FAMILY: Family = Family { module: "agents", roots: &["harness",
 /// What runs an agent: a CLI program, an API provider's loop, or a program with no model.
 pub const HARNESS_KINDS: &[&str] = &["cli", "api", "program"];
 /// Where a harness runs: this machine's host, a cloud computer (the thread's VM kernel), or the api worker's loop.
-pub const HARNESS_RUNTIMES: &[&str] = &["host", "vm", "worker"];
+pub const HARNESS_RUNTIMES: &[&str] = &["host", "vm", "cloud", "worker"];
 /// What a single-task model does in one turn.
 pub const HARNESS_TASKS: &[&str] = &["classify", "decide", "extract", "summarize", "act"];
 /// What a realtime harness's model takes live, and gives live (docs/realtime-agents.md).
