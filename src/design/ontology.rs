@@ -56,6 +56,9 @@ elements! {
     space: leaf;
     /// A unit placed in a world: `.uid("arm").name("arm").device("…/definition.tsx")`.
     unit: leaf;
+    /// Furniture a unit or another group stands in or on (a shelf, a bench, a rack, a desk):
+    /// `.uid("machine-shelf").name("machine shelf").size_mm([2440, 760, 2600]).position([0, 3600, 0])`.
+    group: leaf;
     /// A world's view.
     view: leaf;
     /// A world's scene: its bodies.
@@ -95,7 +98,7 @@ elements! {
 attributes! {
     /// The fields of the ontology's records, chained on their elements.
     pub trait OntologyAttrs {
-        // A world's, a unit's and a body's.
+        // A world's, a unit's, a group's and a body's.
         name; kind; description; from; model; uid; device; serial; revision; domain; support; channels; manual_url; position; rotation;
         origin_mm = "origin_mm"; size_mm = "size_mm"; dimensions_mm = "dimensions_mm";
         hz; at; rot; vel; shape; mass; friction; restitution; angular_damping = "angular_damping"; gravity; scale;
@@ -129,7 +132,11 @@ pub(crate) const FAMILY: Family =
 pub const NODE_GRAPH_ID: &str = "nodegraph";
 /// The fields of a unit in a world's file (packages/domain/world/worlds.js). `serial`: the serial number of the one physical
 /// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports).
-pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "release"];
+pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "release", "group"];
+/// The fields of a group: furniture (a shelf, a bench, a rack, a desk) that units and other groups stand in or on. A
+/// group is not a unit: it names no device and takes no grant, run or driver. `group` names the group it stands in (a
+/// shelf level names its shelf), so groups make a tree.
+pub const GROUP_FIELDS: &[&str] = &["uid", "name", "size_mm", "position", "rotation", "group"];
 /// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];
@@ -145,6 +152,7 @@ const WORLD: Vocabulary = Vocabulary {
     tags: &[
         TagRule::new("world", &[]).required(&["name", "kind"]).attrs(WORLD_FIELDS),
         TagRule::new("space", &["world"]).single().required(&["origin_mm", "size_mm"]).attrs(&["origin_mm", "size_mm"]),
+        TagRule::new("group", &["world"]).key("uid").required(&["uid", "name", "size_mm"]).attrs(GROUP_FIELDS),
         TagRule::new("unit", &["world"]).key("uid").required(&["uid", "name", "device"]).attrs(UNIT_FIELDS),
         TagRule::new("view", &["world"]).single(),
         TagRule::new("scene", &["world"]).single(),
@@ -255,11 +263,34 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("world(): kind is \"physical\" or \"simulation\", said explicitly, not {}", text(other)));
         }
     }
+    let groups: Vec<&DocTree> = kids(t, "group").collect();
+    let units: Vec<&DocTree> = kids(t, "unit").collect();
+    // Units and groups share one namespace: `<address>#<uid>` names one thing, and a group names its own group by uid.
+    let mut seen: Vec<String> = Vec::new();
+    for r in groups.iter().chain(units.iter()) {
+        if let Some(Json::Str(uid)) = r.attr("uid") {
+            if seen.iter().any(|s| s == uid) {
+                return Err(format!("a <unit> and a <group> in <world> share the uid \"{uid}\""));
+            }
+            seen.push(uid.clone());
+        }
+    }
+    for g in &groups {
+        if let (Some(Json::Str(uid)), Some(Json::Str(parent))) = (g.attr("uid"), g.attr("group")) {
+            let named = groups.iter().any(|o| matches!(o.attr("uid"), Some(Json::Str(u)) if u == parent));
+            if !named {
+                return Err(format!("<group uid=\"{uid}\"> stands in a group \"{parent}\" that is not in <world>"));
+            }
+        }
+    }
     let mut out = Json::Obj(own(&t.attrs, WORLD_FIELDS));
     if let Some(space) = t.single("space") {
         out.set("space", space.record());
     }
-    out.set("units", Json::Arr(kids(t, "unit").map(DocTree::record).collect()));
+    if !groups.is_empty() {
+        out.set("groups", Json::Arr(groups.iter().map(|g| g.record()).collect()));
+    }
+    out.set("units", Json::Arr(units.iter().map(|u| u.record()).collect()));
     if let Some(view) = t.single("view") {
         out.set("view", view.record());
     }

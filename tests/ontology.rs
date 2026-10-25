@@ -64,6 +64,36 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
 }
 
 #[test]
+fn a_worlds_furniture_is_its_groups_a_unit_or_a_group_naming_the_group_it_stands_in() {
+    let file = world([
+        group().uid("shelf").name("machine shelf").size_mm([2440, 760, 2600]).position([0, 3600, 0]).rotation(0),
+        group().uid("level-2").name("shelf level 2").size_mm([2440, 760, 650]).position([0, 3600, 800]).rotation(0).group("shelf"),
+        unit().uid("printer-01").name("printer").device("../../devices/ender/definition.tsx").position([-900, 3600, 800]).rotation(0).group("level-2"),
+    ])
+    .name("Shop")
+    .kind("physical");
+    let (_, doc, _) = document(file);
+    assert_eq!(
+        doc,
+        j(r#"{"name": "Shop", "kind": "physical",
+              "groups": [{"uid": "shelf", "name": "machine shelf", "size_mm": [2440, 760, 2600], "position": [0, 3600, 0], "rotation": 0},
+                         {"uid": "level-2", "name": "shelf level 2", "size_mm": [2440, 760, 650], "position": [0, 3600, 800], "rotation": 0, "group": "shelf"}],
+              "units": [{"uid": "printer-01", "name": "printer", "device": "../../devices/ender/definition.tsx", "position": [-900, 3600, 800], "rotation": 0, "group": "level-2"}]}"#)
+    );
+
+    let w = |children: Vec<El>| world(children).name("W").kind("physical");
+    let nowhere = bad(w(vec![group().uid("a").name("a").size_mm([1, 1, 1]).position([0, 0, 0]).rotation(0).group("nowhere")]));
+    assert!(nowhere.contains(r#"<group uid="a"> stands in a group "nowhere" that is not in <world>"#), "{nowhere}");
+    assert!(bad(w(vec![
+        unit().uid("a").name("a").device("d"),
+        group().uid("a").name("a").size_mm([1, 1, 1]).position([0, 0, 0]).rotation(0)
+    ]))
+    .contains(r#"a <unit> and a <group> in <world> share the uid "a""#));
+    assert!(bad(w(vec![group().uid("a").name("a").size_mm([1, 1, 1]).position([0, 0, 0]).rotation(0).device("d")]))
+        .contains(r#"group().uid("a"): device is not read"#));
+}
+
+#[test]
 fn a_device_definitions_channels_are_channel_elements() {
     let def = device([channel()
         .id("joints")
