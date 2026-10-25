@@ -47,6 +47,7 @@ attributes! {
     /// The fields of a letter, an address, a front and a paragraph, chained on their elements.
     pub trait PostalAttrs {
         color; double_sided; mail_class;
+        size;
         name; company; line1; line2; city; region; postal_code; country;
         image; text;
     }
@@ -58,6 +59,10 @@ pub(crate) const FAMILY: Family = Family { module: "postal", roots: &["letter", 
 pub const ADDRESS_FIELDS: &[&str] = &["name", "company", "line1", "line2", "city", "region", "postalCode", "country"];
 /// The options of a letter.
 pub const LETTER_FIELDS: &[&str] = &["color", "doubleSided", "mailClass"];
+/// The sizes a postcard may declare, in inches as the US names them (`packages/domain/core/src/postal.ts`).
+pub const POSTCARD_SIZES: &[&str] = &["4x6", "6x9", "6x11"];
+/// The fields of a postcard.
+pub const POSTCARD_FIELDS: &[&str] = &["size"];
 
 const LETTER: Vocabulary = Vocabulary {
     format: "letter",
@@ -77,7 +82,7 @@ const POSTCARD: Vocabulary = Vocabulary {
     noun: "a postcard",
     root: "postcard",
     tags: &[
-        TagRule::new("postcard", &[]).attrs(&[]),
+        TagRule::new("postcard", &[]).attrs(POSTCARD_FIELDS),
         TagRule::new("to", &["postcard"]).single().attrs(ADDRESS_FIELDS),
         TagRule::new("from", &["postcard"]).single().attrs(ADDRESS_FIELDS),
         TagRule::new("front", &["postcard"]).single().required(&["image"]).attrs(&["image"]),
@@ -144,5 +149,14 @@ fn letter_of(t: &DocTree) -> Result<Json, String> {
 }
 
 fn postcard_of(t: &DocTree) -> Result<Json, String> {
-    piece_of(t, Json::obj())
+    let mut head = Json::obj();
+    if let Some(size) = t.attr("size") {
+        let known = matches!(size, Json::Str(s) if POSTCARD_SIZES.contains(&s.as_str()));
+        if !known {
+            let sizes = POSTCARD_SIZES.iter().map(|s| format!("{s:?}")).collect::<Vec<_>>().join(", ");
+            return Err(format!("<postcard> size is {sizes} (got {size:?})"));
+        }
+        head.set("size", size.clone());
+    }
+    piece_of(t, head)
 }

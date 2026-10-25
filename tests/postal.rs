@@ -67,4 +67,8 @@ fn a_postcard_has_one_front_and_no_options() {
     );
     assert!(bad(postcard([front()])).contains("needs image"));
     assert!(bad(postcard([]).color(true)).contains("color is not read"));
+    // A size is one the printers know (Lob's 6x9 and 6x11, Click2Mail's 4.25 x 6); one nobody prints does not run.
+    let (_, big, _) = document(postcard([front().image("Austin.jpg")]).size("6x9"));
+    assert_eq!(big.get("size"), Some(&Json::Str("6x9".into())));
+    assert!(bad(postcard([front().image("Austin.jpg")]).size("5x7")).contains(r#"size is "4x6", "6x9", "6x11""#));
 }

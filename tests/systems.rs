@@ -101,7 +101,8 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
             hole().id("m2-a").at([0.0, 0.0]).diameter(2.2),
             message().id("lte-only").text("AT+CNMP=38"),
             param().id("baud").value(115200).unit("Bd"),
-            side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]),
+            param().id("framing").value("8N1"),
+            side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]).rotation(90.0).face("back"),
             side().id("firmware").ref_("fw/config.h").defines(json(r#"{"BOARD": 1}"#)).pins(json(r#"{"RX_PIN": 4}"#)).params(json(r#"{"BAUD": "baud"}"#)),
             side().id("host").ref_("devices/cam/definition.tsx").channel("modem").params(json(r#"{"baud": "baud"}"#)),
         ])
@@ -127,8 +128,13 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         (pin().number(1).signal("x").at([1.0]), "at is [x, y] mm"),
         (hole().id("h").at([0.0, 0.0, 0.0]), r#"hole().id("h"): at is [x, y] mm"#),
         (message().id("m"), "a message has its text, its code, or both"),
+        (param().id("p").value(""), "value is a number with its unit in unit, or a text"),
+        (param().id("p").value("8N1").unit("Bd"), "a text value has no unit"),
         (side().id("s").ref_("x").kind("mechanical"), "kind must be one of circuit, 3d, firmware, definition"),
         (side().id("s").ref_("x").channel(3), "channel is the id of a channel of the device definition"),
+        (side().id("s").ref_("x").rotation("90"), "rotation is the angle the side is turned"),
+        (side().id("s").ref_("x").face("sideways"), r#"face must be one of top, bottom (got "sideways")"#),
+        (side().id("s").ref_("x.circuit.ts").face("bottom"), r#"face must be one of front, back (got "bottom")"#),
         (frame().unit("in"), "positions are in mm"),
     ];
     for (el, message) in cases {

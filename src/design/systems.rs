@@ -73,7 +73,7 @@ attributes! {
         voltage; source; input; output; efficiency; part; rail; mode; current; power; peak_current; peak_power; peak; inrush_current; duty;
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
-        parts; channel; origin; defines; pins; params; files;
+        parts; channel; origin; rotation; face; defines; pins; params; files;
     }
 }
 
@@ -95,7 +95,7 @@ pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", 
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
 pub const PARAM_FIELDS: &[&str] = &["id", "value", "unit", "description"];
-pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "defines", "pins", "params", "files", "description"];
+pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "rotation", "face", "defines", "pins", "params", "files", "description"];
 const ROOT_FIELDS: &[&str] = &["name", "description"];
 
 const REQUIREMENTS: Vocabulary = Vocabulary {
@@ -286,6 +286,29 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
     ))
 }
 
+/// The faces a side may name, by its kind: a circuit board has a front and a back, a part a top and a bottom.
+fn faces_of(c: &DocTree) -> Vec<&'static str> {
+    let kind = match c.attr("kind") {
+        Some(Json::Str(k)) => k.clone(),
+        _ => {
+            let path = match c.attr("ref") {
+                Some(Json::Str(p)) => p.clone(),
+                _ => String::new(),
+            };
+            if [".circuit.", ".sch.", ".pcb."].iter().any(|m| path.contains(m)) {
+                "circuit".to_string()
+            } else {
+                String::new()
+            }
+        }
+    };
+    if kind == "circuit" {
+        vec!["front", "back"]
+    } else {
+        vec!["top", "bottom"]
+    }
+}
+
 fn interface_of(t: &DocTree) -> Result<Json, String> {
     for c in &t.children {
         let w = at(c, if c.tag == "pin" { "number" } else { "id" });
@@ -302,10 +325,18 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
                 need(c.attr("diameter").is_none() || num(c.attr("diameter")), || format!("{w}: diameter is mm"))?;
             }
             "message" => need(c.attr("text").is_some() || c.attr("code").is_some(), || format!("{w}: a message has its text, its code, or both"))?,
-            "param" => need(num(c.attr("value")), || format!("{w}: value is a number (its unit in unit)"))?,
+            "param" => {
+                // A text is a format, a dialect or a transport (8N1, serial); a number is a quantity with its unit in `unit`.
+                let text = matches!(c.attr("value"), Some(Json::Str(s)) if !s.trim().is_empty());
+                need(num(c.attr("value")) || text, || format!("{w}: value is a number with its unit in unit, or a text (a format, a dialect, a transport)"))?;
+                need(!text || c.attr("unit").is_none(), || format!("{w}: a text value has no unit"))?;
+            }
             "side" => {
                 need(c.attr("kind").is_none() || one_of(c.attr("kind"), SIDE_KINDS), || format!("{w}: kind must be one of {} (got {})", SIDE_KINDS.join(", "), said(c.attr("kind"))))?;
                 need(c.attr("origin").is_none() || pair(c.attr("origin"), 2) || pair(c.attr("origin"), 3), || format!("{w}: origin is where the interface's frame sits in this side's frame, [x, y] or [x, y, z] mm"))?;
+                need(c.attr("rotation").map_or(true, |v| matches!(v, Json::Num(_))), || format!("{w}: rotation is the angle the side is turned in its frame, in degrees counter-clockwise"))?;
+                let faces = faces_of(&c);
+                need(c.attr("face").map_or(true, |v| matches!(v, Json::Str(s) if faces.contains(&s.as_str()))), || format!("{w}: face must be one of {} (got {})", faces.join(", "), said(c.attr("face"))))?;
                 need(c.attr("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
                 need(c.attr("channel").is_none() || string(c.attr("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
             }
