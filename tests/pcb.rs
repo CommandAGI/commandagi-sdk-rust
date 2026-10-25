@@ -161,6 +161,24 @@ fn a_board_says_what_a_kicad_board_holds() {
 }
 
 #[test]
+fn an_ic_mask_layout_is_declared_by_its_polygons_units_and_library() {
+    let polygons = r#"[{"layer": 1, "datatype": 0, "points": [[0, 0], [4, 0], [4, 2], [0, 2]]}, {"layer": 2, "datatype": 1, "points": [[1, 1], [3, 1], [2, 1.5]]}]"#;
+    let g = graph(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.001).lib_name("Inverter")]).width(10.0).height(10.0));
+    let mut layout = node(&g, "masks").clone();
+    layout.remove("meta");
+    assert_eq!(layout.text(), compact(&format!(r#"{{"id":"masks","type":"eda.masks","inputs":{{"polygons":{polygons},"unitUmPerDb":0.001,"libName":"Inverter"}},"label":"Inverter"}}"#)));
+    // A die is its layout alone: with no board fact the file declares the layout and no board.
+    let die = graph(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.001)]));
+    let Some(Json::Obj(nodes)) = die.get("nodes") else { panic!() };
+    assert!(!nodes.iter().any(|(_, n)| n.get("type") == Some(&Json::from("eda.board"))));
+    assert_eq!(node(&die, "masks").get("label"), Some(&Json::from("Masks")));
+    assert!(bad(board_of(vec![masks().unit_um_per_db(0.001)])).contains("masks() needs polygons"));
+    assert!(bad(board_of(vec![masks().polygons(json(r#"[{"layer": 1, "datatype": 0, "points": [[0, 0], [1, 1]]}]"#)).unit_um_per_db(0.001)])).contains("polygons is the mask layout's polygons"));
+    assert!(bad(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.0)])).contains("unit_um_per_db is more than 0"));
+    assert!(bad(board_of(vec![masks().polygons(json(polygons))])).contains("masks() needs unit_um_per_db"));
+}
+
+#[test]
 fn a_board_on_the_faces_of_a_cad_part() {
     let surface = r#"{"cadRef": "../case.3d.tsx", "domain": {"charts": [{"id": "top"}]}}"#;
     let g = graph(
