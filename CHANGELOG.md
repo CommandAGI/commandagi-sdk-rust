@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- The scouts' two documents are declared in Rust: `<name>.scout.rs` (a comparison: its configurations, its workloads with their cases, its judges) and `<name>.replacement.rs` (a replacement-cost analysis: its layers of capabilities with their evidence, and its decision). They are the same documents as the TypeScript SDK's `scouts.ts` (`docs/scouts.md`). A case's `from` is `.from_()`; a replacement's `by` is `.by_()`; a capability's `ref` is `.ref_()`.
+
+Added
+
 - A monitor source names the connected account it reads as (`<source connection="gmail@jacobfv123@gmail.com">`); the api worker reads it (`via="worker"` only).
 
 Added
