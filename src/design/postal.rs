@@ -19,9 +19,9 @@
 //!
 //! The rule of the ontology's files: a record is an element and its fields are the element's attributes. The
 //! addresses are one `to()` and one `from()`; the body is `paragraph().text(…)` children, in order. A postcard has no
-//! options and one `front().image(…)`: a ref to a JPEG or PNG relative to the postcard's folder. Nothing adds a
-//! default. A run gives back `{format, document, sources}` beside an empty graph; `sources` names each element's site
-//! by its path (`""`, `to`, `paragraph@0`).
+//! options and one `front().image(…)`: a ref to a JPEG or PNG relative to the postcard's folder. Its `.size("6x9")` is
+//! 4x6 when it says nothing. Nothing adds a default. A run gives back `{format, document, sources}` beside an empty
+//! graph; `sources` names each element's site by its path (`""`, `to`, `paragraph@0`).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, rust_name};
@@ -44,9 +44,9 @@ elements! {
 }
 
 attributes! {
-    /// The fields of a letter, an address, a front and a paragraph, chained on their elements.
+    /// The fields of a letter, a postcard, an address, a front and a paragraph, chained on their elements.
     pub trait PostalAttrs {
-        color; double_sided; mail_class;
+        color; double_sided; mail_class; size;
         name; company; line1; line2; city; region; postal_code; country;
         image; text;
     }
@@ -58,6 +58,10 @@ pub(crate) const FAMILY: Family = Family { module: "postal", roots: &["letter", 
 pub const ADDRESS_FIELDS: &[&str] = &["name", "company", "line1", "line2", "city", "region", "postalCode", "country"];
 /// The options of a letter.
 pub const LETTER_FIELDS: &[&str] = &["color", "doubleSided", "mailClass"];
+/// A postcard's own field.
+pub const POSTCARD_FIELDS: &[&str] = &["size"];
+/// A postcard's sizes, in inches. Absent: 4x6.
+pub const POSTCARD_SIZES: &[&str] = &["4x6", "6x9", "6x11"];
 
 const LETTER: Vocabulary = Vocabulary {
     format: "letter",
@@ -77,7 +81,7 @@ const POSTCARD: Vocabulary = Vocabulary {
     noun: "a postcard",
     root: "postcard",
     tags: &[
-        TagRule::new("postcard", &[]).attrs(&[]),
+        TagRule::new("postcard", &[]).attrs(POSTCARD_FIELDS),
         TagRule::new("to", &["postcard"]).single().attrs(ADDRESS_FIELDS),
         TagRule::new("from", &["postcard"]).single().attrs(ADDRESS_FIELDS),
         TagRule::new("front", &["postcard"]).single().required(&["image"]).attrs(&["image"]),
@@ -144,5 +148,12 @@ fn letter_of(t: &DocTree) -> Result<Json, String> {
 }
 
 fn postcard_of(t: &DocTree) -> Result<Json, String> {
-    piece_of(t, Json::obj())
+    let mut head = Json::obj();
+    if let Some(size) = t.attr("size") {
+        if !POSTCARD_SIZES.iter().any(|s| *size == Json::from(*s)) {
+            return Err(format!("postcard(): size is {}", POSTCARD_SIZES.join(", ")));
+        }
+        head.set("size", size.clone());
+    }
+    piece_of(t, head)
 }

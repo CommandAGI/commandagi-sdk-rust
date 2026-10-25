@@ -65,6 +65,9 @@ fn a_postcard_has_one_front_and_no_options() {
         j(r#"{"to": {"name": "Ada Lovelace", "line1": "12 St James's Square", "city": "London", "postalCode": "SW1Y 4JH", "country": "GB"},
               "front": "Austin.jpg", "paragraphs": ["Greetings from Austin!"]}"#)
     );
+    let (_, big, _) = document(postcard([front().image("Austin.jpg")]).size("6x9"));
+    assert_eq!(big.get("size"), Some(&Json::from("6x9")));
+    assert!(bad(postcard([front().image("Austin.jpg")]).size("5x7")).contains("size is 4x6, 6x9, 6x11"));
     assert!(bad(postcard([front()])).contains("needs image"));
     assert!(bad(postcard([]).color(true)).contains("color is not read"));
 }
