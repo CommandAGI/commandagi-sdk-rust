@@ -36,6 +36,9 @@
 //! stack().name().label().domain().units().process().layers().overall_thickness()
 //!                                   the cross-section, layer by layer (top first), when it is more than core and
 //!                                   copper.
+//! masks().name().label().lib_name().unit_um_per_db().polygons()
+//!                                   an IC mask layout, flattened: each polygon {layer, datatype, points}, its
+//!                                   points in micrometres, the stream's units and the library it names.
 //! graphic().kind().layer().points().width().filled().id().kicad()
 //!                                   a board drawing (line, arc, circle, rect, poly) on a layer.
 //! text().text()|.field().at().rotation().layer().size().size_x().thickness().kind().id().kicad()
@@ -123,6 +126,8 @@ elements! {
     board: children;
     /// The cross-section, layer by layer (top first).
     stack: leaf;
+    /// An IC mask layout, flattened: its polygons, the stream's units and its library.
+    masks: leaf;
     /// A board drawing on a layer.
     graphic: leaf;
     /// Board text: `text().text("REV A").at([2, 3])…`.
@@ -196,6 +201,12 @@ attributes! {
         process;
         /// A stack's overall thickness.
         overall_thickness;
+        /// A mask layout's polygons: `json(r#"[{"layer": 1, "datatype": 0, "points": [[x, y], …]}]"#)`.
+        polygons;
+        /// A mask layout's library name (`libName`).
+        lib_name;
+        /// The stream's units: micrometres per database unit (`unitUmPerDb`).
+        unit_um_per_db;
         /// A drawing's kind (line, arc, circle, rect, poly), or a text's kind.
         kind;
         /// A layer by name ("F.Cu", "Edge.Cuts"), or a component's side ("top" or "bottom").
@@ -799,6 +810,28 @@ fn is_object(v: &Json) -> bool {
     matches!(v, Json::Obj(_))
 }
 
+/// A flattened mask layout's polygons: each `{ layer, datatype, points }`, its points `[x, y]` in micrometres.
+fn is_mask_polygons(v: &Json) -> bool {
+    let Json::Arr(polygons) = v else { return false };
+    !polygons.is_empty()
+        && polygons.iter().all(|p| match p {
+            Json::Obj(fields) => {
+                let layer = fields.iter().find(|(k, _)| k == "layer").map(|(_, v)| v);
+                let datatype = fields.iter().find(|(k, _)| k == "datatype").map(|(_, v)| v);
+                let int = |v: Option<&Json>| matches!(v, Some(Json::Num(n)) if n.fract() == 0.0 && *n >= 0.0);
+                let points = fields.iter().find(|(k, _)| k == "points").map(|(_, v)| v);
+                int(layer)
+                    && int(datatype)
+                    && fields.iter().all(|(k, _)| ["layer", "datatype", "points"].contains(&k.as_str()))
+                    && match points {
+                        Some(Json::Arr(ps)) if ps.len() >= 3 => ps.iter().all(|q| matches!(q, Json::Arr(xy) if xy.len() == 2 && xy.iter().all(|c| matches!(c, Json::Num(n) if n.is_finite())))),
+                        _ => false,
+                    }
+            }
+            _ => false,
+        })
+}
+
 fn is_str(v: Option<&Json>) -> bool {
     matches!(v, Some(Json::Str(_)))
 }
@@ -1063,7 +1096,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 }
                 constraint_names.push(key);
             }
-        } else if el.tag != "stack" && !FACTS.contains(&el.tag) {
+        } else if el.tag != "stack" && el.tag != "masks" && !FACTS.contains(&el.tag) {
             return Err(format!("{}() is not read on a board (see commandagi::design::pcb)", fn_name(el.tag)));
         }
     }
@@ -1150,6 +1183,19 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
     for el in &children {
         let el: &El = el;
         match el.tag {
+            "masks" => {
+                refuse_unknown(el, &["name", "label", "libName", "unitUmPerDb", "polygons"])?;
+                let polygons = plain(el, "polygons", is_mask_polygons, "the mask layout's polygons: [{ layer, datatype, points: [[x, y], …] }, …], points in micrometres")?
+                    .ok_or("masks() needs polygons")?;
+                let lib_name = text_of(el, "libName", false)?;
+                let mut inputs = vec![("polygons".to_string(), polygons), ("unitUmPerDb".into(), positive(el, "unitUmPerDb", true)?.unwrap_or_default().into())];
+                if let Some(l) = &lib_name {
+                    inputs.push(("libName".into(), l.clone().into()));
+                }
+                let id = text_of(el, "name", false)?.unwrap_or_else(|| "masks".into());
+                let label = text_of(el, "label", false)?.or_else(|| lib_name.clone()).unwrap_or_else(|| "Masks".into());
+                s.add("eda.masks", inputs, Some(&id), Some(&label), meta(el))?;
+            }
             "component" => {
                 refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "refRot", "chart", "uuid", "kicad"])?;
                 let reference = el.attr("name").and_then(Json::as_str).unwrap_or_default().to_string();
