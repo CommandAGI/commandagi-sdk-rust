@@ -62,6 +62,8 @@ elements! {
     message: leaf;
     /// A constant of the interface with its unit: `.id("baud").value(115200).unit("Bd")`.
     param: leaf;
+    /// The channel both sides open, what a definition side's channel is held to: `.format("lines").transport("usb-serial")`.
+    channel: leaf;
     /// A side that implements the interface: `.id(…).ref_("ee/base.circuit.ts").parts(["J1", "J2"])`.
     side: leaf;
 }
@@ -73,7 +75,8 @@ attributes! {
         voltage; source; input; output; efficiency; part; rail; mode; current; power; peak_current; peak_power; peak; inrush_current; duty;
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
-        parts; channel; origin; defines; pins; params; files;
+        parts; channel; origin; rotate; flip; defines; pins; params; files;
+        format; medium; dialect; transport;
     }
 }
 
@@ -95,7 +98,10 @@ pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", 
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
 pub const PARAM_FIELDS: &[&str] = &["id", "value", "unit", "description"];
-pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "defines", "pins", "params", "files", "description"];
+pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "rotate", "flip", "defines", "pins", "params", "files", "description"];
+pub const CHANNEL_FIELDS: &[&str] = &["format", "dir", "medium", "dialect", "transport", "description"];
+pub const CHANNEL_DIRS: &[&str] = &["in", "out", "duplex"];
+pub const CHANNEL_MEDIA: &[&str] = &["records", "video", "audio", "bytes"];
 const ROOT_FIELDS: &[&str] = &["name", "description"];
 
 const REQUIREMENTS: Vocabulary = Vocabulary {
@@ -138,6 +144,7 @@ const INTERFACE: Vocabulary = Vocabulary {
         TagRule::new("hole", &["interface"]).key("id").required(&["id", "at"]).attrs(HOLE_FIELDS),
         TagRule::new("message", &["interface"]).key("id").required(&["id"]).attrs(MESSAGE_FIELDS),
         TagRule::new("param", &["interface"]).key("id").required(&["id", "value"]).attrs(PARAM_FIELDS),
+        TagRule::new("channel", &["interface"]).single().attrs(CHANNEL_FIELDS),
         TagRule::new("side", &["interface"]).key("id").required(&["id", "ref"]).attrs(SIDE_FIELDS),
     ],
     from_tree: interface_of,
@@ -303,9 +310,19 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
             }
             "message" => need(c.attr("text").is_some() || c.attr("code").is_some(), || format!("{w}: a message has its text, its code, or both"))?,
             "param" => need(num(c.attr("value")), || format!("{w}: value is a number (its unit in unit)"))?,
+            "channel" => {
+                need(c.attr("format").and_then(Json::as_str).is_some_and(|f| !f.trim().is_empty()), || format!(r#"{w}: format is the channel's format, a name ("state", "lines", "gcode-chat")"#))?;
+                need(c.attr("dir").is_none() || one_of(c.attr("dir"), CHANNEL_DIRS), || format!("{w}: dir must be one of {} (got {})", CHANNEL_DIRS.join(", "), said(c.attr("dir"))))?;
+                need(c.attr("medium").is_none() || one_of(c.attr("medium"), CHANNEL_MEDIA), || format!("{w}: medium must be one of {} (got {})", CHANNEL_MEDIA.join(", "), said(c.attr("medium"))))?;
+                for k in ["dialect", "transport"] {
+                    need(c.attr(k).map_or(true, |v| v.as_str().is_some_and(|x| !x.trim().is_empty())), || format!("{w}: {k} is a name ({k}=\"usb-serial\")"))?;
+                }
+            }
             "side" => {
                 need(c.attr("kind").is_none() || one_of(c.attr("kind"), SIDE_KINDS), || format!("{w}: kind must be one of {} (got {})", SIDE_KINDS.join(", "), said(c.attr("kind"))))?;
                 need(c.attr("origin").is_none() || pair(c.attr("origin"), 2) || pair(c.attr("origin"), 3), || format!("{w}: origin is where the interface's frame sits in this side's frame, [x, y] or [x, y, z] mm"))?;
+                need(c.attr("rotate").is_none() || num(c.attr("rotate")), || format!("{w}: rotate is the interface's frame turned as this side has it, in degrees counter-clockwise"))?;
+                need(c.attr("flip").map_or(true, |v| matches!(v, Json::Bool(_))), || format!("{w}: flip is true or false (true: this side is seen from the mating board, its x the other way)"))?;
                 need(c.attr("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
                 need(c.attr("channel").is_none() || string(c.attr("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
             }
@@ -313,11 +330,13 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
         }
     }
     let mut out = grouped(t, &[("pin", "pins"), ("hole", "holes"), ("message", "messages"), ("param", "params"), ("side", "sides")]);
-    if let Some(frame) = t.single("frame") {
-        // The frame comes after the root's fields, before the lists, as the TypeScript document has it.
-        let Json::Obj(entries) = &mut out else { unreachable!() };
-        let at = entries.iter().position(|(k, _)| !ROOT_FIELDS.contains(&k.as_str())).unwrap_or(entries.len());
-        entries.insert(at, ("frame".into(), frame.record()));
+    // The frame and the channel come after the root's fields, before the lists, as the TypeScript document has them.
+    let Json::Obj(entries) = &mut out else { unreachable!() };
+    for tag in ["channel", "frame"] {
+        if let Some(one) = t.single(tag) {
+            let at = entries.iter().position(|(k, _)| !ROOT_FIELDS.contains(&k.as_str())).unwrap_or(entries.len());
+            entries.insert(at, (tag.into(), one.record()));
+        }
     }
     Ok(out)
 }

@@ -101,7 +101,8 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
             hole().id("m2-a").at([0.0, 0.0]).diameter(2.2),
             message().id("lte-only").text("AT+CNMP=38"),
             param().id("baud").value(115200).unit("Bd"),
-            side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]),
+            channel().format("lines").dir("duplex").medium("records").dialect("at").transport("usb-serial"),
+            side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]).rotate(90.0).flip(true),
             side().id("firmware").ref_("fw/config.h").defines(json(r#"{"BOARD": 1}"#)).pins(json(r#"{"RX_PIN": 4}"#)).params(json(r#"{"BAUD": "baud"}"#)),
             side().id("host").ref_("devices/cam/definition.tsx").channel("modem").params(json(r#"{"baud": "baud"}"#)),
         ])
@@ -113,7 +114,15 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         Json::Obj(entries) => entries.iter().map(|(k, _)| k.clone()).collect(),
         _ => panic!(),
     };
-    assert_eq!(keys, ["name", "frame", "pins", "holes", "messages", "params", "sides"]);
+    assert_eq!(keys, ["name", "frame", "channel", "pins", "holes", "messages", "params", "sides"]);
+    assert_eq!(
+        doc.get("channel"),
+        Some(&j(r#"{"format": "lines", "dir": "duplex", "medium": "records", "dialect": "at", "transport": "usb-serial"}"#))
+    );
+    assert_eq!(
+        doc.get("sides").and_then(|s| if let Json::Arr(a) = s { a.first().cloned() } else { None }),
+        Some(j(r#"{"id": "base", "ref": "ee/base.circuit.ts", "parts": ["J1", "J2"], "origin": [0, 1.4], "rotate": 90, "flip": true}"#))
+    );
     assert_eq!(
         doc.get("sides").and_then(|s| if let Json::Arr(a) = s { a.get(1).cloned() } else { None }),
         Some(j(r#"{"id": "firmware", "ref": "fw/config.h", "defines": {"BOARD": 1}, "pins": {"RX_PIN": 4}, "params": {"BAUD": "baud"}}"#))
@@ -129,10 +138,18 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         (message().id("m"), "a message has its text, its code, or both"),
         (side().id("s").ref_("x").kind("mechanical"), "kind must be one of circuit, 3d, firmware, definition"),
         (side().id("s").ref_("x").channel(3), "channel is the id of a channel of the device definition"),
+        (side().id("s").ref_("x").rotate(Json::from("90")), "rotate is the interface's frame turned as this side has it"),
+        (side().id("s").ref_("x").flip(Json::from("yes")), "flip is true or false"),
+        (channel().dir("duplex"), "format is the channel's format"),
+        (channel().format("lines").dir("sideways"), r#"dir must be one of in, out, duplex (got "sideways")"#),
+        (channel().format("lines").medium("light"), "medium must be one of records, video, audio, bytes"),
+        (channel().format("lines").transport(3), "transport is a name"),
         (frame().unit("in"), "positions are in mm"),
     ];
     for (el, message) in cases {
         let said = bad(interface([el]));
         assert!(said.contains(message), "{said}");
     }
+    let said = bad(interface([channel().format("lines"), channel().format("state")]));
+    assert!(said.contains("has one channel()"), "{said}");
 }
