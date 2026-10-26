@@ -189,7 +189,8 @@ fn action_needs(kind: &str) -> &'static [&'static str] {
     match kind {
         "message" | "computer" => &["channel", "instruction"],
         "command" | "robot" => &["channel", "command"],
-        "chain" | "workflow" => &["ref"],
+        "chain" => &["ref", "channel"],
+        "workflow" => &["ref"],
         "decision" => &["instruction"],
         _ => &["ref", "instruction"],
     }
