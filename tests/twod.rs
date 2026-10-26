@@ -159,6 +159,27 @@ fn a_photos_adjustments_are_tags_and_a_rasters_children_its_filters() {
 }
 
 #[test]
+fn a_mask_that_is_also_a_layer_of_the_stack_names_it_by_id() {
+    let g = graph(photo([
+        raster(Vec::<El>::new()).src("a.png").id("Sky"),
+        exposure([mask([]).of("Sky")]).name("Mood").ev(0.2),
+    ]));
+    assert_eq!(node(&g, "photo.adjust").get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("Sky")), "the mask is the stack's own layer");
+    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.1").unwrap().text(), golden(&w("Sky")));
+    node(&g, "Sky");
+    node(&g, "photo.adjust");
+    // The target may be written after the layer it masks, and a mask may be turned off.
+    let g2 = graph(photo([
+        exposure([mask([]).of("Ink").enabled(false)]),
+        fill([]).id("Ink").color([1, 1, 1, 1]),
+    ]));
+    assert_eq!(node(&g2, "photo.adjust").get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("Ink")));
+    assert!(matches!(node(&g2, "photo.adjust").get("inputs").unwrap().get("maskEnabled"), Some(Json::Bool(false))));
+    assert!(bad(photo([exposure([mask([]).of("nope")])])).contains("no layer of this photo has that id"));
+    assert!(bad(photo([exposure([mask([fill([])]).of("x")])])).contains("holds no layer"));
+}
+
+#[test]
 fn a_mask_is_the_one_layer_it_holds_and_carries_its_call() {
     let line = line!() + 3;
     let g = graph(photo([
@@ -176,7 +197,7 @@ fn a_mask_is_the_one_layer_it_holds_and_carries_its_call() {
     assert!(meta.get("source").is_some());
     assert_eq!(node(&g, "photo.filter").get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("photo.fill")));
     assert!(node(&g, "photo.raster").get("inputs").unwrap().get("mask").is_none());
-    assert_eq!(bad(photo([exposure([mask([])])])), "mask() in exposure() holds one layer");
+    assert_eq!(bad(photo([exposure([mask([])])])), "mask() in exposure() holds one layer (or names one the stack shows, with of)");
     let p = graph(painting([layer([stroke([]).points(Vec::<i32>::new()), mask([fill([])])])]));
     assert_eq!(p.get("nodes").unwrap().get("paint.layer").unwrap().get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("paint.fill")));
 }

@@ -103,6 +103,16 @@ impl Scope {
         Ok(nid)
     }
 
+    /// Set (or replace) one port of a node already added: the value a later element gives it (a mask's target).
+    pub fn set_input(&mut self, id: &str, port: &str, value: Json) {
+        let Some((_, Json::Obj(fields))) = self.nodes.iter_mut().find(|(n, _)| n == id) else { return };
+        let Some((_, Json::Obj(inputs))) = fields.iter_mut().find(|(k, _)| k == "inputs") else { return };
+        match inputs.iter_mut().find(|(k, _)| k == port) {
+            Some((_, v)) => *v = value,
+            None => inputs.push((port.to_string(), value)),
+        }
+    }
+
     /// The graph: `{id, nodes, meta}`.
     pub fn build(self) -> Json {
         Json::obj().with("id", self.id.as_str()).with("nodes", Json::Obj(self.nodes)).with("meta", self.meta)

@@ -37,7 +37,8 @@
 //! (`src`: a path from this file's folder, or an address; `.inputs(json(r#"{"size": 40}"#))` gives values to the
 //! parameters that drawing declares); a painting's filter (`gaussian_blur([]).radius(3)`, the photo's filters) chains
 //! among a layer's strokes and changes what is under it; in a
-//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
+//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it (`.of("badge")`
+//! names one the stack shows, whose element carries `.id("badge")`); a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
 //! `stroke`, `color_overlay`, `gradient_overlay`). A value that
 //! is an object is JSON text: `.brush(json(r#"{"kind": "round", "size": 4}"#))`. PIXELS ARE NOT CODE: a pixel layer
@@ -442,6 +443,8 @@ attributes! {
         off;
         /// A mask is on.
         enabled;
+        /// The id of the stack layer a mask names, when the mask IS a layer of the stack: `mask().of("badge")`.
+        of;
         /// A style's angle, in degrees.
         angle;
         /// A shadow's distance.
@@ -913,6 +916,18 @@ const PHOTO: StackKind = StackKind {
 
 // ── The declaration ────────────────────────────────────────────────────────────────────────────────────────────
 
+/// Where a masked node's mask comes from: a layer its `mask()` holds, or a stack layer it names by id.
+struct MaskRef<'a> {
+    /// The `mask()` element itself: its call is the masked node's `meta.sources.mask`.
+    at: &'a El,
+    /// The node the `<mask>` holds, declared outside the stack.
+    held: Option<String>,
+    /// The element id of the stack layer the `<mask>` names.
+    of: Option<String>,
+    /// The mask is on.
+    enabled: bool,
+}
+
 /// One 2D graph being declared: the scope, and what is written on its nodes after they are added.
 #[derive(Default)]
 struct Doc {
@@ -921,6 +936,10 @@ struct Doc {
     disabled: Vec<String>,
     /// What a node holds that is not a node (its mask element, its styles): its `meta.sources`.
     sources: Vec<(String, Json)>,
+    /// Each layer element's id → the node it declared: what a `<mask of>` names.
+    ids: std::collections::BTreeMap<String, String>,
+    /// Masks written by `of` before their target was declared: the masked node, the id it names, and whether it is on.
+    pending_masks: Vec<(String, String, bool)>,
 }
 
 impl Doc {
@@ -1146,25 +1165,35 @@ impl Doc {
     }
 
     /// A layer's (or a stroke's, or a filter's) `mask`: the one stack layer it holds, declared outside the stack and
-    /// wired to the node's `mask` port. The `mask` element is not a node: its call is the masked node's
-    /// `meta.sources.mask`.
-    fn mask_of<'a>(&mut self, kind: &StackKind, el: &'a El) -> Result<Option<(String, &'a El)>, String> {
-        let masks: Vec<&El> = el.child_elements().filter(|c| c.tag == "mask").collect();
-        let Some(m) = masks.first() else { return Ok(None) };
-        if masks.len() > 1 {
+    /// wired to the node's `mask` port, or — a mask that is ALSO a layer of the stack — the id of that layer
+    /// (`mask().of("badge")`), so the layer is declared once. The `mask` element is not a node: its call is the masked
+    /// node's `meta.sources.mask`.
+    fn mask_of<'a>(&mut self, kind: &StackKind, el: &'a El) -> Result<Option<MaskRef<'a>>, String> {
+        let blocks: Vec<&El> = el.child_elements().filter(|c| c.tag == "mask").collect();
+        let Some(m) = blocks.first() else { return Ok(None) };
+        if blocks.len() > 1 {
             return Err(format!("{} has one mask()", place(el)));
         }
-        for (k, v) in entries(&attrs(m, &[])?) {
-            if k != "enabled" || !matches!(v, Json::Bool(_)) {
-                return Err(format!("mask() in {} has one attribute, enabled (write the rest on the layer it holds)", place(el)));
+        let ma = attrs(m, &[])?;
+        for (k, v) in entries(&ma) {
+            let read = (k == "enabled" && matches!(v, Json::Bool(_))) || (k == "of" && matches!(v, Json::Str(_)));
+            if !read {
+                return Err(format!("mask() in {} has two attributes, enabled and of (write the rest on the layer it holds)", place(el)));
             }
         }
+        let enabled = ma.get("enabled") != Some(&Json::Bool(false));
         let held: Vec<&El> = m.child_elements().collect();
+        if let Some(Json::Str(of)) = ma.get("of") {
+            if !held.is_empty() {
+                return Err(format!("mask(of=\"{of}\") in {} holds no layer (it names one the stack shows)", place(el)));
+            }
+            return Ok(Some(MaskRef { at: m, held: None, of: Some(of.clone()), enabled }));
+        }
         if held.len() != 1 {
-            return Err(format!("mask() in {} holds one layer", place(el)));
+            return Err(format!("mask() in {} holds one layer (or names one the stack shows, with of)", place(el)));
         }
         let ids = self.stack(kind, &held)?;
-        Ok(Some((ids[0].clone(), m)))
+        Ok(Some(MaskRef { at: m, held: Some(ids[0].clone()), of: None, enabled }))
     }
 
     /// A painting layer's `fx`: its styles in order (the layer's `fx`), and where each was written.
@@ -1204,21 +1233,31 @@ impl Doc {
     fn add_masked(&mut self, kind: &StackKind, el: &El, node_type: &str, inputs: Json) -> Result<String, String> {
         let mask = self.mask_of(kind, el)?;
         let styles = Self::styles_of(kind, el)?;
-        let mut inputs = match &mask {
-            Some((id, m)) => {
-                let i = inputs.with("mask", wire(id, "out"));
-                if m.attr("enabled") == Some(&Json::Bool(false)) { i.with("maskEnabled", false) } else { i }
+        let mut inputs = inputs;
+        if let Some(m) = &mask {
+            if let Some(held) = &m.held {
+                inputs = inputs.with("mask", wire(held, "out"));
             }
-            None => inputs,
-        };
+            if !m.enabled {
+                inputs = inputs.with("maskEnabled", false);
+            }
+        }
         let mut sources = Json::obj();
         if let Some((fx, at)) = styles {
             inputs.set("fx", fx);
             sources = at;
         }
         let id = self.add(el, node_type, inputs)?;
-        if let Some(at) = mask.and_then(|(_, m)| m.source_json()) {
-            sources.set("mask", at);
+        if let Some(element_id) = el.attr("id").and_then(Json::as_str).filter(|s| !s.is_empty()) {
+            self.ids.insert(slug(element_id), id.clone());
+        }
+        if let Some(m) = &mask {
+            if let Some(of) = &m.of {
+                self.pending_masks.push((id.clone(), of.clone(), m.enabled));
+            }
+            if let Some(at) = m.at.source_json() {
+                sources.set("mask", at);
+            }
         }
         if !entries(&sources).is_empty() {
             self.sources.push((id.clone(), sources));
@@ -1271,6 +1310,16 @@ impl Doc {
         self.s = Some(Scope::new(&format!("{}:{}", kind.prefix, slug(&title)), Json::obj().with("domain", kind.prefix).with("name", title)));
         let kids: Vec<&El> = root.child_elements().collect();
         let layers = self.stack(kind, &kids)?;
+        // `mask().of(...)` names a layer the whole stack declared (it may come after the layer it masks).
+        for (node, of, enabled) in std::mem::take(&mut self.pending_masks) {
+            let Some(target) = self.ids.get(&slug(&of)).cloned() else {
+                return Err(format!("a mask() names the layer \"{of}\", and no layer of this {} has that id", kind.root));
+            };
+            self.scope().set_input(&node, "mask", wire(&target, "out"));
+            if !enabled {
+                self.scope().set_input(&node, "maskEnabled", Json::Bool(false));
+            }
+        }
         let Json::Obj(inputs) = spread(a, wires("layers", &layers)) else { unreachable!() };
         let doc = self.scope().add(&format!("{}.doc", kind.prefix), inputs, Some("doc"), None, meta(root))?;
         Ok(self.build(&doc))
