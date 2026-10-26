@@ -44,11 +44,12 @@
 //! kicad().version().generator().forms()
 //!                                   the KiCad forms the board carries for exchange and nothing else reads.
 //! net().name().code()               the KiCad net code of the schematic's net `name`.
-//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().ref_at().chart().uuid().kicad()
+//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().ref_at().ref_rot().chart().uuid().kicad()
 //!                                   the schematic's part `name` on this board: one of the editor's own land patterns
 //!                                   (BOARD_FOOTPRINTS), or a library footprint by its ref ("Package_SO:SOIC-8") in
 //!                                   the `.pretty` folder `library` names. `ref_at` [x, y] is where its reference
-//!                                   text sits (mm, in the footprint's own frame).
+//!                                   text sits (mm, in the footprint's own frame), and `ref_rot` how far it is
+//!                                   turned there (degrees).
 //! trace().name().layer().width().points().from().to().net().surface().uuid().segment_uuids().kicad()
 //!                                   a copper run: its points ([[x, y], …]) on one copper layer, a finished width.
 //! arc().name().layer().width().points().from().to().net().uuid().kicad()
@@ -241,6 +242,8 @@ attributes! {
         pcb_rotation;
         /// Where a component's reference text sits: `[x, y]` in mm, in the footprint's own frame.
         ref_at;
+        /// How far a component's reference text is turned where it sits (degrees).
+        ref_rot;
         /// The face of the board's surface a component sits on.
         chart;
         /// A KiCad uuid.
@@ -1148,7 +1151,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
         let el: &El = el;
         match el.tag {
             "component" => {
-                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "chart", "uuid", "kicad"])?;
+                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "refRot", "chart", "uuid", "kicad"])?;
                 let reference = el.attr("name").and_then(Json::as_str).unwrap_or_default().to_string();
                 let fp = el.attr("footprint");
                 let fp_text = fp.and_then(Json::as_str);
@@ -1199,6 +1202,11 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if ref_at.is_some() && x.is_none() {
                     return Err(format!("{}: ref_at needs pcb_x and pcb_y", at(el)));
                 }
+                // How far the reference text is turned where it sits: the placer turns a text it has no upright place for.
+                let ref_rot = num(el, "refRot", false)?;
+                if ref_rot.is_some() && x.is_none() {
+                    return Err(format!("{}: ref_rot needs pcb_x and pcb_y", at(el)));
+                }
                 let chart = text_of(el, "chart", false)?;
                 if chart.is_some() && surface.is_none() {
                     return Err(format!("{}: chart names a face of the board's surface, and the board() has no surface", at(el)));
@@ -1221,6 +1229,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 }
                 if let Some(r) = ref_at {
                     inputs.push(("refAt".into(), r.clone()));
+                }
+                if let Some(r) = ref_rot {
+                    inputs.push(("refRot".into(), Json::from(r)));
                 }
                 if let Some(c) = chart {
                     inputs.push(("surfaceMount".into(), Json::obj().with("chart", c)));
