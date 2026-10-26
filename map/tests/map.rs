@@ -92,6 +92,24 @@ fn maps_each_element_its_attributes_its_arguments_and_its_place() {
 }
 
 #[test]
+fn the_generic_with_attr_is_the_attribute_it_names() {
+    // A field the module's trait has no method for is written `.with_attr("name", value)`; the map reports it as that
+    // attribute, so the write-back edits it in place (docs/formats.md § the general engine, names).
+    let text = r#"fn document() -> El { node().id("n").type_("custom").cutoff_hz(6).with_attr("lead_time", 3).with_attr("gain", 1.5 + 1.0) }"#;
+    let m = commandagi_map::map(text);
+    let node = &elements(&m)[0];
+    let cutoff = prop(node, "cutoff_hz");
+    assert_eq!(slice(text, num(cutoff, "start"), num(cutoff, "end")), ".cutoff_hz(6)");
+    let lead = prop(node, "lead_time");
+    assert_eq!(slice(text, num(lead, "start"), num(lead, "end")), r#".with_attr("lead_time", 3)"#);
+    assert_eq!(slice(text, num(lead, "valueStart"), num(lead, "valueEnd")), "3");
+    assert_eq!(lead.get("value"), Some(&Json::Num(3.0)));
+    let gain = prop(node, "gain");
+    assert_eq!(gain.get("literal"), Some(&Json::Bool(false)));
+    assert_eq!(gain.get("expr").and_then(Json::as_str), Some("1.5 + 1.0"));
+}
+
+#[test]
 fn a_call_in_a_closure_is_looped_and_not_placed() {
     let m = commandagi_map::map("fn document() -> El { group(\"L\", (1..4).map(|i| resistor(format!(\"R{i}\")).sch_x(i))) }");
     let els = elements(&m);

@@ -36,8 +36,9 @@
 //! whose name is not an attribute name (`layers.3`) is written in `.inputs(json(r#"{"layers.3": null}"#))`.
 //!
 //! [`OntologyAttrs`] has a method for each field the ontology's files and the shipped definitions use. A field it has
-//! no method for (a port of a node type of your own) is a method of a trait of the file's own, which sets the field by
-//! its TypeScript name: `fn cutoff(self, v: impl Into<Value>) -> El { self.with_attr("cutoff", v) }`.
+//! no method for (a port of a node type of your own) is set by the element's generic `.with_attr("cutoff", v)`, which
+//! takes the field's TypeScript name — what the editor writes when it adds such a port — or by a method of a trait of
+//! the file's own: `fn cutoff(self, v: impl Into<Value>) -> El { self.with_attr("cutoff", v) }`.
 //!
 //! A run gives back what the TypeScript SDK gives: for a world, a definition, a dashboard and a geo project, the
 //! document (`{format, document, sources}`, each element's site keyed by its tree path) beside an empty graph; for a

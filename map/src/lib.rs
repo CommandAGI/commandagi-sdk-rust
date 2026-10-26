@@ -8,7 +8,7 @@
 //!
 //! `map(text)` gives the one source-map shape every SDK gives (`graph.meta.sourceMap`, the contract the write-back
 //! engine reads): every call of a snake-case function by name or path (`resistor("R1")`, `schematic::group(…)`), in
-//! source order, with the methods chained on it as its attributes (`.sch_x(114.3)`, `props`) and its arguments in
+//! source order, with the methods chained on it as its attributes (`.sch_x(114.3)`, `with_attr("cutoff_hz", 6)`, `props`) and its arguments in
 //! order (`args`: the positional attributes and the children parameter). An argument that is `[…]`, `vec![…]` or a
 //! tuple is a children `list`, and each element written as one of its entries is a child of the call with a `slot`
 //! (where a sibling may be written beside it), unless it is in a closure or a loop (`looped`). A call whose value is
@@ -328,9 +328,15 @@ impl Mapper<'_> {
             .map(|m| {
                 let (s, _) = self.off(m.dot_token.span());
                 let (_, t) = self.off(m.paren_token.span.close());
-                let mut p = Json::obj().with("name", m.method.to_string()).with("start", s as f64).with("end", t as f64);
-                match m.args.first() {
-                    Some(a) if m.args.len() == 1 => {
+                // `with_attr("name", value)` sets the attribute of that name: the generic method, which an element
+                // writes for a field its module's trait has no method for (the one the write-back adds).
+                let (name, value) = match (m.method.to_string().as_str(), m.args.len(), m.args.first()) {
+                    ("with_attr", 2, Some(Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(n), .. }))) => (n.value(), m.args.iter().nth(1)),
+                    _ => (m.method.to_string(), m.args.first().filter(|_| m.args.len() == 1)),
+                };
+                let mut p = Json::obj().with("name", name).with("start", s as f64).with("end", t as f64);
+                match value {
+                    Some(a) => {
                         let (vs, ve) = self.off(a.span());
                         p.set("valueStart", vs as f64);
                         p.set("valueEnd", ve as f64);
@@ -339,7 +345,7 @@ impl Mapper<'_> {
                             None => p = p.with("literal", false).with("expr", self.source(a.span())),
                         }
                     }
-                    _ => p = p.with("literal", false).with("expr", m.args.iter().map(|a| self.source(a.span())).collect::<Vec<_>>().join(", ")),
+                    None => p = p.with("literal", false).with("expr", m.args.iter().map(|a| self.source(a.span())).collect::<Vec<_>>().join(", ")),
                 }
                 p.with("line", m.method.span().start().line as f64)
             })

@@ -39,7 +39,8 @@ impl El {
         El { tag, attrs: Vec::new(), positional: 0, children: Vec::new(), site: Some(here()), refused: Vec::new() }
     }
 
-    /// Set attribute `name` (a TypeScript name). Written twice, the last value wins in the first one's place.
+    /// Set attribute `name` (a TypeScript name), for a field no trait method of this element's module names; the
+    /// source map reads the call as that attribute. Written twice, the last value wins in the first one's place.
     pub fn with_attr(mut self, name: impl Into<String>, value: impl Into<Value>) -> El {
         let name = name.into();
         let value = match value.into().0 {

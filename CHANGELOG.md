@@ -8,6 +8,9 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- The source map reads the generic `.with_attr("name", value)` as the attribute `name` (`sdk/rust/map`), so an element
+  that sets a field no trait method names (`.with_attr("cutoff_hz", 6)`) is still edited in place rather than by a
+  second call.
 - A monitor source names the connected account it reads as (`<source connection="gmail@jacobfv123@gmail.com">`); the api worker reads it (`via="worker"` only).
 
 Added

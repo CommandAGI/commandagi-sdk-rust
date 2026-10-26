@@ -63,8 +63,10 @@ The rules of a call (`src/design/mod.rs` has them in full):
 
 - One constructor for each tag, in snake case (`brush_stroke`, `cap_table`; a Rust keyword gets a trailing `_`:
   `box_`, `type_`). A tag that holds children takes one iterator of elements; a tag that holds text takes the text.
-- Attributes are chained methods in snake case of the TypeScript name: `.frozen_rows(1)` sets `frozenRows`. A value is
-  a number, a string, a boolean, an array of these, or `json(r#"…"#)` for anything else.
+- Attributes are chained methods in snake case of the TypeScript name: `.frozen_rows(1)` sets `frozenRows`. A field no
+  method names (a port of your own node type) is set by the generic `.with_attr("cutoff_hz", 6)`, which takes the
+  TypeScript name; the source map reads it as that attribute. A value is a number, a string, a boolean, an array of
+  these, or `json(r#"…"#)` for anything else.
 - `commandagi::design::declare(root)` reads the tree and gives the document's graph, or its document beside an empty
   graph. It refuses by name what it cannot read.
 
