@@ -18,7 +18,7 @@ fn j(text: &str) -> Json {
 fn corporation(cik: &str, ticker: &str, name: &str) -> El {
     monitor([
         source().id("filings").adapter("sec-filings").params(json(&format!(r#"{{"cik": "{cik}"}}"#))).every("15m"),
-        follows().monitor("../../central-banks/fed").match_("fomc.*"),
+        follows().monitor("../../central-banks/fed").where_(j(r#"{"class": "fomc.*"}"#)),
         wake().match_("sec.filing.8-k*").prompt("Say what the report changes."),
     ])
     .title(format!("{name} ({ticker})"))
@@ -35,7 +35,7 @@ fn a_monitor_is_its_parts() {
         doc,
         j(r#"{"title": "NVIDIA (NVDA)", "class": "corporation", "about": "cik:0001045810", "sameAs": ["ticker:NVDA"],
              "sources": [{"id": "filings", "adapter": "sec-filings", "params": {"cik": "0001045810"}, "every": "15m"}],
-             "follows": [{"monitor": "../../central-banks/fed", "match": "fomc.*"}],
+             "follows": [{"monitor": "../../central-banks/fed", "where": {"class": "fomc.*"}}],
              "derives": [],
              "wakes": [{"match": "sec.filing.8-k*", "prompt": "Say what the report changes."}],
              "discovers": []}"#)
@@ -134,8 +134,8 @@ fn a_derive_and_a_discover() {
     );
     let Some(Json::Arr(sources)) = full.get("sources") else { panic!("sources") };
     assert_eq!(sources[0].get("vantage"), Some(&Json::Str("../../../infra/vantages/laptop-linux".into())));
-    let (_, conversation) = document(monitor([follows().monitor("../").match_("message.*").where_("conversation=4412")]).title("Alice").class("conversation"));
-    assert_eq!(conversation.get("follows"), Some(&j(r#"[{"monitor": "../", "match": "message.*", "where": "conversation=4412"}]"#)));
+    let (_, conversation) = document(monitor([follows().monitor("../").where_(j(r#"{"class": "message.*", "data.conversation": "4412"}"#))]).title("Alice").class("conversation"));
+    assert_eq!(conversation.get("follows"), Some(&j(r#"[{"monitor": "../", "where": {"class": "message.*", "data.conversation": "4412"}}]"#)));
 
     let d = || discover().slug("conversation").class("../c.tsx#Conversation");
     declare(monitor([d()])).unwrap();
@@ -158,5 +158,8 @@ fn a_derive_and_a_discover() {
     refused(d().of(json("[]")), "of is a monitor's folder or a list of them");
     refused(d().props(json(r#"{"title": "a b"}"#)), "props.title is a data path");
     refused(d().max(500), "max is a whole number from 1 to 50");
-    refused(follows().monitor("../x").where_("conversation"), "where is name=value terms");
+    refused(follows().monitor("../x").where_("conversation"), "where: a condition is an object of terms");
+    refused(follows().monitor("../x").where_(j(r#"{"conversation": "4412"}"#)), "where: \"conversation\" is class, about, key, title or a data path");
+    // A list of conditions holds when one does, as a discover's `when` does: one filter for every part of a monitor.
+    declare(monitor([follows().monitor("../x").where_(j(r#"[{"class": "message.*"}, {"about": "telegram:4412"}]"#))])).unwrap();
 }
