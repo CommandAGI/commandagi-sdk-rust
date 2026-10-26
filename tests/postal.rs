@@ -68,3 +68,12 @@ fn a_postcard_has_one_front_and_no_options() {
     assert!(bad(postcard([front()])).contains("needs image"));
     assert!(bad(postcard([]).color(true)).contains("color is not read"));
 }
+
+#[test]
+fn a_postcard_size_is_its_own_field_and_an_unknown_size_is_refused() {
+    for size in POSTCARD_SIZES {
+        let (_, doc, _) = document(postcard([front().image("Austin.jpg")]).size(*size));
+        assert_eq!(doc, j(&format!(r#"{{"size": "{size}", "front": "Austin.jpg", "paragraphs": []}}"#)));
+    }
+    assert!(bad(postcard([]).size("5x7")).contains(r#"size is "4x6", "6x9", "6x11""#));
+}
