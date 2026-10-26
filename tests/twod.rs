@@ -119,6 +119,8 @@ fn a_paintings_bucket_gradient_and_move_chain_on_a_layer_and_a_shape_is_a_layer(
                 bucket().x(5).y(6).tolerance(20).contiguous(true).color([1, 0, 0, 1]),
                 gradient_fill().shape("linear").from([0, 0]).to([100, 0]).stops(json(r#"[{"at": 0, "color": [0, 0, 0, 1]}, {"at": 1, "color": [1, 1, 1, 1]}]"#)),
                 move_().dx(12).dy(-3).selection(json(r#"[{"wand": [5, 6], "tolerance": 32, "contiguous": false}]"#)),
+                erase().selection(json(selection)),
+                free_transform().cx(60).cy(40).scale_x(1.5).angle(15),
             ])
             .name("Paint"),
             rect().name("Rectangle 1").x(4).y(5).w(30).h(20).fill([0, 0, 1, 1]).stroke([0, 0, 0, 1]).stroke_width(2),
@@ -135,7 +137,19 @@ fn a_paintings_bucket_gradient_and_move_chain_on_a_layer_and_a_shape_is_a_layer(
             w("paint.stroke")
         ))
     );
-    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.1").unwrap().text(), golden(&w("paint.move")));
+    assert_eq!(
+        inputs(&g, "paint.erase"),
+        golden(&format!(
+            r#"{{"name": "Paint", "visible": true, "opacity": 1, "blend": "normal", "selection": {}, "src": {}}}"#,
+            golden(selection),
+            w("paint.move")
+        ))
+    );
+    assert_eq!(
+        inputs(&g, "paint.freeTransform"),
+        golden(&format!(r#"{{"name": "Paint", "visible": true, "opacity": 1, "blend": "normal", "cx": 60, "cy": 40, "scaleX": 1.5, "angle": 15, "src": {}}}"#, w("paint.erase")))
+    );
+    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.1").unwrap().text(), golden(&w("paint.freeTransform")));
     assert_eq!(
         inputs(&g, "paint.shape"),
         golden(r#"{"name": "Rectangle 1", "x": 4, "y": 5, "w": 30, "h": 20, "fill": [0, 0, 1, 1], "stroke": [0, 0, 0, 1], "strokeWidth": 2, "shape": "rect"}"#)
@@ -179,6 +193,27 @@ fn a_mask_is_the_one_layer_it_holds_and_carries_its_call() {
     assert_eq!(bad(photo([exposure([mask([])])])), "mask() in exposure() holds one layer");
     let p = graph(painting([layer([stroke([]).points(Vec::<i32>::new()), mask([fill([])])])]));
     assert_eq!(p.get("nodes").unwrap().get("paint.layer").unwrap().get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("paint.fill")));
+}
+
+#[test]
+fn a_mask_of_names_a_layer_the_stack_shows() {
+    // The named layer is declared AFTER the layer it masks: the whole stack is read before a name is resolved.
+    let g = graph(painting([
+        layer([mask([]).with_attr("of", "Fade")]).name("Ink"),
+        layer([stroke([]).points(Vec::<i32>::new())]).name("Fade"),
+    ]));
+    let port = |g: &Json, id: &str, port: &str| node(g, id).get("inputs").and_then(|i| i.get(port)).unwrap().text();
+    assert_eq!(port(&g, "paint.layer", "mask"), golden(&w("paint.stroke")));
+    assert_eq!(node(&g, "paint.stroke").get("inputs").unwrap().get("name").unwrap().as_str(), Some("Fade"));
+    let off = graph(painting([layer([mask([]).with_attr("of", "Fade").with_attr("enabled", false)]).name("Ink"), layer([]).name("Fade")]));
+    assert_eq!(port(&off, "paint.layer", "maskEnabled"), "false");
+    assert_eq!(
+        bad(painting([layer([mask([]).with_attr("of", "Nowhere")]).name("Ink")])),
+        "layer().name(\"Ink\"): no layer is called \"Nowhere\" (a mask(of=\"…\") names a layer the stack shows)"
+    );
+    assert!(bad(painting([layer([mask([]).with_attr("of", "Same")]).name("Ink"), layer([]).name("Same"), layer([]).name("Same")])).contains("2 layers are called \"Same\""));
+    assert!(bad(painting([layer([mask([]).with_attr("of", "Ink")]).name("Ink")])).contains("a layer cannot be its own mask"));
+    assert!(bad(painting([layer([mask([gradient([])]).with_attr("of", "Fade")]).name("Ink"), layer([]).name("Fade")])).contains("names a layer; it holds none"));
 }
 
 #[test]

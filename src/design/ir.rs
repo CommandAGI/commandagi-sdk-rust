@@ -66,6 +66,21 @@ impl Scope {
         self.taken.contains(id)
     }
 
+    /// One of a node's inputs, as it was added (a wire, or a literal).
+    pub fn input(&self, id: &str, port: &str) -> Option<&Json> {
+        let (_, node) = self.nodes.iter().find(|(i, _)| i == id)?;
+        node.get("inputs")?.get(port)
+    }
+
+    /// Set one of a node's inputs after it was added: a `mask(of="…")` is found before the layer it names.
+    pub fn set_input(&mut self, id: &str, port: &str, value: Json) -> bool {
+        let Some((_, node)) = self.nodes.iter_mut().find(|(i, _)| i == id) else { return false };
+        let Json::Obj(entries) = node else { return false };
+        let Some((_, inputs)) = entries.iter_mut().find(|(k, _)| k == "inputs") else { return false };
+        inputs.set(port, value);
+        true
+    }
+
     pub fn unique_id(&mut self, base: &str) -> String {
         let b = slug(base);
         let mut n = *self.next.get(&b).unwrap_or(&2);

@@ -37,7 +37,9 @@
 //! (`src`: a path from this file's folder, or an address; `.inputs(json(r#"{"size": 40}"#))` gives values to the
 //! parameters that drawing declares); a painting's filter (`gaussian_blur([]).radius(3)`, the photo's filters) chains
 //! among a layer's strokes and changes what is under it; in a
-//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
+//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it, or names a
+//! layer the stack shows with `.of("Gradient")` (the name is the layer's `name`, and two layers of that name are
+//! refused); a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
 //! `stroke`, `color_overlay`, `gradient_overlay`). A value that
 //! is an object is JSON text: `.brush(json(r#"{"kind": "round", "size": 4}"#))`. PIXELS ARE NOT CODE: a pixel layer
@@ -134,6 +136,10 @@ elements! {
     gradient_fill = "gradientFill": leaf;
     /// A painting's Move of a layer's pixels (or its selected pixels).
     move_ = "move": leaf;
+    /// A painting's Delete: a layer's pixels (or its selected pixels) cleared.
+    erase: leaf;
+    /// A painting's Free Transform: the layer's pixels scaled, turned and moved about a pivot.
+    free_transform = "freeTransform": leaf;
     /// A painting's type layer: `text_layer([]).text("Title").x(…).y(…).size(96)`.
     text_layer = "textLayer": children;
     /// A painting layer's styles: `fx([drop_shadow().distance(8), stroke([]).size(3)])`.
@@ -860,7 +866,7 @@ fn filter_member(el: &El) -> Result<Json, String> {
 
 /// What is painted on a painting's pixel layer: strokes, the Paint Bucket, the Gradient, the Move tool. A filter
 /// ([`PHOTO_FILTERS`]) chains among them.
-pub const PAINT_CHAIN: &[&str] = &["stroke", "bucket", "gradientFill", "move"];
+pub const PAINT_CHAIN: &[&str] = &["stroke", "bucket", "gradientFill", "move", "erase", "freeTransform"];
 /// A painting's shape layers.
 pub const PAINT_SHAPES: &[&str] = &["rect", "ellipse", "polygon", "line"];
 
@@ -913,6 +919,23 @@ const PHOTO: StackKind = StackKind {
 
 // ── The declaration ────────────────────────────────────────────────────────────────────────────────────────────
 
+/// A node's `<mask>`: the layer it holds, declared outside the stack, or the name of a layer the stack shows.
+struct Mask {
+    held: Option<String>,
+    named: Option<String>,
+    enabled: bool,
+    at: Option<Json>,
+}
+
+/// A `mask(of="…")` whose referent may be declared later than the layer it masks.
+struct PendingMask {
+    node: String,
+    name: String,
+    enabled: bool,
+    at: Option<Json>,
+    where_: String,
+}
+
 /// One 2D graph being declared: the scope, and what is written on its nodes after they are added.
 #[derive(Default)]
 struct Doc {
@@ -921,6 +944,10 @@ struct Doc {
     disabled: Vec<String>,
     /// What a node holds that is not a node (its mask element, its styles): its `meta.sources`.
     sources: Vec<(String, Json)>,
+    /// `mask(of="…")` elements waiting for the whole stack.
+    pending: Vec<PendingMask>,
+    /// Every stack slot, for a `mask(of="…")` to find its layer.
+    slots: Vec<String>,
 }
 
 impl Doc {
@@ -1146,25 +1173,81 @@ impl Doc {
     }
 
     /// A layer's (or a stroke's, or a filter's) `mask`: the one stack layer it holds, declared outside the stack and
-    /// wired to the node's `mask` port. The `mask` element is not a node: its call is the masked node's
-    /// `meta.sources.mask`.
-    fn mask_of<'a>(&mut self, kind: &StackKind, el: &'a El) -> Result<Option<(String, &'a El)>, String> {
+    /// wired to the node's `mask` port, or `mask(of="…")`, which names a layer the stack shows. The `mask` element is
+    /// not a node: its call is the masked node's `meta.sources.mask`.
+    fn mask_of(&mut self, kind: &StackKind, el: &El) -> Result<Option<Mask>, String> {
         let masks: Vec<&El> = el.child_elements().filter(|c| c.tag == "mask").collect();
         let Some(m) = masks.first() else { return Ok(None) };
         if masks.len() > 1 {
             return Err(format!("{} has one mask()", place(el)));
         }
-        for (k, v) in entries(&attrs(m, &[])?) {
-            if k != "enabled" || !matches!(v, Json::Bool(_)) {
-                return Err(format!("mask() in {} has one attribute, enabled (write the rest on the layer it holds)", place(el)));
+        let a = attrs(m, &[])?;
+        let named = a.get("of").is_some();
+        for (k, v) in entries(&a) {
+            if !(if named { k == "enabled" || k == "of" } else { k == "enabled" }) || (k == "enabled" && !matches!(v, Json::Bool(_))) {
+                return Err(if named {
+                    format!("mask() in {} has enabled and of (of names a layer the stack shows)", place(el))
+                } else {
+                    format!("mask() in {} has one attribute, enabled (write the rest on the layer it holds)", place(el))
+                });
             }
+        }
+        let enabled = m.attr("enabled") != Some(&Json::Bool(false));
+        let at = m.source_json();
+        if named {
+            let Some(name) = a.get("of").and_then(Json::as_str) else {
+                return Err(format!("mask(of=\"…\") in {} names a layer with its name", place(el)));
+            };
+            if m.child_elements().next().is_some() {
+                return Err(format!("mask(of=\"…\") in {} names a layer; it holds none", place(el)));
+            }
+            return Ok(Some(Mask { held: None, named: Some(name.to_string()), enabled, at }));
         }
         let held: Vec<&El> = m.child_elements().collect();
         if held.len() != 1 {
             return Err(format!("mask() in {} holds one layer", place(el)));
         }
         let ids = self.stack(kind, &held)?;
-        Ok(Some((ids[0].clone(), m)))
+        Ok(Some(Mask { held: Some(ids[0].clone()), named: None, enabled, at }))
+    }
+
+    /// Wire each `mask(of="…")` to the stack slot it names, once the whole stack is declared: two slots of that name
+    /// are refused, because the file could not say which one it meant.
+    fn resolve_masks(&mut self) -> Result<(), String> {
+        let slots = self.slots.clone();
+        for p in std::mem::take(&mut self.pending) {
+            let found: Vec<String> = slots
+                .iter()
+                .filter(|slot| self.scope().input(slot, "name").and_then(Json::as_str) == Some(p.name.as_str()))
+                .cloned()
+                .collect();
+            if found.len() != 1 {
+                return Err(if found.is_empty() {
+                    format!("{}: no layer is called \"{}\" (a mask(of=\"…\") names a layer the stack shows)", p.where_, p.name)
+                } else {
+                    format!("{}: {} layers are called \"{}\" (a mask(of=\"…\") names one)", p.where_, found.len(), p.name)
+                });
+            }
+            if found[0] == p.node {
+                return Err(format!("{}: a layer cannot be its own mask", p.where_));
+            }
+            if !self.scope().set_input(&p.node, "mask", wire(&found[0], "out")) {
+                return Err(format!("{}: the masked node is not in this document", p.where_));
+            }
+            if !p.enabled {
+                self.scope().set_input(&p.node, "maskEnabled", Json::Bool(false));
+            }
+            if let Some(at) = p.at {
+                let src = self.sources.iter().position(|(id, _)| id == &p.node);
+                match src {
+                    Some(i) => {
+                        self.sources[i].1.set("mask", at);
+                    }
+                    None => self.sources.push((p.node.clone(), Json::obj().with("mask", at))),
+                }
+            }
+        }
+        Ok(())
     }
 
     /// A painting layer's `fx`: its styles in order (the layer's `fx`), and where each was written.
@@ -1205,11 +1288,11 @@ impl Doc {
         let mask = self.mask_of(kind, el)?;
         let styles = Self::styles_of(kind, el)?;
         let mut inputs = match &mask {
-            Some((id, m)) => {
+            Some(Mask { held: Some(id), enabled, .. }) => {
                 let i = inputs.with("mask", wire(id, "out"));
-                if m.attr("enabled") == Some(&Json::Bool(false)) { i.with("maskEnabled", false) } else { i }
+                if *enabled { i } else { i.with("maskEnabled", false) }
             }
-            None => inputs,
+            _ => inputs,
         };
         let mut sources = Json::obj();
         if let Some((fx, at)) = styles {
@@ -1217,8 +1300,11 @@ impl Doc {
             sources = at;
         }
         let id = self.add(el, node_type, inputs)?;
-        if let Some(at) = mask.and_then(|(_, m)| m.source_json()) {
+        if let Some(at) = mask.as_ref().and_then(|m| m.at.clone()) {
             sources.set("mask", at);
+        }
+        if let Some(Mask { held: None, named: Some(name), enabled, at }) = mask {
+            self.pending.push(PendingMask { node: id.clone(), name, enabled, at, where_: place(el) });
         }
         if !entries(&sources).is_empty() {
             self.sources.push((id.clone(), sources));
@@ -1257,7 +1343,8 @@ impl Doc {
                 let inputs = spread(carried.clone(), entries(&own).to_vec()).with("src", wire(&top, "out"));
                 top = self.add_masked(kind, c, &(kind.chain_type)(c), inputs)?;
             }
-            slots.push(top);
+            slots.push(top.clone());
+            self.slots.push(top);
         }
         Ok(slots)
     }
@@ -1271,6 +1358,7 @@ impl Doc {
         self.s = Some(Scope::new(&format!("{}:{}", kind.prefix, slug(&title)), Json::obj().with("domain", kind.prefix).with("name", title)));
         let kids: Vec<&El> = root.child_elements().collect();
         let layers = self.stack(kind, &kids)?;
+        self.resolve_masks()?;
         let Json::Obj(inputs) = spread(a, wires("layers", &layers)) else { unreachable!() };
         let doc = self.scope().add(&format!("{}.doc", kind.prefix), inputs, Some("doc"), None, meta(root))?;
         Ok(self.build(&doc))
