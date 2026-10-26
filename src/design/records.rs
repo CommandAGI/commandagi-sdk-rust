@@ -122,7 +122,7 @@ fn declare(root: El) -> Result<Declared, String> {
 }
 
 fn release_of(t: &DocTree) -> Result<Json, String> {
-    let at = format!("release().rev({})", Json::from(js_string(t.attr("rev"))).text());
+    let at = format!("release().rev({})", Json::from(js_string(t.attr_of("rev"))).text());
     let list = |tag: &str| -> Vec<Json> { t.children.iter().filter(|c| c.tag == tag).map(DocTree::record).collect() };
     let (files, checks, outputs) = (list("file"), list("check"), list("output"));
     for f in files.iter().chain(outputs.iter()) {
@@ -139,19 +139,19 @@ fn release_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("{at}: a check's status is {}, not {said}", RELEASE_CHECK_STATUSES.join(", ")));
         }
     }
-    let frozen_ok = matches!(t.attr("frozen"), Some(Json::Str(f)) if !f.is_empty() && !f.starts_with('/') && f.split('/').all(|p| !p.is_empty() && p != "." && p != ".."));
+    let frozen_ok = matches!(t.attr_of("frozen"), Some(Json::Str(f)) if !f.is_empty() && !f.starts_with('/') && f.split('/').all(|p| !p.is_empty() && p != "." && p != ".."));
     if !frozen_ok {
-        let said = t.attr("frozen").map(Json::text).unwrap_or_else(|| "undefined".into());
+        let said = t.attr_of("frozen").map(Json::text).unwrap_or_else(|| "undefined".into());
         return Err(format!("{at}: frozen is a folder beside the record (files, files/<the folder's names>), not {said}"));
     }
-    match t.attr("createdAt") {
+    match t.attr_of("createdAt") {
         None => {}
         Some(Json::Num(n)) if n.is_finite() && n.fract() == 0.0 => {}
         Some(other) => return Err(format!("{at}: created_at is epoch milliseconds, not {}", other.text())),
     }
     let mut out = Json::obj();
     for k in RELEASE_FIELDS {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }
@@ -159,15 +159,15 @@ fn release_of(t: &DocTree) -> Result<Json, String> {
 }
 
 fn field(t: &DocTree, name: &str) -> Json {
-    t.attr(name).cloned().unwrap_or(Json::Null)
+    t.attr_of(name).cloned().unwrap_or(Json::Null)
 }
 
 fn contract_of(t: &DocTree) -> Result<Json, String> {
-    let at = format!("contract().id({})", Json::from(js_string(t.attr("id"))).text());
-    if !matches!(t.attr("terms"), Some(Json::Obj(_))) {
+    let at = format!("contract().id({})", Json::from(js_string(t.attr_of("id"))).text());
+    if !matches!(t.attr_of("terms"), Some(Json::Obj(_))) {
         return Err(format!("{at}: terms is the object the parties sign"));
     }
-    match t.attr("createdAt") {
+    match t.attr_of("createdAt") {
         Some(Json::Num(n)) if n.is_finite() && n.fract() == 0.0 => {}
         other => {
             let said = other.map(Json::text).unwrap_or_else(|| "undefined".into());
@@ -192,7 +192,7 @@ fn instance_of(t: &DocTree) -> Result<Json, String> {
     }
     let mut out = Json::obj();
     for k in INSTANCE_FIELDS {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }

@@ -39,6 +39,13 @@ impl El {
         El { tag, attrs: Vec::new(), positional: 0, children: Vec::new(), site: Some(here()), refused: Vec::new() }
     }
 
+    /// Set an attribute by its name, whatever the name: `.attr("cutoff", 4)`. A vocabulary declares most of its
+    /// attributes as methods (`.x(40)`), but a field it does not list (a port of a node type of your own) has no method;
+    /// this one always compiles and sets the field by its TypeScript name. [`with_attr`](El::with_attr) is the same.
+    pub fn attr(self, name: impl Into<String>, value: impl Into<Value>) -> El {
+        self.with_attr(name, value)
+    }
+
     /// Set attribute `name` (a TypeScript name). Written twice, the last value wins in the first one's place.
     pub fn with_attr(mut self, name: impl Into<String>, value: impl Into<Value>) -> El {
         let name = name.into();
@@ -72,7 +79,7 @@ impl El {
     }
 
     /// The value of attribute `name` (a TypeScript name).
-    pub fn attr(&self, name: &str) -> Option<&Json> {
+    pub fn attr_of(&self, name: &str) -> Option<&Json> {
         self.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v)
     }
 
@@ -463,5 +470,19 @@ mod tests {
         let line = line!() + 1;
         let el = layer([]);
         assert_eq!(el.site, Some(Site { line, column: 18 }), "the site is the call in this file, through the macro");
+    }
+
+    #[test]
+    fn attr_sets_a_name_no_trait_lists() {
+        // A node type of the file's own: its ports are fields no vocabulary trait names.
+        let el = layer([]).attr("cutoff", 4).attr("model_number", "AR4");
+        let names: Vec<&str> = el.attrs.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(names, ["cutoff", "model_number"]);
+        assert_eq!(el.attr_of("cutoff").map(Json::text), Some("4".to_string()));
+        assert_eq!(el.attr_of("model_number").map(Json::text), Some("\"AR4\"".to_string()));
+        // Written twice, the last value wins in the first one's place.
+        let once = el.attr("cutoff", 5);
+        assert_eq!(once.attrs.len(), 2);
+        assert_eq!(once.attr_of("cutoff").map(Json::text), Some("5".to_string()));
     }
 }

@@ -26,7 +26,7 @@ use super::element::{fn_name, rust_name, El};
 use super::json::Json;
 
 fn at(el: &El) -> String {
-    match el.attr("id").and_then(Json::as_str) {
+    match el.attr_of("id").and_then(Json::as_str) {
         Some(id) => format!("{}().id({id:?})", fn_name(el.tag)),
         None => format!("{}()", fn_name(el.tag)),
     }
@@ -43,7 +43,7 @@ fn only(el: &El, allowed: &[&str]) -> Result<(), String> {
 }
 
 fn text(el: &El, prop: &str, what: &str, required: bool) -> Result<Option<String>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None if !required => Ok(None),
         Some(Json::Str(v)) if !v.trim().is_empty() => Ok(Some(v.clone())),
         _ => Err(format!("{}: {} is {what}", at(el), rust_name(prop))),
@@ -79,14 +79,14 @@ pub(crate) fn declare_circuit_checks<'a>(meta: &mut Json, elements: Vec<&'a El>)
                 let kind = text(el, "kind", "what is checked: erc, drc, pinout, footprint, or a logistics kind (sourcing, process, assembly, inspection, compliance, shipping, lifecycle, cost)", true)?
                     .unwrap_or_default();
                 let mut c = Json::obj().with("id", id.as_str()).with("kind", kind.as_str());
-                match el.attr("severity") {
+                match el.attr_of("severity") {
                     None => {}
                     Some(Json::Str(s)) if s == "error" || s == "warning" => {
                         c.set("severity", s.as_str());
                     }
                     Some(_) => return Err(format!("{}: severity is \"error\" or \"warning\"", at(el))),
                 }
-                match el.attr("options") {
+                match el.attr_of("options") {
                     None => {}
                     Some(o @ Json::Obj(_)) => {
                         c.set("options", o.clone());
@@ -101,13 +101,13 @@ pub(crate) fn declare_circuit_checks<'a>(meta: &mut Json, elements: Vec<&'a El>)
             "accept" => {
                 only(el, &["id", "check", "rule", "refs", "net", "region", "reason"])?;
                 let id = id_of(el, "the accept's name", &taken)?;
-                let refs = el.attr("refs");
+                let refs = el.attr_of("refs");
                 if let Some(r) = refs {
                     if !matches!(r, Json::Arr(l) if !l.is_empty() && l.iter().all(|x| x.as_str().is_some_and(|s| !s.is_empty()))) {
                         return Err(format!("{}: refs is a list of part references ([\"U1\", \"U3\"])", at(el)));
                     }
                 }
-                let region = el.attr("region");
+                let region = el.attr_of("region");
                 if let Some(r) = region {
                     if !(matches!(r, Json::Obj(_)) && point(r.get("min")) && point(r.get("max"))) {
                         return Err(format!("{}: region is json(r#\"{{\"min\": [x, y], \"max\": [x, y]}}\"#) in board millimetres", at(el)));
