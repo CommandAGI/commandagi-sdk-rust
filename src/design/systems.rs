@@ -21,8 +21,8 @@
 //! budget reads the logistics roll-up of the design it names (`.design("cad/Assembly.3d.rs")`: a 3D document, a
 //! schematic or a board with a cost check), the one source of cost, so no contribution is a cost. A `param()` states a
 //! number with its unit, or a text a channel states (`.param().id("framing").value("8N1")`: a format, a dialect, a
-//! transport) and then no unit. A side's `origin`, `rotation` (degrees counter-clockwise) and `face` (`top`, or `bottom`
-//! for the side seen from the mating board, whose frame is mirrored) put the interface's frame in the side's. The checks
+//! transport) and then no unit. A side's `origin`, `rotation` (degrees counter-clockwise) and `face` (`front`, or `back`
+//! for the side read from the mating part, whose frame is mirrored) put the interface's frame in the side's. The checks
 //! are the host's (`commandagi check`, `commandagi trace`).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
@@ -86,8 +86,6 @@ pub const VERIFICATION_METHODS: &[&str] = &["test", "analysis", "inspection", "d
 pub const BUDGET_QUANTITIES: &[&str] = &["mass", "power", "cost", "thermal"];
 pub const SYSTEM_CHECK_KINDS: &[&str] = &["interface", "trace"];
 pub const SIDE_KINDS: &[&str] = &["circuit", "3d", "firmware", "definition"];
-/// Which face of a side the interface's frame is on: `top` as the side's own frame has it, `bottom` from the mating board.
-pub const SIDE_FACES: &[&str] = &["top", "bottom"];
 
 pub const REQUIREMENT_FIELDS: &[&str] = &["id", "text", "rationale", "method", "verifiedBy", "design", "parent"];
 pub const MODE_FIELDS: &[&str] = &["id", "description"];
@@ -101,6 +99,8 @@ pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
 pub const PARAM_FIELDS: &[&str] = &["id", "value", "unit", "description"];
 pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "rotation", "face", "defines", "pins", "params", "files", "description"];
+/// The faces a side states: `front` (as drawn), or `back` (read from the mating part: the frame mirrored through its y axis).
+pub const SIDE_FACES: &[&str] = &["front", "back"];
 const ROOT_FIELDS: &[&str] = &["name", "description"];
 
 const REQUIREMENTS: Vocabulary = Vocabulary {
