@@ -134,8 +134,8 @@ fn a_derive_and_a_discover() {
     );
     let Some(Json::Arr(sources)) = full.get("sources") else { panic!("sources") };
     assert_eq!(sources[0].get("vantage"), Some(&Json::Str("../../../infra/vantages/laptop-linux".into())));
-    let (_, conversation) = document(monitor([follows().monitor("../").match_("message.*").where_("conversation=4412")]).title("Alice").class("conversation"));
-    assert_eq!(conversation.get("follows"), Some(&j(r#"[{"monitor": "../", "match": "message.*", "where": "conversation=4412"}]"#)));
+    let (_, conversation) = document(monitor([follows().monitor("../").match_("message.*").when(json(r#"{"data.conversation": "4412"}"#))]).title("Alice").class("conversation"));
+    assert_eq!(conversation.get("follows"), Some(&j(r#"[{"monitor": "../", "match": "message.*", "when": {"data.conversation": "4412"}}]"#)));
 
     let d = || discover().slug("conversation").class("../c.tsx#Conversation");
     declare(monitor([d()])).unwrap();
@@ -158,5 +158,5 @@ fn a_derive_and_a_discover() {
     refused(d().of(json("[]")), "of is a monitor's folder or a list of them");
     refused(d().props(json(r#"{"title": "a b"}"#)), "props.title is a data path");
     refused(d().max(500), "max is a whole number from 1 to 50");
-    refused(follows().monitor("../x").where_("conversation"), "where is name=value terms");
+    refused(follows().monitor("../x").when(json(r#"{"data.conversation": {"above": 1}}"#)), "when: data.conversation: above is not an operator");
 }
