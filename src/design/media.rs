@@ -377,7 +377,7 @@ fn declare(root: El) -> Result<Declared, String> {
 
 /// How a message names a media element: its call, with its name, its file or its text.
 fn place(el: &El) -> String {
-    match ["name", "src", "text"].iter().find_map(|k| el.attr(k).map(|v| (k, v))) {
+    match ["name", "src", "text"].iter().find_map(|k| el.attr_of(k).map(|v| (k, v))) {
         Some((k, v @ Json::Str(_))) => format!("{}().{}({})", fn_name(el.tag), rust_name(k), v.text()),
         _ => format!("{}()", fn_name(el.tag)),
     }
@@ -396,7 +396,7 @@ fn number_text(n: f64) -> String {
 
 /// A finite number attribute within its bounds, or none.
 fn num(el: &El, prop: &str, min: Option<f64>, max: Option<f64>) -> Result<Option<f64>, String> {
-    let v = match el.attr(prop) {
+    let v = match el.attr_of(prop) {
         None => return Ok(None),
         Some(Json::Num(n)) if n.is_finite() => *n,
         Some(v) => return Err(format!("{}: {} is a number, not {}", place(el), rust_name(prop), v.text())),
@@ -420,7 +420,7 @@ fn at_least(el: &El, prop: &str, min: f64) -> Result<Option<f64>, String> {
 
 /// A text attribute (one of `one_of` when given), or none.
 fn txt(el: &El, prop: &str, one_of: Option<&[&str]>) -> Result<Option<String>, String> {
-    let v = match el.attr(prop) {
+    let v = match el.attr_of(prop) {
         None => return Ok(None),
         Some(Json::Str(s)) => s.clone(),
         Some(v) => return Err(format!("{}: {} is text, not {}", place(el), rust_name(prop), v.text())),
@@ -432,7 +432,7 @@ fn txt(el: &El, prop: &str, one_of: Option<&[&str]>) -> Result<Option<String>, S
 }
 
 fn flag(el: &El, prop: &str) -> Result<Option<bool>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None => Ok(None),
         Some(Json::Bool(b)) => Ok(Some(*b)),
         Some(v) => Err(format!("{}: {} is true or false, not {}", place(el), rust_name(prop), v.text())),
@@ -659,7 +659,7 @@ fn document_src(el: &El, is_kind: fn(&str) -> bool, what: &str) -> Result<String
 
 /// A nested composition's input values: its parameters by name, each a number.
 fn input_values(el: &El) -> Result<Vec<(String, Json)>, String> {
-    match el.attr("inputs") {
+    match el.attr_of("inputs") {
         None => Ok(Vec::new()),
         Some(Json::Obj(e)) if e.iter().all(|(_, v)| matches!(v, Json::Num(n) if n.is_finite())) => {
             if e.iter().any(|(k, _)| k == INSTANCE_REF) {
@@ -716,7 +716,7 @@ fn common(c: &El, inputs: &mut Json) -> Result<(), String> {
     }
     inputs.set("transform", transform);
     inputs.set("color", color);
-    if CLIP_CROP.iter().any(|(k, _)| c.attr(k).is_some()) {
+    if CLIP_CROP.iter().any(|(k, _)| c.attr_of(k).is_some()) {
         let mut crop = Json::obj();
         for (k, edge) in CLIP_CROP {
             crop.set(edge, num(c, k, Some(0.0), Some(0.49))?.unwrap_or(0.0));
@@ -756,7 +756,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
         let (Some(time), Some(value)) = (time, value) else { return Err(format!("{}: a keyframe has a time and a value", place(el))) };
         let id = kf_ids.make(&format!("kf_{clip_id}"));
         let easing = txt(el, "easing", Some(EASINGS))?.unwrap_or_else(|| "linear".into());
-        let bezier = el.attr("bezier");
+        let bezier = el.attr_of("bezier");
         if bezier.is_some() && easing != "bezier" {
             return Err(format!("{}: bezier is read with .easing(\"bezier\")", place(el)));
         }
@@ -819,8 +819,8 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
                     return Err(format!("note() is read in a midi() clip, not a {}", tag(clip.tag)));
                 }
                 refuse_unknown(el, &["pitch", "start", "duration", "velocity"])?;
-                let Some(pitch) = pitch_of(el.attr("pitch")) else {
-                    let given = el.attr("pitch").map(Json::text).unwrap_or_else(|| "nothing".into());
+                let Some(pitch) = pitch_of(el.attr_of("pitch")) else {
+                    let given = el.attr_of("pitch").map(Json::text).unwrap_or_else(|| "nothing".into());
                     return Err(format!("note(): pitch is a MIDI number 0–127 or a name like \"C4\", not {given}"));
                 };
                 let (start, duration) = (at_least(el, "start", 0.0)?, at_least(el, "duration", 0.0)?);
@@ -856,7 +856,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
                         return Err(format!("effect().type_(\"lut\"): src is a path relative to this file, not {src}"));
                     }
                     Some(src)
-                } else if el.attr("src").is_some() {
+                } else if el.attr_of("src").is_some() {
                     return Err(format!("effect().type_(\"{kind}\"): src is read on a LUT (.type_(\"lut\"))"));
                 } else {
                     None
@@ -871,7 +871,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
                         _ => return Err(format!("effect().type_(\"{kind}\"): {} is a number, not {}", rust_name(p), v.text())),
                     };
                 }
-                let colors = match el.attr("colors") {
+                let colors = match el.attr_of("colors") {
                     None => None,
                     Some(Json::Obj(e)) if e.iter().all(|(_, c)| c.as_str().is_some()) => Some(Json::Obj(e.clone())),
                     // TypeScript copies a list of colours as an object by index.
@@ -906,7 +906,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
                 add_key(&mut k, el, property, sources)?;
             }
             t if video_audio_effect(t).is_some() => {
-                let picture = clip.tag == "clip" && clip.attr("src").and_then(Json::as_str).and_then(media_kind) == Some("image");
+                let picture = clip.tag == "clip" && clip.attr_of("src").and_then(Json::as_str).and_then(media_kind) == Some("image");
                 if (clip.tag != "clip" && clip.tag != "midi") || picture {
                     return Err(format!("{} is an audio effect: {} has no sound", tag(el.tag), place(clip)));
                 }
@@ -1383,7 +1383,7 @@ fn stem_of(src: &str) -> String {
 fn declare_song(root: &El) -> Result<Json, String> {
     refuse_unknown(root, &["name", "volumeDb", "tempo", "timeSignature", "bars", "cycleStart", "cycleEnd"])?;
     let name = txt(root, "name", None)?.unwrap_or_else(|| "Song".into());
-    let tempo = match root.attr("tempo") {
+    let tempo = match root.attr_of("tempo") {
         None => tempo_of(&Json::Num(120.0)),
         Some(v) => tempo_of(v),
     };
@@ -1391,7 +1391,7 @@ fn declare_song(root: &El) -> Result<Json, String> {
         return Err("song(): tempo is beats per minute (120), or [{ atBeat: 0, bpm: 120 }, …] sorted by beat".into());
     };
     let default_signature = Json::from("4/4");
-    let Some(time_sig) = time_signature_of(Some(root.attr("timeSignature").unwrap_or(&default_signature))) else {
+    let Some(time_sig) = time_signature_of(Some(root.attr_of("timeSignature").unwrap_or(&default_signature))) else {
         return Err("song(): time_signature is \"beats/unit\" (\"4/4\", \"6/8\")".into());
     };
     let mut nodes = Nodes::default();
@@ -1449,12 +1449,12 @@ fn declare_song(root: &El) -> Result<Json, String> {
                     spec
                 } else {
                     refuse_unknown(el, &["name", "src", "root", "gain", "attack", "decay", "sustain", "release"])?;
-                    let base = match el.attr("root") {
+                    let base = match el.attr_of("root") {
                         None => Some(69),
                         Some(v) => pitch_of(Some(v)),
                     };
                     let Some(base) = base else {
-                        let given = el.attr("root").map(Json::text).unwrap_or_default();
+                        let given = el.attr_of("root").map(Json::text).unwrap_or_default();
                         return Err(format!("sampler(): root is the pitch the file sounds at, a MIDI number (0–127) or a name (\"A4\"), not {given}"));
                     };
                     obj(&[
@@ -1492,7 +1492,7 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 let inputs = obj(&[("name", txt(el, "name", None)?.unwrap_or_else(|| fx_name.into()).into()), ("spec", spec), ("audio", wire(&up, "audio"))]);
                 nodes.put(&fid, node(&fid, fx_type, inputs, None, meta_of(el, Sources::new(), Json::obj())));
                 upstream = Some(fid);
-            } else if el.tag == "clip" && player.is_some() && el.attr("src").is_some() {
+            } else if el.tag == "clip" && player.is_some() && el.attr_of("src").is_some() {
                 refuse_unknown(el, &["name", "src", "start", "length", "in", "volume", "loop"])?;
                 if el.child_elements().next().is_some() {
                     return Err(format!("{}: an audio clip holds no notes (notes go in a clip on a track with a synth() or a sampler())", place(el)));
@@ -1512,7 +1512,7 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 nodes.put(&cid, node(&cid, "sample", inputs, None, meta_of(el, Sources::new(), Json::obj())));
                 clips.push(cid);
             } else if el.tag == "clip" {
-                if el.attr("src").is_some() {
+                if el.attr_of("src").is_some() {
                     return Err(format!("{}: a track that plays an instrument holds clips of notes; an audio clip (src) goes on a track without one", place(tr)));
                 }
                 refuse_unknown(el, &["name", "start", "length", "loop"])?;
@@ -1525,8 +1525,8 @@ fn declare_song(root: &El) -> Result<Json, String> {
                         return Err(format!("{} is not read in a clip() (it holds note())", tag(n.tag)));
                     }
                     refuse_unknown(n, &["pitch", "start", "duration", "velocity"])?;
-                    let Some(pitch) = pitch_of(n.attr("pitch")) else {
-                        let given = n.attr("pitch").map(Json::text).unwrap_or_else(|| "nothing".into());
+                    let Some(pitch) = pitch_of(n.attr_of("pitch")) else {
+                        let given = n.attr_of("pitch").map(Json::text).unwrap_or_else(|| "nothing".into());
                         return Err(format!("note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not {given}"));
                     };
                     let nid = format!("{cid}_n{}", notes.len() + 1);

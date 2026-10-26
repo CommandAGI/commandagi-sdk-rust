@@ -172,7 +172,7 @@ fn color(v: &Json) -> bool {
 fn own(t: &DocTree, keys: &[&str]) -> Json {
     let mut out = Json::obj();
     for k in keys {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }
@@ -181,83 +181,83 @@ fn own(t: &DocTree, keys: &[&str]) -> Json {
 
 fn check_mark(c: &DocTree) -> Result<(), String> {
     let w = format!("{}()", c.tag);
-    if c.attr("rect").is_some() && !rect(c.attr("rect")) {
+    if c.attr_of("rect").is_some() && !rect(c.attr_of("rect")) {
         return Err(format!("{w}: rect is [x0, y0, x1, y1] in points"));
     }
-    if let Some(r) = c.attr("rects") {
+    if let Some(r) = c.attr_of("rects") {
         if !matches!(r, Json::Arr(a) if !a.is_empty() && a.iter().all(|x| nums(x, Some(4)))) {
             return Err(format!("{w}: rects is a list of [x0, y0, x1, y1]"));
         }
     }
     for k in ["at", "from", "to"] {
-        if c.attr(k).is_some_and(|v| !nums(v, Some(2))) {
+        if c.attr_of(k).is_some_and(|v| !nums(v, Some(2))) {
             return Err(format!("{w}: {k} is [x, y] in points"));
         }
     }
     for k in ["color", "textColor"] {
-        if c.attr(k).is_some_and(|v| !color(v)) {
+        if c.attr_of(k).is_some_and(|v| !color(v)) {
             return Err(format!("{w}: {k} is [r, g, b], each 0 to 1"));
         }
     }
     for k in ["fill", "border"] {
-        if c.attr(k).is_some_and(|v| *v != Json::Null && !color(v)) {
+        if c.attr_of(k).is_some_and(|v| *v != Json::Null && !color(v)) {
             return Err(format!("{w}: {k} is [r, g, b], each 0 to 1, or null"));
         }
     }
-    if c.attr("opacity").is_some() && !num(c.attr("opacity")).is_some_and(|n| (0.0..=1.0).contains(&n)) {
+    if c.attr_of("opacity").is_some() && !num(c.attr_of("opacity")).is_some_and(|n| (0.0..=1.0).contains(&n)) {
         return Err(format!("{w}: opacity is 0 to 1"));
     }
-    if let Some(s) = c.attr("strokes") {
+    if let Some(s) = c.attr_of("strokes") {
         if !matches!(s, Json::Arr(a) if a.iter().all(|x| nums(x, None) && matches!(x, Json::Arr(p) if p.len() >= 2 && p.len() % 2 == 0))) {
             return Err(format!("{w}: strokes is a list of [x, y, x, y …]"));
         }
     }
-    if let Some(p) = c.attr("points") {
+    if let Some(p) = c.attr_of("points") {
         if !(nums(p, None) && matches!(p, Json::Arr(a) if a.len() >= 4 && a.len() % 2 == 0)) {
             return Err(format!("{w}: points is [x, y, x, y …]"));
         }
     }
-    if c.attr("arrow").is_some_and(|a| !["none", "start", "end", "both"].contains(&a.as_str().unwrap_or(""))) {
+    if c.attr_of("arrow").is_some_and(|a| !["none", "start", "end", "both"].contains(&a.as_str().unwrap_or(""))) {
         return Err(format!(r#"{w}: arrow is "none", "start", "end" or "both""#));
     }
     if c.tag == "field" {
-        let kind = c.attr("kind").and_then(Json::as_str).unwrap_or("");
+        let kind = c.attr_of("kind").and_then(Json::as_str).unwrap_or("");
         if !["text", "checkbox", "radio", "dropdown", "list", "signature"].contains(&kind) {
             return Err(r#"field(): kind is "text", "checkbox", "radio", "dropdown", "list" or "signature""#.into());
         }
         if kind == "radio" {
-            let len = |k: &str| match c.attr(k) {
+            let len = |k: &str| match c.attr_of(k) {
                 Some(Json::Arr(a)) => Some(a.len()),
                 _ => None,
             };
             if len("options").is_none() || len("options") != len("rects") {
                 return Err(r#"field(): kind "radio" has options and rects, one rect per option"#.into());
             }
-        } else if !rect(c.attr("rect")) {
+        } else if !rect(c.attr_of("rect")) {
             return Err("field(): rect is [x0, y0, x1, y1] in points".into());
         }
     }
-    if c.tag == "signature" && ["typed", "image", "strokes"].iter().filter(|k| c.attr(k).is_some()).count() != 1 {
+    if c.tag == "signature" && ["typed", "image", "strokes"].iter().filter(|k| c.attr_of(k).is_some()).count() != 1 {
         return Err("signature(): is one of typed, image or strokes".into());
     }
-    if c.tag == "stamp" && !["name", "image", "label"].iter().any(|k| c.attr(k).is_some()) {
+    if c.tag == "stamp" && !["name", "image", "label"].iter().any(|k| c.attr_of(k).is_some()) {
         return Err("stamp(): has a name (Approved, Draft …), a label or an image".into());
     }
     for k in ["text", "author", "name", "label", "image", "typed", "overlay", "tooltip"] {
-        if c.attr(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
+        if c.attr_of(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
             return Err(format!("{w}: {k} is text"));
         }
     }
     for k in ["required", "readOnly", "multiline", "checked", "editable"] {
-        if c.attr(k).is_some_and(|v| !matches!(v, Json::Bool(_))) {
+        if c.attr_of(k).is_some_and(|v| !matches!(v, Json::Bool(_))) {
             return Err(format!("{w}: {k} is true or false"));
         }
     }
-    if c.attr("default").is_some_and(|v| !matches!(v, Json::Str(_)) && !matches!(v, Json::Arr(a) if a.iter().all(|x| matches!(x, Json::Str(_))))) {
+    if c.attr_of("default").is_some_and(|v| !matches!(v, Json::Str(_)) && !matches!(v, Json::Arr(a) if a.iter().all(|x| matches!(x, Json::Str(_))))) {
         return Err(format!("{w}: default is text, or a list of texts"));
     }
     for r in c.children.iter().filter(|r| r.tag == "reply") {
-        if r.attr("state").is_some_and(|s| !REVIEW_STATES.contains(&s.as_str().unwrap_or(""))) {
+        if r.attr_of("state").is_some_and(|s| !REVIEW_STATES.contains(&s.as_str().unwrap_or(""))) {
             return Err(r#"reply(): state is "Accepted", "Rejected", "Cancelled", "Completed" or "None""#.into());
         }
     }
@@ -265,29 +265,29 @@ fn check_mark(c: &DocTree) -> Result<(), String> {
 }
 
 fn check_page(p: &DocTree) -> Result<(), String> {
-    if let Some(src) = p.attr("src") {
+    if let Some(src) = p.attr_of("src") {
         if !matches!(src, Json::Str(s) if !s.is_empty()) {
             return Err("page(): src is the ref of a PDF".into());
         }
-        if !(is_int(p.attr("n")) && num(p.attr("n")).unwrap_or(0.0) >= 1.0) {
+        if !(is_int(p.attr_of("n")) && num(p.attr_of("n")).unwrap_or(0.0) >= 1.0) {
             return Err("page(): n is the page's number in src, from 1".into());
         }
-        if ["size", "width", "height"].iter().any(|k| p.attr(k).is_some()) {
+        if ["size", "width", "height"].iter().any(|k| p.attr_of(k).is_some()) {
             return Err("page(): is a page of src, or a blank page of a size: not both".into());
         }
     } else {
-        if p.attr("n").is_some() {
+        if p.attr_of("n").is_some() {
             return Err("page(): n is the page number in src".into());
         }
-        match p.attr("size") {
+        match p.attr_of("size") {
             Some(s) if !PAGE_SIZES.contains(&s.as_str().unwrap_or("")) => return Err(format!("page(): size is {}", PAGE_SIZES.join(", "))),
-            None if !(num(p.attr("width")).is_some_and(|w| w > 0.0) && num(p.attr("height")).is_some_and(|h| h > 0.0)) => {
+            None if !(num(p.attr_of("width")).is_some_and(|w| w > 0.0) && num(p.attr_of("height")).is_some_and(|h| h > 0.0)) => {
                 return Err("page(): is a page of a PDF (src and n) or a blank page (size, or width and height in points)".into())
             }
             _ => {}
         }
     }
-    if p.attr("rotate").is_some() && !(is_int(p.attr("rotate")) && num(p.attr("rotate")).unwrap_or(1.0) % 90.0 == 0.0) {
+    if p.attr_of("rotate").is_some() && !(is_int(p.attr_of("rotate")) && num(p.attr_of("rotate")).unwrap_or(1.0) % 90.0 == 0.0) {
         return Err("page(): rotate is a multiple of 90".into());
     }
     p.children.iter().try_for_each(check_mark)
@@ -295,42 +295,42 @@ fn check_page(p: &DocTree) -> Result<(), String> {
 
 fn check_band(t: &DocTree) -> Result<(), String> {
     let w = format!("{}()", t.tag);
-    if t.tag != "bates" && !["left", "center", "right"].iter().any(|k| matches!(t.attr(k), Some(Json::Str(s)) if !s.trim().is_empty())) {
+    if t.tag != "bates" && !["left", "center", "right"].iter().any(|k| matches!(t.attr_of(k), Some(Json::Str(s)) if !s.trim().is_empty())) {
         return Err(format!("{w}: has text in left, center or right"));
     }
     for k in ["left", "center", "right", "pages", "date", "prefix", "suffix"] {
-        if t.attr(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
+        if t.attr_of(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
             return Err(format!("{w}: {k} is text"));
         }
     }
     for k in ["size", "margin", "inset"] {
-        if t.attr(k).is_some() && !num(t.attr(k)).is_some_and(|n| n >= 0.0) {
+        if t.attr_of(k).is_some() && !num(t.attr_of(k)).is_some_and(|n| n >= 0.0) {
             return Err(format!("{w}: {k} is points, 0 or more"));
         }
     }
-    if t.attr("color").is_some_and(|v| !color(v)) {
+    if t.attr_of("color").is_some_and(|v| !color(v)) {
         return Err(format!("{w}: color is [r, g, b], each 0 to 1"));
     }
-    if t.attr("family").is_some_and(|f| !["sans", "serif", "mono"].contains(&f.as_str().unwrap_or(""))) {
+    if t.attr_of("family").is_some_and(|f| !["sans", "serif", "mono"].contains(&f.as_str().unwrap_or(""))) {
         return Err(format!(r#"{w}: family is "sans", "serif" or "mono""#));
     }
-    if t.attr("start").is_some() && !(is_int(t.attr("start")) && num(t.attr("start")).unwrap_or(-1.0) >= 0.0) {
+    if t.attr_of("start").is_some() && !(is_int(t.attr_of("start")) && num(t.attr_of("start")).unwrap_or(-1.0) >= 0.0) {
         return Err(format!("{w}: start is a whole number"));
     }
-    if t.attr("digits").is_some() && !(is_int(t.attr("digits")) && num(t.attr("digits")).is_some_and(|d| (1.0..=15.0).contains(&d))) {
+    if t.attr_of("digits").is_some() && !(is_int(t.attr_of("digits")) && num(t.attr_of("digits")).is_some_and(|d| (1.0..=15.0).contains(&d))) {
         return Err("bates(): digits is 1 to 15".into());
     }
-    if t.attr("position").is_some_and(|p| !BATES_POSITIONS.contains(&p.as_str().unwrap_or(""))) {
+    if t.attr_of("position").is_some_and(|p| !BATES_POSITIONS.contains(&p.as_str().unwrap_or(""))) {
         return Err(format!("bates(): position is {}", BATES_POSITIONS.join(", ")));
     }
     Ok(())
 }
 
 fn bookmark_of(t: &DocTree) -> Result<Json, String> {
-    if !matches!(t.attr("title"), Some(Json::Str(_))) {
+    if !matches!(t.attr_of("title"), Some(Json::Str(_))) {
         return Err("bookmark(): title is text".into());
     }
-    if t.attr("page").is_some() && !(is_int(t.attr("page")) && num(t.attr("page")).unwrap_or(0.0) >= 1.0) {
+    if t.attr_of("page").is_some() && !(is_int(t.attr_of("page")) && num(t.attr_of("page")).unwrap_or(0.0) >= 1.0) {
         return Err("bookmark(): page is a page number, from 1".into());
     }
     let mut b = own(t, BOOKMARK_FIELDS);
@@ -343,7 +343,7 @@ fn bookmark_of(t: &DocTree) -> Result<Json, String> {
 
 fn pdf_of(t: &DocTree) -> Result<Json, String> {
     for k in PDF_FIELDS {
-        if t.attr(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
+        if t.attr_of(k).is_some_and(|v| !matches!(v, Json::Str(_))) {
             return Err(format!("pdf(): {k} is text"));
         }
     }
@@ -375,7 +375,7 @@ fn pdf_of(t: &DocTree) -> Result<Json, String> {
                 pages.push(page);
             }
             "fill" => {
-                let ok = match c.attr("value") {
+                let ok = match c.attr_of("value") {
                     Some(Json::Str(_) | Json::Bool(_)) => true,
                     Some(Json::Arr(a)) => a.iter().all(|x| matches!(x, Json::Str(_))),
                     _ => false,
@@ -387,10 +387,10 @@ fn pdf_of(t: &DocTree) -> Result<Json, String> {
             }
             "bookmark" => bookmarks.push(bookmark_of(c)?),
             "label" => {
-                if !(is_int(c.attr("from")) && num(c.attr("from")).unwrap_or(0.0) >= 1.0) {
+                if !(is_int(c.attr_of("from")) && num(c.attr_of("from")).unwrap_or(0.0) >= 1.0) {
                     return Err("label(): from is a page number, from 1".into());
                 }
-                if c.attr("style").is_some_and(|s| !["D", "r", "R", "a", "A"].contains(&s.as_str().unwrap_or(""))) {
+                if c.attr_of("style").is_some_and(|s| !["D", "r", "R", "a", "A"].contains(&s.as_str().unwrap_or(""))) {
                     return Err(r#"label(): style is "D" (1 2 3), "r" (i ii), "R" (I II), "a" (a b) or "A" (A B)"#.into());
                 }
                 labels.push(own(c, LABEL_FIELDS));

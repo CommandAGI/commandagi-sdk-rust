@@ -828,8 +828,8 @@ struct StackKind {
 
 fn pixel_layer(el: &El, kind: &str) -> Result<Option<(String, Json)>, String> {
     let mut a = attrs(el, &["src"])?;
-    if el.attr("src").is_some() {
-        a.set("__asset", asset(el.attr("src"), el)?);
+    if el.attr_of("src").is_some() {
+        a.set("__asset", asset(el.attr_of("src"), el)?);
     }
     Ok(Some((kind.to_string(), a)))
 }
@@ -930,15 +930,15 @@ impl Doc {
 
     /// Declare `el` as one node of `kind`.
     fn add(&mut self, el: &El, kind: &str, inputs: Json) -> Result<String, String> {
-        let id = match el.attr("id") {
+        let id = match el.attr_of("id") {
             None => None,
             Some(Json::Str(s)) => Some(s.as_str()).filter(|s| !s.is_empty()),
             Some(_) => return Err(format!("{}: id is a string", place(el))),
         };
-        let label = el.attr("label").and_then(Json::as_str);
+        let label = el.attr_of("label").and_then(Json::as_str);
         let Json::Obj(inputs) = inputs else { unreachable!("inputs are an object") };
         let nid = self.scope().add(kind, inputs, id, label, meta(el))?;
-        if el.attr("disabled") == Some(&Json::Bool(true)) {
+        if el.attr_of("disabled") == Some(&Json::Bool(true)) {
             self.disabled.push(nid.clone());
         }
         Ok(nid)
@@ -1009,10 +1009,10 @@ impl Doc {
             if !kids.is_empty() {
                 return Err(format!("{} takes no children", place(el)));
             }
-            if el.attr("src").is_none() {
+            if el.attr_of("src").is_none() {
                 return Err(format!("{}: src names its image file by relative path (\"photo.png\")", place(el)));
             }
-            let a = attrs(el, &["src"])?.with("__asset", asset(el.attr("src"), el)?);
+            let a = attrs(el, &["src"])?.with("__asset", asset(el.attr_of("src"), el)?);
             return self.add(el, t, a);
         }
         if t == "link" {
@@ -1059,13 +1059,13 @@ impl Doc {
             return Err(format!("drawing(): {} is not read (a drawing has name, width, height, background)", rust_name(k)));
         }
         // A drawing with no name of its own declares none; the file's name only names the graph.
-        let own = root.attr("name").and_then(Json::as_str);
+        let own = root.attr_of("name").and_then(Json::as_str);
         let mut m = Json::obj();
         if let Some(own) = own {
             m.set("name", own);
         }
         for k in ["width", "height", "background"] {
-            if let Some(v) = root.attr(k) {
+            if let Some(v) = root.attr_of(k) {
                 plain(v, &format!("drawing() {k}"))?;
                 m.set(k, v.clone());
             }
@@ -1112,10 +1112,10 @@ impl Doc {
             if let Some((k, _)) = entries(&a).first() {
                 return Err(format!("{}: {} is not read (an artboard has name, width, height, background)", place(b), rust_name(k)));
             }
-            let name = b.attr("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(|| format!("Artboard {}", i + 2));
+            let name = b.attr_of("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(|| format!("Artboard {}", i + 2));
             let mut own_fields = Json::obj();
             for k in ["width", "height", "background"] {
-                if let Some(v) = b.attr(k) {
+                if let Some(v) = b.attr_of(k) {
                     plain(v, &format!("{} {k}", place(b)))?;
                     own_fields.set(k, v.clone());
                 }
@@ -1127,7 +1127,7 @@ impl Doc {
                 }
                 board_layers.push(self.drawn(c, true)?);
             }
-            let id = match b.attr("id") {
+            let id = match b.attr_of("id") {
                 None => None,
                 Some(Json::Str(s)) => Some(s.clone()).filter(|s| !s.is_empty()),
                 Some(_) => return Err(format!("{}: id is a string", place(b))),
@@ -1207,7 +1207,7 @@ impl Doc {
         let mut inputs = match &mask {
             Some((id, m)) => {
                 let i = inputs.with("mask", wire(id, "out"));
-                if m.attr("enabled") == Some(&Json::Bool(false)) { i.with("maskEnabled", false) } else { i }
+                if m.attr_of("enabled") == Some(&Json::Bool(false)) { i.with("maskEnabled", false) } else { i }
             }
             None => inputs,
         };
@@ -1284,7 +1284,7 @@ impl Doc {
         if let Some((k, _)) = entries(&a).iter().find(|(k, _)| !["safeZMm", "overrides"].contains(&k.as_str())) {
             return Err(format!("nest(): {} is not read (it has safe_z_mm, overrides)", rust_name(k)));
         }
-        let title = root.attr("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(unnamed);
+        let title = root.attr_of("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(unnamed);
         self.s = Some(Scope::new(&format!("nest:{}", slug(&title)), Json::obj().with("domain", "nest").with("name", title)));
         let mut one: Vec<(String, Json)> = Vec::new();
         let mut parts = Vec::new();
@@ -1297,12 +1297,12 @@ impl Doc {
                 let id = self.add(el, &format!("nest.{}", el.tag), attrs(el, &[])?)?;
                 one.push((el.tag.to_string(), wire(&id, "out")));
             } else if el.tag == "part" {
-                if el.attr("id").and_then(Json::as_str).is_none() {
+                if el.attr_of("id").and_then(Json::as_str).is_none() {
                     return Err(format!("{}: a part has an id (the name its placements and overrides use)", place(el)));
                 }
                 parts.push(self.add(el, "nest.part", attrs(el, &[])?)?);
             } else if el.tag == "engrave" {
-                if el.attr("id").and_then(Json::as_str).is_none() {
+                if el.attr_of("id").and_then(Json::as_str).is_none() {
                     return Err(format!("{}: an engrave has an id (the name the nest's code uses)", place(el)));
                 }
                 engraves.push(self.add(el, "nest.engrave", attrs(el, &[])?)?);

@@ -153,17 +153,17 @@ fn stated(v: Option<&Json>) -> bool {
 }
 
 fn firmware_of(t: &DocTree) -> Result<Json, String> {
-    if !FIRMWARE_RELEASE_FIELDS.iter().any(|k| stated(t.attr(k))) {
-        if !stated(t.attr("name")) {
+    if !FIRMWARE_RELEASE_FIELDS.iter().any(|k| stated(t.attr_of(k))) {
+        if !stated(t.attr_of("name")) {
             return Err("firmware(): a firmware's declaration states its name; a release states version, image, sha256, sbom and device".into());
         }
         return Ok(with_children(t));
     }
-    let missing: Vec<&str> = FIRMWARE_RELEASE_FIELDS.iter().copied().filter(|k| !stated(t.attr(k))).collect();
+    let missing: Vec<&str> = FIRMWARE_RELEASE_FIELDS.iter().copied().filter(|k| !stated(t.attr_of(k))).collect();
     if !missing.is_empty() {
         return Err(format!("firmware() needs {}: a release states all of {}", missing.join(", "), FIRMWARE_RELEASE_FIELDS.join(", ")));
     }
-    let sha = t.attr("sha256");
+    let sha = t.attr_of("sha256");
     if !matches!(sha, Some(Json::Str(s)) if s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))) {
         let said = sha.map(Json::text).unwrap_or_else(|| "undefined".into());
         return Err(format!("firmware() sha256 is the image's SHA-256 in 64 lowercase hex digits, not {said}"));

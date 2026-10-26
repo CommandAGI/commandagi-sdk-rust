@@ -372,7 +372,7 @@ pub fn is_threed(root: &El) -> bool {
 /// How a message names an element: `sketch().id("sketch1")`, `slot().name("environment")`, `box_()`.
 fn at(el: &El) -> String {
     for k in ["id", "name"] {
-        if let Some(v @ Json::Str(_)) = el.attr(k) {
+        if let Some(v @ Json::Str(_)) = el.attr_of(k) {
             return format!("{}().{k}({})", fn_name(el.tag), v.text());
         }
     }
@@ -427,7 +427,7 @@ fn id_ok(id: &str) -> bool {
 }
 
 fn id_of(el: &El) -> Result<String, String> {
-    match el.attr("id") {
+    match el.attr_of("id") {
         Some(Json::Str(id)) if !id.is_empty() => {
             if !id_ok(id) {
                 return Err(format!("{}: an id is letters, digits, _ . - with / between them ({})", at(el), Json::from(id.as_str()).text()));
@@ -479,7 +479,7 @@ fn sketch_of(el: &El) -> Result<(Json, Sources), String> {
             points.push((id, Json::Obj(f)));
         } else if SKETCH_SEGMENTS.contains(&child.tag) {
             let id = claim("segment")?;
-            if child.attr("type").is_some() {
+            if child.attr_of("type").is_some() {
                 return Err(format!("{} {}: the tag is the segment's type", at(el), at(child)));
             }
             let mut s = vec![("id".to_string(), Json::from(id.as_str())), ("type".to_string(), Json::from(child.tag))];
@@ -531,7 +531,7 @@ fn sketch_of(el: &El) -> Result<(Json, Sources), String> {
 /// The built-in planes a root says the document has (`builtin_planes`); absent: all three.
 fn builtin_planes_of(root: &El) -> Result<Vec<&'static str>, String> {
     let all: Vec<&'static str> = BUILTIN_PLANES.iter().map(|p| p.0).collect();
-    let Some(v) = root.attr("builtinPlanes") else { return Ok(all) };
+    let Some(v) = root.attr_of("builtinPlanes") else { return Ok(all) };
     let refused = || format!("{}: builtin_planes lists built-in planes ({})", at(root), all.join(", "));
     let Json::Arr(items) = v else { return Err(refused()) };
     let mut out = Vec::new();
@@ -561,7 +561,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
         }
     }
     let builtins = builtin_planes_of(root)?;
-    let name = match root.attr("name") {
+    let name = match root.attr_of("name") {
         Some(Json::Str(n)) if !n.is_empty() => n.clone(),
         _ => fallback_name.to_string(),
     };
@@ -597,7 +597,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
             match el.tag {
                 "parameter" => {
                     no_children(el)?;
-                    let pname = match el.attr("name") {
+                    let pname = match el.attr_of("name") {
                         Some(Json::Str(p)) if !p.is_empty() && slug(p) == *p => p.clone(),
                         _ => return Err(format!("{} needs a name (letters, digits, _ . -)", at(el))),
                     };
@@ -606,17 +606,17 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                             return Err(format!("{}: {} is not read on a parameter", at(el), rust_name(k)));
                         }
                     }
-                    if !matches!(el.attr("value"), Some(Json::Num(_))) {
+                    if !matches!(el.attr_of("value"), Some(Json::Num(_))) {
                         return Err(format!("{}: value is a number", at(el)));
                     }
-                    if let Some(tol) = el.attr("tolerance") {
+                    if let Some(tol) = el.attr_of("tolerance") {
                         if let Some(problem) = super::tolerances::tolerance_problem(tol) {
                             return Err(format!("{}: tolerance: {problem}", at(el)));
                         }
                     }
                     claim(&mut owner, &pname, format!("parameter \"{pname}\""))?;
                     let mut inputs = fields(el, &["name", "bindings"])?;
-                    let bindings = match el.attr("bindings") {
+                    let bindings = match el.attr_of("bindings") {
                         None => Json::Arr(Vec::new()),
                         Some(b) => {
                             plain(b, &format!("{} bindings", at(el)))?;
@@ -682,7 +682,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 }
                 "slot" => {
                     no_children(el)?;
-                    let field = match el.attr("name") {
+                    let field = match el.attr_of("name") {
                         Some(Json::Str(f)) if f.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && f.chars().all(word_char) => f.clone(),
                         _ => return Err(format!("{} needs the name of a document field", at(el))),
                     };
@@ -696,7 +696,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                     }
                     claim(&mut owner, &field, format!("the document's {field}"))?;
                     // An absent value is `undefined` in TypeScript, which the node's JSON leaves out.
-                    let value = el.attr("value").cloned();
+                    let value = el.attr_of("value").cloned();
                     if let Some(v) = &value {
                         plain(v, &format!("{} value", at(el)))?;
                     }
@@ -720,7 +720,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 }
                 t if THREED_FEATURES.contains(&t) => declared.push(el),
                 "feature" => {
-                    let t = match el.attr("type") {
+                    let t = match el.attr_of("type") {
                         Some(Json::Str(t))
                             if t.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && t.chars().all(|c| word_char(c) || c == '.' || c == '-') =>
                         {
@@ -749,10 +749,10 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
             let id = id_of(el)?;
             claim(&mut owner, &id, format!("feature \"{id}\""))?;
             let generic = el.tag == "feature";
-            if !generic && el.attr("type").is_some() {
+            if !generic && el.attr_of("type").is_some() {
                 return Err(format!("{}: the tag is the feature's type", at(el)));
             }
-            let kind = if generic { el.attr("type").and_then(Json::as_str).unwrap_or_default().to_string() } else { el.tag.to_string() };
+            let kind = if generic { el.attr_of("type").and_then(Json::as_str).unwrap_or_default().to_string() } else { el.tag.to_string() };
             let mut rest = fields(el, if generic { &["id", "type"] } else { &["id"] })?;
             let label = take(&mut rest, "name");
             let suppressed = take(&mut rest, "suppressed");
@@ -872,7 +872,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
     }
     let mut view = Json::obj().with("name", name.as_str()).with("units", "mm");
     for k in VIEW_ATTRS {
-        if let Some(v) = root.attr(k) {
+        if let Some(v) = root.attr_of(k) {
             plain(v, &format!("{} {}", at(root), rust_name(k)))?;
             view.set(k, v.clone());
         }
@@ -883,7 +883,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
     if !order.is_empty() {
         view.set("presentation", Json::obj().with("order", order));
     }
-    let id = match root.attr("id") {
+    let id = match root.attr_of("id") {
         Some(Json::Str(i)) if !i.is_empty() => i.clone(),
         _ => format!("3d-{}", slug(&name).to_lowercase()),
     };

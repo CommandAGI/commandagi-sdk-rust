@@ -134,14 +134,14 @@ pub fn duration_seconds(text: &str) -> Option<u64> {
 
 /// How a message names an element: `source().id("fred")`.
 fn call(t: &DocTree, key: &str) -> String {
-    match t.attr(key) {
+    match t.attr_of(key) {
         Some(v @ Json::Str(_)) => format!("{}().{}({})", fn_name(t.tag), fn_name(key), v.text()),
         _ => format!("{}()", fn_name(t.tag)),
     }
 }
 
 fn word(t: &DocTree, k: &str, key: &str) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         None | Some(Json::Null) => Ok(()),
         Some(Json::Str(s)) if !s.is_empty() => Ok(()),
         Some(v) => Err(format!("{} {} is a word, not {}", call(t, key), fn_name(k), v.text())),
@@ -149,7 +149,7 @@ fn word(t: &DocTree, k: &str, key: &str) -> Result<(), String> {
 }
 
 fn one_of(t: &DocTree, k: &str, values: &[&str]) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         None | Some(Json::Null) => Ok(()),
         Some(Json::Str(s)) if values.contains(&s.as_str()) => Ok(()),
         Some(v) => Err(format!("{} {} is {}, not {}", call(t, "id"), k, values.iter().map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join(", "), v.text())),
@@ -160,7 +160,7 @@ fn one_of(t: &DocTree, k: &str, values: &[&str]) -> Result<(), String> {
 fn said(t: &DocTree, keys: &[&str]) -> Json {
     let mut out = Json::obj();
     for k in keys {
-        if let Some(v) = t.attr(k).filter(|v| !matches!(v, Json::Null)) {
+        if let Some(v) = t.attr_of(k).filter(|v| !matches!(v, Json::Null)) {
             out.set(k, v.clone());
         }
     }
@@ -168,14 +168,14 @@ fn said(t: &DocTree, keys: &[&str]) -> Json {
 }
 
 fn str_attr<'a>(t: &'a DocTree, k: &str) -> Option<&'a str> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Str(s)) => Some(s.as_str()),
         _ => None,
     }
 }
 
 fn has(t: &DocTree, k: &str) -> bool {
-    !matches!(t.attr(k), None | Some(Json::Null))
+    !matches!(t.attr_of(k), None | Some(Json::Null))
 }
 
 /// `all`, `derived` or `sample:<duration>`.
@@ -211,15 +211,15 @@ fn source_of(t: &DocTree) -> Result<Json, String> {
         word(t, k, "id")?;
     }
     let w = call(t, "id");
-    if t.attr("connection").is_some() && t.attr("via").and_then(|v| v.as_str()).unwrap_or("worker") != "worker" {
+    if t.attr_of("connection").is_some() && t.attr_of("via").and_then(|v| v.as_str()).unwrap_or("worker") != "worker" {
         return Err(format!("{w} connection names a connected account, which the api worker reads (via=\"worker\")"));
     }
-    if let Some(p) = t.attr("params") {
+    if let Some(p) = t.attr_of("params") {
         if !matches!(p, Json::Obj(_)) {
             return Err(format!("{w} params is an object ({{\"series\": \"CPIAUCSL\"}}), not {}", p.text()));
         }
     }
-    let every = t.attr("every");
+    let every = t.attr_of("every");
     let seconds = match every {
         Some(Json::Str(s)) => duration_seconds(s),
         _ => None,
@@ -260,7 +260,7 @@ fn source_of(t: &DocTree) -> Result<Json, String> {
     if on_vm && !has(t, "session") && !has(t, "snapshot") {
         return Err(format!("{w} via=\"{v}\" launches from a snapshot: it names a session or a snapshot"));
     }
-    let cost = t.attr("maxCostPerDay").filter(|c| !matches!(c, Json::Null));
+    let cost = t.attr_of("maxCostPerDay").filter(|c| !matches!(c, Json::Null));
     if cost.is_some() && !on_vm {
         return Err(format!("{w} maxCostPerDay bounds what a via=\"vm\" or \"android-vm\" source spends"));
     }
@@ -402,8 +402,8 @@ fn derive_of(t: &DocTree) -> Result<Json, String> {
     if !str_attr(t, "id").is_some_and(word_ok) {
         return Err(format!("{w} id is a word (letters, digits, _ and -)"));
     }
-    let Some(Json::Obj(inputs)) = t.attr("inputs").filter(|i| matches!(i, Json::Obj(e) if !e.is_empty())) else {
-        let said = t.attr("inputs").map(Json::text).unwrap_or_else(|| "undefined".into());
+    let Some(Json::Obj(inputs)) = t.attr_of("inputs").filter(|i| matches!(i, Json::Obj(e) if !e.is_empty())) else {
+        let said = t.attr_of("inputs").map(Json::text).unwrap_or_else(|| "undefined".into());
         return Err(format!("{w} inputs maps each port to a monitor's folder ({{\"quotes\": \"../quotes\"}}), not {said}"));
     };
     for (port, folder) in inputs {
@@ -415,7 +415,7 @@ fn derive_of(t: &DocTree) -> Result<Json, String> {
             other => return Err(format!("{w} inputs.{port} is a monitor's folder, not {}", other.text())),
         }
     }
-    if let Some(p) = t.attr("params").filter(|p| !matches!(p, Json::Null | Json::Obj(_))) {
+    if let Some(p) = t.attr_of("params").filter(|p| !matches!(p, Json::Null | Json::Obj(_))) {
         return Err(format!("{w} params is an object ({{\"window\": \"1m\"}}), not {}", p.text()));
     }
     if let Some(d) = str_attr(t, "since") {
@@ -431,8 +431,8 @@ fn discover_of(t: &DocTree) -> Result<Json, String> {
         word(t, k, "into")?;
     }
     let w = format!("discover().into(\"{}\")", str_attr(t, "into").unwrap_or("./"));
-    let shown = |k: &str| t.attr(k).map(Json::text).unwrap_or_else(|| "undefined".into());
-    let of_ok = match t.attr("of") {
+    let shown = |k: &str| t.attr_of(k).map(Json::text).unwrap_or_else(|| "undefined".into());
+    let of_ok = match t.attr_of("of") {
         None | Some(Json::Null) => true,
         Some(Json::Str(s)) => !s.is_empty(),
         Some(Json::Arr(a)) => !a.is_empty() && a.iter().all(|x| matches!(x, Json::Str(s) if !s.is_empty())),
@@ -441,12 +441,12 @@ fn discover_of(t: &DocTree) -> Result<Json, String> {
     if !of_ok {
         return Err(format!("{w} of is a monitor's folder or a list of them ([\"../kev\", \"../cve-feed\"]), not {}", shown("of")));
     }
-    if let Some(when) = t.attr("when").filter(|v| !matches!(v, Json::Null)) {
+    if let Some(when) = t.attr_of("when").filter(|v| !matches!(v, Json::Null)) {
         if let Some(bad) = when_shape(when) {
             return Err(format!("{w} when: {bad}"));
         }
     }
-    let slug_ok = match t.attr("slug") {
+    let slug_ok = match t.attr_of("slug") {
         Some(Json::Str(s)) => data_path_ok(s),
         Some(slug @ Json::Obj(entries)) => {
             matches!(slug.get("paths"), Some(Json::Arr(p)) if !p.is_empty() && p.iter().all(|x| x.as_str().is_some_and(data_path_ok)))
@@ -463,7 +463,7 @@ fn discover_of(t: &DocTree) -> Result<Json, String> {
     if str_attr(t, "name").is_some_and(|n| !data_path_ok(n)) {
         return Err(format!("{w} name is a data path (fromName), not {}", shown("name")));
     }
-    match t.attr("props") {
+    match t.attr_of("props") {
         None | Some(Json::Null) => {}
         Some(Json::Obj(props)) => {
             for (k, v) in props {
@@ -476,7 +476,7 @@ fn discover_of(t: &DocTree) -> Result<Json, String> {
         }
         Some(other) => return Err(format!("{w} props maps each prop to a data path ({{\"conversation\": \"conversation\"}}), not {}", other.text())),
     }
-    if let Some(m) = t.attr("max").filter(|v| !matches!(v, Json::Null)) {
+    if let Some(m) = t.attr_of("max").filter(|v| !matches!(v, Json::Null)) {
         if !matches!(m, Json::Num(n) if n.fract() == 0.0 && *n >= 1.0 && *n <= DISCOVER_MAX as f64) {
             return Err(format!("{w} max is a whole number from 1 to {DISCOVER_MAX}, not {}", m.text()));
         }
@@ -488,7 +488,7 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
     for k in MONITOR_FIELDS.iter().filter(|k| **k != "sameAs") {
         word(t, k, "title")?;
     }
-    match t.attr("sameAs") {
+    match t.attr_of("sameAs") {
         None | Some(Json::Null) => {}
         Some(Json::Arr(a)) if a.iter().all(|s| s.as_str().is_some_and(subject_ok)) => {}
         Some(v) => return Err(format!("monitor() sameAs is a list of subjects (\"ticker:NVDA\"), not {}", v.text())),
@@ -508,7 +508,7 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
                 if let Some(w) = str_attr(c, "where").filter(|w| !where_ok(w)) {
                     return Err(format!("{} where is name=value terms joined by \",\" (conversation=123), not \"{w}\"", call(c, "monitor")));
                 }
-                if matches!(c.attr("monitor"), Some(Json::Str(m)) if m == "." || m == "./") {
+                if matches!(c.attr_of("monitor"), Some(Json::Str(m)) if m == "." || m == "./") {
                     return Err(format!("{} names this monitor; a follow names another monitor's folder", call(c, "monitor")));
                 }
                 follows.push(said(c, FOLLOW_FIELDS));

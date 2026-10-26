@@ -95,7 +95,7 @@ pub fn is_digest(s: &str) -> bool {
 
 /// How a message names an element: `case().slug("c")`.
 fn call(t: &DocTree) -> String {
-    match t.attr("slug") {
+    match t.attr_of("slug") {
         Some(v @ Json::Str(_)) => format!("{}().slug({})", fn_name(t.tag), v.text()),
         _ => format!("{}()", fn_name(t.tag)),
     }
@@ -106,7 +106,7 @@ fn said(v: Option<&Json>) -> String {
 }
 
 fn text(t: &DocTree, k: &str) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Str(s)) if !s.trim().is_empty() => Ok(()),
         Some(v) => Err(format!("{} {} is text, not {}", call(t), rust_name(k), v.text())),
         None => Ok(()),
@@ -114,14 +114,14 @@ fn text(t: &DocTree, k: &str) -> Result<(), String> {
 }
 
 fn object(t: &DocTree, k: &str) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Obj(_)) | None => Ok(()),
         Some(v) => Err(format!("{} {} is an object, not {}", call(t), rust_name(k), v.text())),
     }
 }
 
 fn texts(t: &DocTree, k: &str) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Arr(items)) if items.iter().all(|s| matches!(s, Json::Str(s) if !s.trim().is_empty())) => Ok(()),
         Some(_) => Err(format!("{} {} is a list of texts", call(t), rust_name(k))),
         None => Ok(()),
@@ -129,7 +129,7 @@ fn texts(t: &DocTree, k: &str) -> Result<(), String> {
 }
 
 fn number(t: &DocTree, k: &str, integer: bool) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Num(n)) if n.is_finite() && (!integer || n.fract() == 0.0) => Ok(()),
         Some(v) => Err(format!("{} {} is a {}number, not {}", call(t), rust_name(k), if integer { "whole " } else { "" }, v.text())),
         None => Ok(()),
@@ -137,7 +137,7 @@ fn number(t: &DocTree, k: &str, integer: bool) -> Result<(), String> {
 }
 
 fn flag(t: &DocTree, k: &str) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Bool(_)) | None => Ok(()),
         Some(_) => Err(format!("{} {} is true or false", call(t), rust_name(k))),
     }
@@ -152,7 +152,7 @@ fn has_kind(v: Option<&Json>) -> bool {
 fn fields(t: &DocTree, keys: &[&str]) -> Json {
     let mut out = Json::obj();
     for k in keys {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }
@@ -167,11 +167,11 @@ pub fn eval_case_of(t: &DocTree) -> Result<Json, String> {
     for k in ["acceptance", "environment", "config"] {
         object(t, k)?;
     }
-    if !has_kind(t.attr("environment")) {
-        return Err(format!("{} environment is a world ({{ kind: \"synthetic\", seed: 41 }}), not {}", call(t), said(t.attr("environment"))));
+    if !has_kind(t.attr_of("environment")) {
+        return Err(format!("{} environment is a world ({{ kind: \"synthetic\", seed: 41 }}), not {}", call(t), said(t.attr_of("environment"))));
     }
-    let task = t.attr("task").is_some();
-    if task == t.attr("instruction").is_some() {
+    let task = t.attr_of("task").is_some();
+    if task == t.attr_of("instruction").is_some() {
         return Err(format!(
             "{} says what the agent is handed once: a task file (task) or an instruction, not {}",
             call(t),
@@ -202,7 +202,7 @@ fn metric_named(t: &DocTree, at: &str, v: &Json) -> Result<(), String> {
 }
 
 fn objective(t: &DocTree) -> Result<(), String> {
-    let Some(o) = t.attr("objective") else { return Ok(()) };
+    let Some(o) = t.attr_of("objective") else { return Ok(()) };
     let kind = match o.get("kind") {
         Some(Json::Str(k)) => k.as_str(),
         _ => return Err(format!("{} objective is {{ kind: \"metric\" | \"linear\" | \"function\", … }}, not {}", call(t), o.text())),
@@ -226,7 +226,7 @@ fn objective(t: &DocTree) -> Result<(), String> {
 }
 
 fn weights(t: &DocTree) -> Result<(), String> {
-    match t.attr("scoring").and_then(|s| s.get("weights")) {
+    match t.attr_of("scoring").and_then(|s| s.get("weights")) {
         None => Ok(()),
         Some(Json::Obj(entries)) if entries.iter().all(|(_, w)| matches!(w, Json::Num(n) if n.is_finite())) => Ok(()),
         Some(w) => Err(format!("{} scoring.weights is {{ \"<metric file ref>\": <number> }}, not {}", call(t), w.text())),
@@ -248,7 +248,7 @@ fn eval_of(t: &DocTree) -> Result<Json, String> {
     for k in ["published", "official"] {
         flag(t, k)?;
     }
-    if let Some(v) = t.attr("frozen").filter(|v| !matches!(v, Json::Str(s) if is_digest(s))) {
+    if let Some(v) = t.attr_of("frozen").filter(|v| !matches!(v, Json::Str(s) if is_digest(s))) {
         return Err(format!("{} frozen is the digest the eval is frozen at (sha256:<hex>), not {}", call(t), v.text()));
     }
     let cases = t.children.iter().filter(|c| c.tag == "case").map(eval_case_of).collect::<Result<Vec<_>, _>>()?;
@@ -262,8 +262,8 @@ fn metric_of(t: &DocTree) -> Result<Json, String> {
     for k in ["probe", "pass"] {
         object(t, k)?;
     }
-    if !has_kind(t.attr("probe")) {
-        return Err(format!("{} probe is what to measure ({{ kind: \"event\", eventKind: \"telemetry\" }}), not {}", call(t), said(t.attr("probe"))));
+    if !has_kind(t.attr_of("probe")) {
+        return Err(format!("{} probe is what to measure ({{ kind: \"event\", eventKind: \"telemetry\" }}), not {}", call(t), said(t.attr_of("probe"))));
     }
     number(t, "target", false)?;
     Ok(fields(t, METRIC_FIELDS))

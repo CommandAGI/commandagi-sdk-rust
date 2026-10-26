@@ -136,6 +136,26 @@ fn a_text_tuple_lists_its_texts_and_elements_and_json_is_a_literal() {
 }
 
 #[test]
+fn a_generic_attr_call_is_the_attribute_it_names() {
+    let text = r#"fn document() -> El { node().id("blur").attr("cutoff", 4).attr("model_number", "AR4") }"#;
+    let m = commandagi_map::map(text);
+    let node = &elements(&m)[0];
+    assert_eq!(arr(node, "props").len(), 3);
+    let cutoff = prop(node, "cutoff");
+    assert_eq!(slice(text, num(cutoff, "start"), num(cutoff, "end")), r#".attr("cutoff", 4)"#);
+    assert_eq!(slice(text, num(cutoff, "valueStart"), num(cutoff, "valueEnd")), "4");
+    assert_eq!(cutoff.get("value"), Some(&Json::Num(4.0)));
+    let model = prop(node, "model_number");
+    assert_eq!(slice(text, num(model, "valueStart"), num(model, "valueEnd")), r#""AR4""#);
+    assert_eq!(model.get("value"), Some(&Json::from("AR4")));
+    // What a file writes as the generic call is not a method of its module: `generic` says so.
+    assert_eq!(cutoff.get("generic"), Some(&Json::Bool(true)));
+    assert!(prop(node, "id").get("generic").is_none(), "a method is not generic");
+    // The call is the element's attribute, not one called `attr`: the map lists no such prop.
+    assert!(arr(node, "props").iter().all(|p| p.get("name").and_then(Json::as_str) != Some("attr")));
+}
+
+#[test]
 fn a_type_path_or_a_variant_is_not_an_element() {
     let m = commandagi_map::map("fn document() -> El { let n = String::from(\"R1\"); group(&n, [Some(rect()).unwrap()]) }");
     let tags: Vec<&str> = elements(&m).iter().map(|e| e.get("tag").and_then(Json::as_str).unwrap()).collect();
