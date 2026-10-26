@@ -1469,7 +1469,7 @@ impl ImportProps {
     }
 }
 
-/// How to interpret the linked file: a 3D document in code (`"3d"`, a `.3d.tsx` run), a foreign solid imported via the named importer ("step"/"iges"), or a KiCad board ("kicad_pcb") converted to a 3D solid on open (a LIVE link — board edits re-mesh here). Mirrors `FileRef.importer`.
+/// How to interpret the linked file: a 3D document in code (`"3d"`, a `.3d.tsx`/`.3d.py`/`.3d.rs` run), a foreign solid imported via the named importer ("step"/"iges"), a KiCad board ("kicad_pcb") or a board in code (`"pcb"`, any language) converted to a 3D solid on open (a LIVE link — board edits re-mesh here). Mirrors `FileRef.importer`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExternalPartPropsImporter {
     /// `"step"`
@@ -1500,8 +1500,8 @@ pub enum ExternalPartPropsImporter {
     Usd,
     /// `"kicad_pcb"`
     KicadPcb,
-    /// `"pcb.tsx"`
-    PcbTsx,
+    /// `"pcb"`
+    Pcb,
 }
 
 impl ToJson for ExternalPartPropsImporter {
@@ -1521,7 +1521,7 @@ impl ToJson for ExternalPartPropsImporter {
             ExternalPartPropsImporter::Dae => "dae",
             ExternalPartPropsImporter::Usd => "usd",
             ExternalPartPropsImporter::KicadPcb => "kicad_pcb",
-            ExternalPartPropsImporter::PcbTsx => "pcb.tsx",
+            ExternalPartPropsImporter::Pcb => "pcb",
         })
     }
 }
@@ -1671,7 +1671,7 @@ pub struct ExternalPartProps {
     pub path: Option<String>,
     /// Filename of the linked part (fallback locator when no path, or a human label).
     pub file_name: Option<String>,
-    /// How to interpret the linked file: a 3D document in code (`"3d"`, a `.3d.tsx` run), a foreign solid imported via the named importer ("step"/"iges"), or a KiCad board ("kicad_pcb") converted to a 3D solid on open (a LIVE link — board edits re-mesh here). Mirrors `FileRef.importer`.
+    /// How to interpret the linked file: a 3D document in code (`"3d"`, a `.3d.tsx`/`.3d.py`/`.3d.rs` run), a foreign solid imported via the named importer ("step"/"iges"), a KiCad board ("kicad_pcb") or a board in code (`"pcb"`, any language) converted to a 3D solid on open (a LIVE link — board edits re-mesh here). Mirrors `FileRef.importer`.
     pub importer: Option<ExternalPartPropsImporter>,
     /// Millimetres represented by one source coordinate for unitless/scene formats. Defaults are format-aware (glTF/VRML standard metres → 1000 mm; OBJ/STL → 1 mm). KiCad WRL adapters set 2.54.
     pub unit_scale_mm: Option<f64>,
