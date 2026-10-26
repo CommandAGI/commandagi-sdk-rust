@@ -24,7 +24,8 @@
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
-//!                                                                         one pane(); region().side.tab …
+//!                                                                         one pane() (repeat("live-stream"): one pane
+//!                                                                         per live stream); region().side.tab …
 //! geoproject([…]).id.name …                          <name>.geo.rs        date_range().start.end, camera(), reference()
 //! opgraph([…]).name                                  <name>.opgraph.rs    node().id.type_.x.y …ports, wire().from.to
 //! ```
@@ -305,7 +306,17 @@ fn dashboard_of(t: &DocTree) -> Result<Json, String> {
             if panes.iter().any(|(k, _)| *k == id) {
                 return Err(format!("two pane() have id {:?}", id));
             }
-            panes.push((id.clone(), Json::Obj(omit(&n.attrs, &["id"]))));
+            // A repeating pane is one pane per live stream (the shell grows it): it is what it repeats, never a file.
+            let pane = omit(&n.attrs, &["id"]);
+            let repeated = pane.iter().find(|(k, _)| k == "repeat").map(|(_, v)| v.clone());
+            if let Some(what) = repeated {
+                let files = pane.iter().any(|(k, v)| k == "kind" && *v == Json::Str("files".into()));
+                let names = pane.iter().any(|(k, _)| k == "selected" || k == "path");
+                if what != Json::Str("live-stream".into()) || !files || names {
+                    return Err(format!("pane().id({:?}): repeat is \"live-stream\", and a repeating pane shows files and names no file of its own (it is filled from what is live)", id));
+                }
+            }
+            panes.push((id.clone(), Json::Obj(pane)));
             return Ok(Json::obj().with("kind", "leaf").with("paneId", id));
         }
         let sides: Vec<&DocTree> = n.children.iter().filter(|c| c.tag == "split" || c.tag == "pane").collect();

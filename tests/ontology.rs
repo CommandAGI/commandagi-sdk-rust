@@ -124,6 +124,16 @@ fn a_dashboards_layout_is_nested_splits_of_panes_its_params_and_regions_elements
     assert_eq!(keys, ["", "param#unit", "split@0", "split@0/pane#a", "split@0/pane#b", "region#left"]);
     assert!(bad(dashboard([split([pane().id("a")]).axis("x").ratio(0.5)]).name("x")).contains("a split() has two sides"));
     assert!(bad(dashboard([pane().id("a"), pane().id("b")]).name("x")).contains("has one layout"));
+    // A repeating pane is one pane per live stream (the shell grows it), and names no file of its own.
+    let (_, live, _) = document(dashboard([pane().id("live").kind("files").with_attr("repeat", "live-stream")]).name("everything live"));
+    assert_eq!(
+        live,
+        j(r#"{"format": "commandagi-dashboard", "name": "everything live", "layout": {"kind": "leaf", "paneId": "live"},
+              "panes": {"live": {"kind": "files", "repeat": "live-stream"}}}"#)
+    );
+    assert!(bad(dashboard([pane().id("live").kind("files").with_attr("repeat", "runs")]).name("x")).contains("repeat is \"live-stream\""));
+    assert!(bad(dashboard([pane().id("live").kind("files").with_attr("repeat", "live-stream").with_attr("selected", "runs/r/run.json")]).name("x")).contains("names no file of its own"));
+    assert!(bad(dashboard([pane().id("live").kind("devices").with_attr("repeat", "live-stream")]).name("x")).contains("shows files"));
 }
 
 /// A tag the trait has no method for: a method of the file's own sets the field by its TypeScript name.
