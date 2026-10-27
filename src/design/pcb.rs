@@ -44,11 +44,12 @@
 //! kicad().version().generator().forms()
 //!                                   the KiCad forms the board carries for exchange and nothing else reads.
 //! net().name().code()               the KiCad net code of the schematic's net `name`.
-//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().ref_at().chart().uuid().kicad()
+//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().ref_at().value_at().chart()
+//!                                   .uuid().kicad()
 //!                                   the schematic's part `name` on this board: one of the editor's own land patterns
 //!                                   (BOARD_FOOTPRINTS), or a library footprint by its ref ("Package_SO:SOIC-8") in
-//!                                   the `.pretty` folder `library` names. `ref_at` [x, y] is where its reference
-//!                                   text sits (mm, in the footprint's own frame).
+//!                                   the `.pretty` folder `library` names. `ref_at` and `value_at` [x, y] are where
+//!                                   its reference and value texts sit (mm, in the footprint's own frame).
 //! trace().name().layer().width().points().from().to().net().surface().uuid().segment_uuids().kicad()
 //!                                   a copper run: its points ([[x, y], …]) on one copper layer, a finished width.
 //! arc().name().layer().width().points().from().to().net().uuid().kicad()
@@ -241,6 +242,8 @@ attributes! {
         pcb_rotation;
         /// Where a component's reference text sits: `[x, y]` in mm, in the footprint's own frame.
         ref_at;
+        /// Where a component's value text sits: `[x, y]` in mm, in the footprint's own frame.
+        value_at;
         /// The face of the board's surface a component sits on.
         chart;
         /// A KiCad uuid.
@@ -1148,7 +1151,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
         let el: &El = el;
         match el.tag {
             "component" => {
-                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "chart", "uuid", "kicad"])?;
+                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "valueAt", "chart", "uuid", "kicad"])?;
                 let reference = el.attr("name").and_then(Json::as_str).unwrap_or_default().to_string();
                 let fp = el.attr("footprint");
                 let fp_text = fp.and_then(Json::as_str);
@@ -1199,6 +1202,15 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if ref_at.is_some() && x.is_none() {
                     return Err(format!("{}: ref_at needs pcb_x and pcb_y", at(el)));
                 }
+                // Where its value text sits, in the same frame: the layout moves it too where the footprint draws it on
+                // a silkscreen.
+                let value_at = el.attr("valueAt");
+                if value_at.is_some_and(|v| !matches!(v, Json::Arr(l) if l.len() == 2 && l.iter().all(|n| finite(n).is_some()))) {
+                    return Err(format!("{}: value_at is [x, y] in mm, in the footprint's own frame", at(el)));
+                }
+                if value_at.is_some() && x.is_none() {
+                    return Err(format!("{}: value_at needs pcb_x and pcb_y", at(el)));
+                }
                 let chart = text_of(el, "chart", false)?;
                 if chart.is_some() && surface.is_none() {
                     return Err(format!("{}: chart names a face of the board's surface, and the board() has no surface", at(el)));
@@ -1221,6 +1233,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 }
                 if let Some(r) = ref_at {
                     inputs.push(("refAt".into(), r.clone()));
+                }
+                if let Some(r) = value_at {
+                    inputs.push(("valueAt".into(), r.clone()));
                 }
                 if let Some(c) = chart {
                     inputs.push(("surfaceMount".into(), Json::obj().with("chart", c)));
