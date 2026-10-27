@@ -39,7 +39,9 @@
 //! among a layer's strokes and changes what is under it; in a
 //! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
-//! `stroke`, `color_overlay`, `gradient_overlay`). A value that
+//! `inner_glow`, `bevel_emboss`, `satin`, `stroke`, `color_overlay`, `gradient_overlay`, `pattern_overlay`; a
+//! `pattern_overlay` names one of the paint editor's built-in patterns (dots, lines, grid, checker, diagonal) and
+//! its `.scale(…)` in pixels). A value that
 //! is an object is JSON text: `.brush(json(r#"{"kind": "round", "size": 4}"#))`. PIXELS ARE NOT CODE: a pixel layer
 //! names its image file by relative path (`.src("scan.png")`). Each node carries its element's call in `meta.source`; a
 //! `mask` is not a node, so a masked node carries the mask's call in `meta.sources.mask`. A tag the vocabulary does not
@@ -140,6 +142,14 @@ elements! {
     fx: children;
     /// A layer style: a shadow under the layer.
     drop_shadow = "dropShadow": leaf;
+    /// A layer style: a glow inside the layer's edge.
+    inner_glow = "innerGlow": leaf;
+    /// A layer style: the layer's edge beveled and lit (`style` inner, outer or emboss).
+    bevel_emboss = "bevelEmboss": leaf;
+    /// A layer style: satin bands inside the layer.
+    satin: leaf;
+    /// A layer style: a built-in pattern (`pattern`, `scale`) over the layer.
+    pattern_overlay = "patternOverlay": leaf;
     /// A layer style: a shadow inside the layer's edge.
     inner_shadow = "innerShadow": leaf;
     /// A layer style: a glow around the layer.
@@ -452,6 +462,22 @@ attributes! {
         choke;
         /// A stroke style's position: "outside", "inside" or "center".
         position;
+        /// A bevel's side: "inner", "outer" or "emboss".
+        style;
+        /// A bevel's depth (1 is 100%).
+        depth;
+        /// A bevel's softened rise, in pixels.
+        soften;
+        /// A bevel's light elevation, in degrees.
+        altitude;
+        /// A bevel's shadow colour.
+        shadow_color;
+        /// Satin's band is inverted.
+        invert;
+        /// A pattern overlay's built-in pattern (dots, lines, grid, checker, diagonal).
+        pattern;
+        /// A pattern's period, in pixels.
+        scale;
         /// A nest's safe height (mm).
         safe_z_mm;
         /// A nest's overrides.
@@ -506,7 +532,18 @@ attributes! {
 pub(crate) const FAMILY: Family = Family { module: "twod", roots: &["drawing", "painting", "photo", "nest"], declare };
 
 /// A painting layer's styles: the tags of its `fx`.
-pub const LAYER_STYLES: &[&str] = &["dropShadow", "innerShadow", "outerGlow", "stroke", "colorOverlay", "gradientOverlay"];
+pub const LAYER_STYLES: &[&str] = &[
+    "dropShadow",
+    "innerShadow",
+    "outerGlow",
+    "innerGlow",
+    "bevelEmboss",
+    "satin",
+    "colorOverlay",
+    "gradientOverlay",
+    "patternOverlay",
+    "stroke",
+];
 
 /// A photo's adjustments: each a layer whose attributes are the adjustment.
 pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", "vibrance", "colorBalance", "blackWhite", "invert", "threshold", "posterize", "develop"];
