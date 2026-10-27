@@ -71,7 +71,7 @@ attributes! {
         connection;
         monitor; match_; where_; prompt;
         op; inputs;
-        into_ = "into"; of; when; slug; props; name; max;
+        into_ = "into"; of; when; slug; props; name; max; visibility;
     }
 }
 
@@ -85,9 +85,11 @@ pub const SOURCE_FIELDS: &[&str] = &[
 pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match", "where"];
 pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
-pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max"];
+pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
 /// The most new folders a discover writes a tick.
 pub const DISCOVER_MAX: u32 = 50;
+/// Who may read a file a discover writes (docs/monitors.md § own thread or record).
+pub const VISIBILITIES: &[&str] = &["private", "unlisted", "public"];
 /// The paths a source's reads take (docs/sources.md § fetch paths).
 pub const VIAS: &[&str] = &["worker", "host", "vpn", "browser", "vm", "android-vm", "phone"];
 /// The paths that launch a machine from a snapshot (a logged-in state), and so cost money per read.
@@ -481,6 +483,11 @@ fn discover_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("{w} max is a whole number from 1 to {DISCOVER_MAX}, not {}", m.text()));
         }
     }
+    if let Some(v) = t.attr("visibility").filter(|v| !matches!(v, Json::Null)) {
+        if !v.as_str().is_some_and(|s| VISIBILITIES.contains(&s)) {
+            return Err(format!("{w} visibility is {}, not {}", VISIBILITIES.join(", "), v.text()));
+        }
+    }
     Ok(said(t, DISCOVER_FIELDS))
 }
 
@@ -592,6 +599,7 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
                 .with("props", d.get("props").cloned().unwrap_or_else(Json::obj))
                 .with("name", or_null(d, "name"))
                 .with("max", d.get("max").cloned().unwrap_or(Json::Num(10.0)))
+                .with("visibility", or_null(d, "visibility"))
         })
         .collect();
     let mut out = Json::obj();

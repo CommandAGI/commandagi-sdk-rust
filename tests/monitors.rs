@@ -130,8 +130,11 @@ fn a_derive_and_a_discover() {
     assert_eq!(
         full.get("discovers"),
         Some(&j(r#"[{"into": "./", "of": [], "when": {"class": "message.*"}, "slug": "conversation", "class": "../../conversation.tsx#Conversation",
-                    "props": {"conversation": "conversation", "title": "fromName"}, "name": "fromName", "max": 5}]"#))
+                    "props": {"conversation": "conversation", "title": "fromName"}, "name": "fromName", "max": 5, "visibility": null}]"#))
     );
+    // A discover says the visibility its folders take; absent, the platform writes them private.
+    let (_, public) = document(monitor([discover().slug("cve").class("../c.tsx#Exploit").visibility("public")]));
+    assert_eq!(monitor_with_defaults(&public).get("discovers"), Some(&j(r#"[{"into": "./", "of": [], "when": null, "slug": "cve", "class": "../c.tsx#Exploit", "props": {}, "name": null, "max": 10, "visibility": "public"}]"#)));
     let Some(Json::Arr(sources)) = full.get("sources") else { panic!("sources") };
     assert_eq!(sources[0].get("vantage"), Some(&Json::Str("../../../infra/vantages/laptop-linux".into())));
     let (_, conversation) = document(monitor([follows().monitor("../").match_("message.*").where_("conversation=4412")]).title("Alice").class("conversation"));
@@ -158,5 +161,6 @@ fn a_derive_and_a_discover() {
     refused(d().of(json("[]")), "of is a monitor's folder or a list of them");
     refused(d().props(json(r#"{"title": "a b"}"#)), "props.title is a data path");
     refused(d().max(500), "max is a whole number from 1 to 50");
+    refused(d().visibility("shared"), "visibility is private, unlisted, public");
     refused(follows().monitor("../x").where_("conversation"), "where is name=value terms");
 }
