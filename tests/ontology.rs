@@ -61,6 +61,23 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
     assert!(bad(w(vec![unit().uid("a").name("a").device("d"), unit().uid("a").name("b").device("d")])).contains(r#"two unit() in world() have uid "a""#));
     assert!(bad(w(vec![body().id("b")])).contains("body() stands in scene(), not in world()"));
     assert!(bad(w(vec![node().id("n")])).contains("node() is not an element of a world"));
+
+    // A group is what a unit stands in or on: a shelf and its level, the level in the shelf, the unit naming its level.
+    let (_, shelved, _) = document(world([
+        group().uid("shelf").name("machine shelf").size_mm([2440, 760, 2600]).position([0, 3600, 0]).rotation(0),
+        group().uid("shelf-1").name("level 1").group("shelf").size_mm([2440, 760, 650]).position([0, 3600, 150]).rotation(0),
+        unit().uid("cnc-01").name("router").device("../../devices/cnc/definition.tsx").group("shelf-1").position([-900, 3600, 150]).rotation(0),
+    ])
+    .name("Shop")
+    .kind("physical"));
+    assert_eq!(
+        shelved,
+        j(r#"{"name": "Shop", "kind": "physical",
+              "groups": [{"uid": "shelf", "name": "machine shelf", "size_mm": [2440, 760, 2600], "position": [0, 3600, 0], "rotation": 0},
+                         {"uid": "shelf-1", "name": "level 1", "group": "shelf", "size_mm": [2440, 760, 650], "position": [0, 3600, 150], "rotation": 0}],
+              "units": [{"uid": "cnc-01", "name": "router", "device": "../../devices/cnc/definition.tsx", "group": "shelf-1", "position": [-900, 3600, 150], "rotation": 0}]}"#)
+    );
+    assert!(bad(w(vec![group().uid("g").name("g").device("d")])).contains(r#"group().uid("g"): device is not read"#));
 }
 
 #[test]
