@@ -182,6 +182,24 @@ fn a_mask_is_the_one_layer_it_holds_and_carries_its_call() {
 }
 
 #[test]
+fn a_mask_of_names_a_layer_the_document_declares() {
+    // The mask names a layer written below it, so its wire is given once the stack is declared.
+    let g = graph(photo([
+        exposure([mask([]).of("sky")]).name("Mood").ev(-0.5),
+        raster([]).name("Sky").id("sky").src("sky.png"),
+    ]));
+    assert_eq!(node(&g, "photo.adjust").get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("sky")));
+    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.2").unwrap().text(), golden(&w("sky")), "the named layer is still the stack's");
+    assert!(node(&g, "sky").get("inputs").unwrap().get("mask").is_none(), "the mask declares no second layer and masks nothing itself");
+    assert!(node(&g, "photo.adjust").get("inputs").unwrap().get("mask").is_some());
+    assert_eq!(bad(photo([exposure([mask([]).of("nope")])])), "exposure(): mask(of=\"nope\") names no layer in this document");
+    assert_eq!(
+        bad(photo([exposure([mask([fill([])]).of("sky")]), raster([]).id("sky").src("a.png")])),
+        "mask(of=\"sky\") in exposure() holds no layer: of names one the document declares"
+    );
+}
+
+#[test]
 fn a_nest_engrave_is_a_nest_engrave_node_on_the_engraves_channel() {
     let g = graph(
         nest([
