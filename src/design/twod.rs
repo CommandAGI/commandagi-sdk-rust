@@ -288,6 +288,8 @@ attributes! {
         inputs;
         /// A transform.
         transform;
+        /// A pattern overlay's cell size (document pixels).
+        scale;
         /// A scale across.
         scale_x;
         /// A scale down.
@@ -460,6 +462,26 @@ attributes! {
         choke;
         /// A stroke style's position: "outside", "inside" or "center".
         position;
+        /// A bevel's lit side colour.
+        highlight;
+        /// A bevel's shaded side colour.
+        shadow;
+        /// The blend mode a bevel's lit side is laid with.
+        highlight_blend;
+        /// The blend mode a bevel's shaded side is laid with.
+        shadow_blend;
+        /// A bevel's light altitude, in degrees.
+        altitude;
+        /// A bevel's contrast.
+        depth;
+        /// A bevel's softness.
+        soften;
+        /// A bevel's direction: "up" or "down".
+        direction;
+        /// A pattern overlay's built-in pattern: "checks", "stripes", "dots" or "grid".
+        pattern;
+        /// A satin shades the other side.
+        invert;
         /// A nest's safe height (mm).
         safe_z_mm;
         /// A nest's overrides.
