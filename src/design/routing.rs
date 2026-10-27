@@ -25,7 +25,7 @@ fn routing_of(t: &DocTree) -> Result<Json, String> {
         let mut rows = Vec::new();
         let mut seen = Vec::<String>::new();
         for child in t.children.iter().filter(|c| c.tag == tag) {
-            let Some(Json::Str(id)) = child.attr("id") else { return Err(format!("<{tag}> id is required")); };
+            let Some(Json::Str(id)) = child.attr_of("id") else { return Err(format!("<{tag}> id is required")); };
             if id.trim().is_empty() || seen.contains(id) { return Err(format!("duplicate or empty <{tag}> id {id:?}")); }
             seen.push(id.clone());
             rows.push(child.record());

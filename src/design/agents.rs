@@ -123,7 +123,7 @@ fn positive(v: Option<&Json>) -> bool {
 }
 
 fn word(t: &DocTree, k: &str) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         Some(Json::Str(s)) if !s.is_empty() => Ok(()),
         None => Ok(()),
         Some(v) => Err(format!("{}() {} is a word, not {}", t.tag, rust_name(k), v.text())),
@@ -131,7 +131,7 @@ fn word(t: &DocTree, k: &str) -> Result<(), String> {
 }
 
 fn one_of(t: &DocTree, k: &str, values: &[&str]) -> Result<(), String> {
-    match t.attr(k) {
+    match t.attr_of(k) {
         None => Ok(()),
         Some(Json::Str(s)) if values.contains(&s.as_str()) => Ok(()),
         Some(v) => Err(format!("{}() {} is {}, not {}", t.tag, rust_name(k), quoted(values), v.text())),
@@ -186,7 +186,7 @@ fn check_realtime(v: &Json) -> Result<(), String> {
 fn said(t: &DocTree, fields: &[&str]) -> Json {
     let mut out = Json::obj();
     for k in fields {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }
@@ -198,36 +198,36 @@ fn harness_of(t: &DocTree) -> Result<Json, String> {
         word(t, k)?;
     }
     one_of(t, "kind", HARNESS_KINDS)?;
-    if let Some(v) = t.attr("experimental") {
+    if let Some(v) = t.attr_of("experimental") {
         if !matches!(v, Json::Bool(_)) {
             return Err(format!("harness() experimental is true or false, not {}", v.text()));
         }
     }
-    if let Some(v) = t.attr("runs") {
+    if let Some(v) = t.attr_of("runs") {
         if !list_of(Some(v), HARNESS_RUNTIMES, true) {
             return Err(format!("harness() runs is a list of {}, not {}", quoted(HARNESS_RUNTIMES), v.text()));
         }
     }
-    if let Some(v) = t.attr("tasks") {
+    if let Some(v) = t.attr_of("tasks") {
         if !list_of(Some(v), HARNESS_TASKS, false) {
             return Err(format!("harness() tasks is a list of {}, not {}", quoted(HARNESS_TASKS), v.text()));
         }
     }
-    let kind = t.attr("kind").and_then(Json::as_str);
-    if t.attr("tasks").is_some() && kind != Some("api") {
+    let kind = t.attr_of("kind").and_then(Json::as_str);
+    if t.attr_of("tasks").is_some() && kind != Some("api") {
         return Err(r#"harness() tasks is for kind("api") only: a model that does one task in a turn"#.into());
     }
-    if kind == Some("cli") && t.attr("cli").is_none() {
+    if kind == Some("cli") && t.attr_of("cli").is_none() {
         return Err(r#"harness().kind("cli") names the program it starts: .cli("claude")"#.into());
     }
-    if kind != Some("cli") && t.attr("cli").is_some() {
+    if kind != Some("cli") && t.attr_of("cli").is_some() {
         return Err(r#"harness() cli is for kind("cli") only"#.into());
     }
-    if kind == Some("api") && t.attr("provider").is_none() {
+    if kind == Some("api") && t.attr_of("provider").is_none() {
         return Err(r#"harness().kind("api") names its provider in the model catalog: .provider("anthropic")"#.into());
     }
-    if let Some(r) = t.attr("realtime") {
-        if kind != Some("api") || t.attr("tasks").is_some() {
+    if let Some(r) = t.attr_of("realtime") {
+        if kind != Some("api") || t.attr_of("tasks").is_some() {
             return Err(r#"harness() realtime is for kind("api") with no tasks: a model that converses live"#.into());
         }
         check_realtime(r)?;
@@ -240,13 +240,13 @@ fn agent_of(t: &DocTree) -> Result<Json, String> {
         word(t, k)?;
     }
     one_of(t, "voiceMode", VOICE_MODES)?;
-    if let Some(s) = t.attr("supervisor").and_then(|v| v.as_str()) {
+    if let Some(s) = t.attr_of("supervisor").and_then(|v| v.as_str()) {
         let ok = s.split_once(':').is_some_and(|(k, id)| (k == "agent" || k == "person") && !id.is_empty() && !id.contains(char::is_whitespace));
         if !ok {
             return Err(format!("<agent> supervisor is an agent or a person (\"agent:lead\", \"person:me\"), not {:?}", s));
         }
     }
-    let (base, fork) = (t.attr("harness").is_some(), t.attr("parent").is_some());
+    let (base, fork) = (t.attr_of("harness").is_some(), t.attr_of("parent").is_some());
     if base == fork {
         return Err(if base {
             "agent() names a harness (a base instance) or a parent (a fork), not both: a fork keeps its parent's harness".into()
@@ -254,18 +254,18 @@ fn agent_of(t: &DocTree) -> Result<Json, String> {
             r#"agent() names its harness (a base instance: .harness("claude-code")) or its parent (a fork: .parent("cloud://global/agents/claude-code"))"#.into()
         });
     }
-    if let Some(Json::Str(h)) = t.attr("harness") {
+    if let Some(Json::Str(h)) = t.attr_of("harness") {
         let id = h.len() <= 80 && h.bytes().enumerate().all(|(i, c)| c.is_ascii_lowercase() || c.is_ascii_digit() || (i > 0 && c == b'-'));
         if !id {
             return Err(format!(r#"agent() harness is a harness's id ("claude-code"), not {}"#, Json::Str(h.clone()).text()));
         }
     }
-    if let Some(v) = t.attr("tools") {
+    if let Some(v) = t.attr_of("tools") {
         if !matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(s) if !s.is_empty()))) {
             return Err(format!("agent() tools is a list of tool names, not {}", v.text()));
         }
     }
-    if let Some(v) = t.attr("persona") {
+    if let Some(v) = t.attr_of("persona") {
         if !matches!(v, Json::Obj(_)) {
             return Err(format!(r#"agent() persona is an object ({{"tone": "warm"}}), not {}"#, v.text()));
         }

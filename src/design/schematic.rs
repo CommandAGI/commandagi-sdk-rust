@@ -289,7 +289,7 @@ fn ideal(tag: &str) -> Option<Ideal> {
 /// Declare a schematic: `group(name, [ … ])` is the circuit `eda:<name>`.
 fn declare(root: El) -> Result<Declared, String> {
     refuse_unknown(&root, &["name"])?;
-    let name = match root.attr("name") {
+    let name = match root.attr_of("name") {
         Some(Json::Str(n)) if !n.is_empty() => n.clone(),
         _ => return Err("group() needs a name".into()),
     };
@@ -320,7 +320,7 @@ fn refuse_unknown(el: &El, allowed: &[&str]) -> Result<(), String> {
 
 /// A number attribute: mm or degrees.
 fn num(el: &El, prop: &str) -> Result<Option<f64>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None => Ok(None),
         Some(Json::Num(n)) => Ok(Some(*n)),
         Some(other) => Err(format!("{}: {} is a number (mm or degrees), not {}", el.call_text(), rust_name(prop), other.text())),
@@ -329,7 +329,7 @@ fn num(el: &El, prop: &str) -> Result<Option<f64>, String> {
 
 /// A text attribute that must be there.
 fn text(el: &El, prop: &str, what: &str) -> Result<String, String> {
-    match el.attr(prop).and_then(Json::as_str) {
+    match el.attr_of(prop).and_then(Json::as_str) {
         Some(v) if !v.trim().is_empty() => Ok(v.to_string()),
         _ => Err(format!("{}: {} is {what}", el.call_text(), rust_name(prop))),
     }
@@ -337,7 +337,7 @@ fn text(el: &El, prop: &str, what: &str) -> Result<String, String> {
 
 /// A part's value as the sheet holds it: text as written, a number as JavaScript's `String(n)` writes it.
 fn value_of(el: &El, prop: &str, example: &str) -> Result<Option<String>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None => Ok(None),
         Some(Json::Str(s)) => Ok(Some(s.clone())),
         Some(n @ Json::Num(_)) => Ok(Some(n.text())),
@@ -347,7 +347,7 @@ fn value_of(el: &El, prop: &str, example: &str) -> Result<Option<String>, String
 
 /// A part's SPICE package bindings: a list of `{id, model, terminals: {formal: "pin number"}}`.
 fn spice_of(el: &El) -> Result<Option<Json>, String> {
-    let Some(v) = el.attr("spice") else { return Ok(None) };
+    let Some(v) = el.attr_of("spice") else { return Ok(None) };
     let ok = match v {
         Json::Arr(list) => list.iter().all(|b| {
             b.get("id").and_then(Json::as_str).is_some()
@@ -364,7 +364,7 @@ fn spice_of(el: &El) -> Result<Option<Json>, String> {
 
 /// The pins a part leaves open on purpose (`.no_connect(["3", "4"])`), by pin number, as written.
 fn no_connect_of(el: &El) -> Result<Option<Json>, String> {
-    let Some(v) = el.attr("noConnect") else { return Ok(None) };
+    let Some(v) = el.attr_of("noConnect") else { return Ok(None) };
     let ok = match v {
         Json::Arr(list) => {
             let numbers: Vec<&str> = list.iter().filter_map(Json::as_str).filter(|n| !n.is_empty()).collect();
@@ -390,7 +390,7 @@ fn fields_of(el: &El) -> Result<Option<Json>, String> {
 /// Add the placement of `unit` of `part` that `el` declares (its sch_x, sch_y, sch_rotation, sch_mirror).
 fn place(s: &mut Scope, part: &mut Placed, unit: u32, el: &El, sockets: &[&str]) -> Result<(), String> {
     let (x, y, rot) = (num(el, "schX")?, num(el, "schY")?, num(el, "schRotation")?);
-    let mirror = el.attr("schMirror");
+    let mirror = el.attr_of("schMirror");
     if x.is_none() && y.is_none() {
         if rot.is_some() || mirror.is_some() {
             let what = if rot.is_some() { "sch_rotation" } else { "sch_mirror" };
@@ -454,7 +454,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 allowed.extend(FIELD_PROPS);
             }
             refuse_unknown(el, &allowed)?;
-            let reference = match el.attr("name") {
+            let reference = match el.attr_of("name") {
                 Some(Json::Str(n)) if !n.is_empty() => n.clone(),
                 _ => return Err(format!("{}() needs a name", el.tag)),
             };
@@ -481,7 +481,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             if ideal.power.is_some() {
                 inputs.push(("powerSymbol".into(), true.into()));
             }
-            if let Some(excitation) = el.attr("excitation") {
+            if let Some(excitation) = el.attr_of("excitation") {
                 inputs.push(("excitation".into(), excitation.clone()));
             }
             if let Some(spice) = spice_of(el)? {
@@ -507,7 +507,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 if parts.contains_key(&reference) {
                     return Err(format!("two parts are called {reference}"));
                 }
-                if el.attr("pins").is_some() {
+                if el.attr_of("pins").is_some() {
                     let placed = netlist_part(s, el, &reference)?;
                     parts.insert(reference, placed);
                     continue;
@@ -549,7 +549,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 let name = text(el, "name", "the code part's id")?;
                 let source = text(el, "source", "the path of the file it runs, relative to this one")?;
                 let mut inputs = vec![("source".to_string(), Json::from(source.as_str()))];
-                match el.attr("inputs") {
+                match el.attr_of("inputs") {
                     None => {}
                     Some(Json::Obj(entries)) => {
                         if entries.iter().any(|(k, _)| k == "source") {
@@ -567,7 +567,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             }
             "junction" => {
                 refuse_unknown(el, &["name", "schX", "schY"])?;
-                let name = match el.attr("name") {
+                let name = match el.attr_of("name") {
                     Some(Json::Str(n)) if !n.is_empty() => n.clone(),
                     _ => return Err("junction() needs a name".into()),
                 };
@@ -588,7 +588,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
         refuse_unknown(el, &[&["part", "unit"], PLACE].concat())?;
         let reference = text(el, "part", "the reference of the part whose unit it places")?;
         let part = parts.get_mut(&reference).ok_or_else(|| format!("{}: there is no part {reference}", el.call_text()))?;
-        let n = match el.attr("unit") {
+        let n = match el.attr_of("unit") {
             Some(Json::Num(n)) if n.fract() == 0.0 && *n >= 2.0 => *n as u32,
             _ => return Err(format!("{}: unit is 2 or more (the part's own sch_x and sch_y place unit 1)", el.call_text())),
         };
@@ -658,7 +658,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                     return Err(format!("{}: file is a path relative to this file", el.call_text()));
                 }
                 let mut inputs = vec![("name".to_string(), Json::from(name.as_str())), ("role".into(), role.into())];
-                match el.attr("mime") {
+                match el.attr_of("mime") {
                     None => {}
                     Some(m @ Json::Str(_)) => inputs.push(("mime".into(), m.clone())),
                     Some(_) => return Err(format!("{}: mime is a media type", el.call_text())),
@@ -670,7 +670,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             "net" => {
                 refuse_unknown(el, &["name", "pins"])?;
                 let name = text(el, "name", "the net's name")?;
-                let pins = match el.attr("pins") {
+                let pins = match el.attr_of("pins") {
                     Some(Json::Arr(p)) if !p.is_empty() => p,
                     _ => return Err(format!("{}: pins is a list of pins (\".C1 > .pin1\")", el.call_text())),
                 };
@@ -695,16 +695,16 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             }
             "netlabel" => {
                 refuse_unknown(el, &["net", "connection"])?;
-                let text = el.attr("net").and_then(Json::as_str).map(str::trim).filter(|t| !t.is_empty()).ok_or("netlabel() needs a net name")?.to_string();
-                match end(el.attr("connection").unwrap_or(&Json::Null), el)? {
+                let text = el.attr_of("net").and_then(Json::as_str).map(str::trim).filter(|t| !t.is_empty()).ok_or("netlabel() needs a net name")?.to_string();
+                match end(el.attr_of("connection").unwrap_or(&Json::Null), el)? {
                     End::Net(_) => return Err(format!("{}: a label's connection is a pin or a junction", el.call_text())),
                     End::Pin(node, port) => label(s, &text, &node, &port, el)?,
                 }
             }
             _ => {
                 refuse_unknown(el, &["from", "to", "path"])?;
-                let (from, to) = (el.attr("from").cloned().unwrap_or(Json::Null), el.attr("to").cloned().unwrap_or(Json::Null));
-                let path = match el.attr("path") {
+                let (from, to) = (el.attr_of("from").cloned().unwrap_or(Json::Null), el.attr_of("to").cloned().unwrap_or(Json::Null));
+                let path = match el.attr_of("path") {
                     None => vec![from, to],
                     // The path is the whole path: it starts at `from` and ends at `to`, so no argument is ignored.
                     Some(Json::Arr(p)) if p.len() >= 2 && p.first() == Some(&from) && p.last() == Some(&to) => p.clone(),
@@ -731,12 +731,12 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
 /// A part of a netlist circuit: its pins listed (by number, with a name or not), no symbol drawing, no placement.
 fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, String> {
     for p in PLACE.iter().chain(["library"].iter()) {
-        if el.attr(p).is_some() {
+        if el.attr_of(p).is_some() {
             let what = if *p == "library" { "library" } else { "place on the sheet" };
             return Err(format!("{}: a part that lists its pins is a netlist circuit's; it has no {what}", el.call_text()));
         }
     }
-    let raw = match el.attr("pins") {
+    let raw = match el.attr_of("pins") {
         Some(Json::Arr(p)) if !p.is_empty() => p,
         _ => return Err(format!("{}: pins is a list of pin numbers ([\"1\", \"2\"]) or of {{ number, name }}", el.call_text())),
     };
@@ -759,7 +759,7 @@ fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, Strin
         };
         pins.push((format!("p{}", i + 1), number, name));
     }
-    let symbol = match el.attr("symbol") {
+    let symbol = match el.attr_of("symbol") {
         None => None,
         Some(Json::Str(sym)) if !sym.is_empty() => Some(sym.clone()),
         Some(_) => return Err(format!("{}: symbol is a library ref (\"Device:R\")", el.call_text())),

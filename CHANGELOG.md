@@ -8,6 +8,12 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `El::attr("name", value)` sets any attribute by its TypeScript name, so a field no module trait lists (a port of a
+  node type of your own, a media effect no spec names) compiles: `node().id("blur").attr("cutoff", 4)`. `El::with_attr`
+  is the same call; the getter is now `attr_of`.
+
+Added
+
 - A monitor source names the connected account it reads as (`<source connection="gmail@jacobfv123@gmail.com">`); the api worker reads it (`via="worker"` only).
 
 Added

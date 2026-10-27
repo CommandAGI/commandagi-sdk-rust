@@ -26,7 +26,7 @@ pub struct DocTree {
 }
 
 impl DocTree {
-    pub fn attr(&self, name: &str) -> Option<&Json> {
+    pub fn attr_of(&self, name: &str) -> Option<&Json> {
         self.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v)
     }
 
@@ -99,7 +99,7 @@ impl Vocabulary {
 
 /// How a message names an element: its call, with the attribute that names it (`operation().id("a")`).
 fn call(el: &El, key: Option<&str>) -> String {
-    match key.and_then(|k| el.attr(k).map(|v| (k, v))) {
+    match key.and_then(|k| el.attr_of(k).map(|v| (k, v))) {
         Some((k, v @ Json::Str(_))) => format!("{}().{}({})", fn_name(el.tag), rust_name(k), v.text()),
         _ => format!("{}()", fn_name(el.tag)),
     }
@@ -152,7 +152,7 @@ pub fn tree_of_element(root: &El, v: &Vocabulary) -> Result<DocTree, String> {
             plain(value, &format!("{at} {}", rust_name(k)))?;
         }
         for k in rule.required {
-            if el.attr(k).is_none() {
+            if el.attr_of(k).is_none() {
                 return Err(format!("{at} needs {}", rust_name(k)));
             }
         }
@@ -168,14 +168,14 @@ pub fn tree_of_element(root: &El, v: &Vocabulary) -> Result<DocTree, String> {
         for c in &children {
             let r = v.rule(c.tag).expect("a child's tag was checked");
             // A record whose key is not written is told apart by its place (as `identities` does).
-            let id = match (r.key.filter(|key| c.attr(key).is_some()), r.single) {
-                (Some(key), _) => format!("{}#{}", c.tag, js_string(c.attr(key))),
+            let id = match (r.key.filter(|key| c.attr_of(key).is_some()), r.single) {
+                (Some(key), _) => format!("{}#{}", c.tag, js_string(c.attr_of(key))),
                 (None, true) => c.tag.to_string(),
                 _ => continue,
             };
             if seen.contains(&id) {
-                return Err(match r.key.filter(|key| c.attr(key).is_some()) {
-                    Some(key) => format!("two {}() in {}() have {} {:?}", fn_name(c.tag), fn_name(el.tag), rust_name(key), js_string(c.attr(key))),
+                return Err(match r.key.filter(|key| c.attr_of(key).is_some()) {
+                    Some(key) => format!("two {}() in {}() have {} {:?}", fn_name(c.tag), fn_name(el.tag), rust_name(key), js_string(c.attr_of(key))),
                     None => format!("{}() has one {}()", fn_name(el.tag), fn_name(c.tag)),
                 });
             }
@@ -193,7 +193,7 @@ pub fn identities(children: &[DocTree], v: &Vocabulary) -> Vec<String> {
         .iter()
         .map(|c| {
             let r = v.rule(c.tag);
-            if let Some(k) = r.and_then(|r| r.key).and_then(|key| c.attr(key)) {
+            if let Some(k) = r.and_then(|r| r.key).and_then(|key| c.attr_of(key)) {
                 return format!("{}#{}", c.tag, k.as_str().map(str::to_string).unwrap_or_else(|| k.text()));
             }
             let i = match nth.iter_mut().find(|(t, _)| *t == c.tag) {
