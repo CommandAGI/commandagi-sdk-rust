@@ -44,6 +44,9 @@
 //! bullet numbered (text)   todo(text).checked(true)                    a list item, a checklist item
 //! pre("code").lang(…)   divider()   image().src(…).alt(…)              a code block, a rule, a picture
 //! b i u s code (text)   a(text).href(…)   br()                          marks inside a text
+//! span(text).color .size .font                                         a run's own colour, em size and family, in a text box
+//! p(text)   li(text).bullet .level                                     one paragraph of a text box; li is a list item:
+//!                                                                       bullet "disc", "number" or "none" (disc unless it says)
 //! deck([slides]).name .width .height .dpi .style                        the deck (1280 × 720 slide units unless it says);
 //!                                                                       style "plain", "ink", "editorial" or "signal"
 //! slide([elements]).layout .name .notes .background .hidden
@@ -103,6 +106,8 @@ elements! {
     h3: text;
     /// A paragraph; in a deck's text box, one paragraph of it.
     p: text;
+    /// A list item; in a deck's text box, one list paragraph of it: `li("First").bullet("number").level(2)`.
+    li: text;
     /// A list item.
     bullet: text;
     /// A numbered list item.
@@ -129,6 +134,8 @@ elements! {
     code: text;
     /// A link: `a("link").href("https://commandagi.com")`.
     a: text;
+    /// A run's own styling in a text box: `span("accent").color("#b91c1c").size(20).font("Georgia")`.
+    span: text;
     /// A line break.
     br: leaf;
     /// The deck: its slides.
@@ -270,8 +277,14 @@ attributes! {
         fit;
         /// A page's paper: "letter" or "a4".
         paper;
-        /// A page's typeface: "sans", "serif" or "mono".
+        /// A page's typeface: "sans", "serif" or "mono"; a run's family in a text box.
         font;
+        /// A run's em size in a text box, in slide units.
+        size;
+        /// A list paragraph's bullet: "disc", "number" or "none".
+        bullet;
+        /// A list paragraph's indent depth, from 1.
+        level;
         /// A deck's style: "plain", "ink", "editorial" or "signal".
         style;
         /// An element the editor does not move.
@@ -754,12 +767,22 @@ pub fn rich_text(children: &[Child], at: &str) -> Result<Json, String> {
             let link = styled(style, "link", txt(el, "href")?.unwrap_or_default().into());
             return el.children.iter().try_for_each(|x| runs_of(x, &link, at, out));
         }
+        if el.tag == "span" {
+            only(el, &["color", "size", "font"])?;
+            let mut own = style.clone();
+            for (key, value) in [("color", js(txt(el, "color")?)), ("sizePx", jn(num(el, "size")?)), ("fontFamily", js(txt(el, "font")?))] {
+                if let Some(v) = value {
+                    own = styled(&own, key, v);
+                }
+            }
+            return el.children.iter().try_for_each(|x| runs_of(x, &own, at, out));
+        }
         let mark = match el.tag {
             "b" => "bold",
             "i" => "italic",
             "u" => "underline",
             "s" => "strike",
-            _ => return Err(format!("{at}: {} is not a mark of a text box (b, i, u, s, a; a p() per paragraph)", tag(el.tag))),
+            _ => return Err(format!("{at}: {} is not a mark of a text box (b, i, u, s, a, span; a p() or an li() per paragraph)", tag(el.tag))),
         };
         only(el, &[])?;
         let marked = styled(style, mark, Json::Bool(true));
@@ -775,15 +798,25 @@ pub fn rich_text(children: &[Child], at: &str) -> Result<Json, String> {
         });
         Ok(Json::obj().with("runs", Json::Arr(runs.collect())))
     }
-    let paragraphs = if children.iter().any(|c| matches!(c, Child::El(el) if el.tag == "p")) {
+    fn paragraph(el: &El, at: &str) -> Result<Json, String> {
+        if el.tag == "p" {
+            only(el, &[])?;
+            return runs(&el.children, at);
+        }
+        only(el, &["bullet", "level"])?;
+        let level = num(el, "level")?.unwrap_or(1.0);
+        if level.fract() != 0.0 || level < 1.0 {
+            return Err(format!("{}: level is a whole number from 1", place(el)));
+        }
+        let bullet = one_of(el, "bullet", &["disc", "number", "none"])?.unwrap_or_else(|| "disc".to_string());
+        Ok(runs(&el.children, at)?.with("listLevel", Json::Num(level)).with("bullet", Json::from(bullet)))
+    }
+    let paragraphs = if children.iter().any(|c| matches!(c, Child::El(el) if el.tag == "p" || el.tag == "li")) {
         children
             .iter()
             .map(|c| match c {
-                Child::El(el) if el.tag == "p" => {
-                    only(el, &[])?;
-                    runs(&el.children, at)
-                }
-                _ => Err(format!("{at}: a text with paragraphs holds only p()s")),
+                Child::El(el) if el.tag == "p" || el.tag == "li" => paragraph(el, at),
+                _ => Err(format!("{at}: a text with paragraphs holds only p()s and li()s")),
             })
             .collect::<Result<Vec<_>, _>>()?
     } else {
