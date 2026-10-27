@@ -210,6 +210,8 @@ attributes! {
         crop_bottom;
         /// The fraction of a clip's picture hidden at its left.
         crop_left;
+        /// The source rectangle an artboard shows: `json(r#"{"x": 1, "y": 2, "width": 30, "height": 40}"#)`.
+        crop;
         /// A bezier keyframe's curve: `[x1, y1, x2, y2]`, as CSS's cubic-bezier.
         bezier;
         /// A compressor's ratio.
@@ -671,6 +673,29 @@ fn input_values(el: &El) -> Result<Vec<(String, Json)>, String> {
     }
 }
 
+/// A `crop`: the source rectangle shown, in the drawing's own scene units.
+fn rect_of(el: &El, prop: &str) -> Result<Option<Json>, String> {
+    let entries = match el.attr(prop) {
+        None => return Ok(None),
+        Some(Json::Obj(e)) => e,
+        Some(v) => return Err(format!("{}: {} is {{ x, y, width, height }}, not {}", place(el), prop, v.text())),
+    };
+    let mut out = Json::obj();
+    for k in ["x", "y", "width", "height"] {
+        match entries.iter().find(|(key, _)| key == k).map(|(_, v)| v) {
+            Some(Json::Num(n)) if n.is_finite() => {
+                out.set(k, *n);
+            }
+            _ => return Err(format!("{}: {}.{} is a number", place(el), prop, k)),
+        }
+    }
+    let num_at = |k: &str| entries.iter().find(|(key, _)| key == k).and_then(|(_, v)| match v { Json::Num(n) => Some(*n), _ => None }).unwrap_or(0.0);
+    if num_at("width") <= 0.0 || num_at("height") <= 0.0 {
+        return Err(format!("{}: {} has a positive width and height", place(el), prop));
+    }
+    Ok(Some(out))
+}
+
 /// A clip's length: out − in at its speed, or its duration.
 fn clip_length(c: &El, in_point: f64, speed: f64, picture: bool) -> Result<f64, String> {
     let out = at_least(c, "out", 0.0)?;
@@ -1066,7 +1091,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 source = Json::Null;
             } else if c.tag == "artboard" {
                 // A drawing's page, drawn live: the clip keeps the reference, never the drawing.
-                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation"]].concat())?;
+                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation", "crop", "inputs"]].concat())?;
                 if kind != "video" {
                     return Err(format!("{}: an artboard goes on a video track", place(c)));
                 }
@@ -1079,6 +1104,10 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 if let Some(view) = view {
                     reference.set("view", view);
                 }
+                let overrides = input_values(c)?;
+                if !overrides.is_empty() {
+                    reference.set("overrides", Json::Obj(overrides));
+                }
                 inputs = obj(&[
                     ("kind", "renderable".into()),
                     ("name", clip_name.as_str().into()),
@@ -1090,7 +1119,11 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 common(c, &mut inputs)?;
                 inputs.set("volume", 1i64);
                 let fit = txt(c, "fit", Some(ARTBOARD_FITS))?.unwrap_or_else(|| ARTBOARD_FIT.into());
-                inputs.set("renderable", obj(&[("ref", reference), ("fit", fit.into())]));
+                let mut renderable = obj(&[("ref", reference), ("fit", fit.into())]);
+                if let Some(crop) = rect_of(c, "crop")? {
+                    renderable.set("crop", crop);
+                }
+                inputs.set("renderable", renderable);
                 source = Json::Null;
             } else if c.tag == "title" {
                 refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), TITLE_FIELDS, &["typewriter"]].concat())?;

@@ -216,7 +216,8 @@ fn a_video_says_crop_a_lut_transition_settings_audio_effects_and_a_bezier_key() 
 fn a_composition_is_another_video_by_path_and_an_artboard_a_drawings_page() {
     let g = graph(video([track([
         composition([intro().preset("fade")]).src("parts/Intro.vid.tsx").start(1).in_(0.5).out(2.5).inputs(json(r#"{"hue": 30}"#)),
-        artboard([]).src("Poster.draw.tsx").start(3).duration(2).view("page_2").fit("cover").opacity(0.5),
+        artboard([]).src("Poster.draw.tsx").start(3).duration(2).view("page_2").fit("cover").opacity(0.5)
+            .crop(json(r#"{"x": 1, "y": 2, "width": 30, "height": 40}"#)).inputs(json(r#"{"hue": 30}"#)),
     ])
     .name("V1")]));
     assert_eq!(
@@ -236,7 +237,7 @@ fn a_composition_is_another_video_by_path_and_an_artboard_a_drawings_page() {
     assert_eq!(input(&g, "clip_Poster.draw.tsx", "kind"), r#""renderable""#);
     assert_eq!(
         input(&g, "clip_Poster.draw.tsx", "renderable"),
-        golden(r#"{"ref": {"locator": "Poster.draw.tsx", "fileKind": "drawing", "representation": "auto", "view": "page_2"}, "fit": "cover"}"#)
+        golden(r#"{"ref": {"locator": "Poster.draw.tsx", "fileKind": "drawing", "representation": "auto", "view": "page_2", "overrides": {"hue": 30}}, "fit": "cover", "crop": {"x": 1, "y": 2, "width": 30, "height": 40}}"#)
     );
     assert_eq!(input(&g, "clip_Poster.draw.tsx", "source"), "null");
     assert_eq!(input(&g, "clip_Poster.draw.tsx", "opacity"), "0.5");
@@ -249,5 +250,9 @@ fn a_composition_is_another_video_by_path_and_an_artboard_a_drawings_page() {
     assert!(on_track(artboard([]).src("Poster.png").duration(1)).contains("is not a drawing's code"));
     assert!(on_track(artboard([]).src("Poster.draw.tsx")).contains("give its duration"));
     assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).fit("stretch")).contains("fit is one of fill, contain, cover, none"));
+    assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).crop(json("[0, 0, 10, 10]"))).contains("crop is { x, y, width, height }"));
+    assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).crop(json(r#"{"x": 0, "y": 0, "width": 10}"#))).contains("crop.height is a number"));
+    assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).crop(json(r#"{"x": 0, "y": 0, "width": 0, "height": 10}"#))).contains("crop has a positive width and height"));
+    assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).inputs(json(r#"{"hue": "red"}"#))).contains("inputs is { parameter: number }"));
     assert!(bad(video([track([artboard([]).src("P.draw.tsx").duration(1)]).kind("audio")])).contains("an artboard goes on a video track"));
 }
