@@ -97,6 +97,28 @@ fn a_deck_declares_the_decks_graph_with_rich_text() {
 }
 
 #[test]
+fn a_text_boxs_run_says_its_own_colour_size_and_family_and_a_list_paragraph_its_bullet_and_level() {
+    let g = graph(deck([slide([text([
+        p(("Plain ", span("accent").color("#b91c1c").size(20).font("Georgia"))),
+        li("Second").bullet("number").level(2),
+        li("Third"),
+    ])
+    .x(0)
+    .y(0)
+    .w(400)
+    .h(300)])]));
+    assert_eq!(
+        g.get("nodes").unwrap().get("slide-1.1").unwrap().get("inputs").unwrap().text(),
+        golden(
+            r##"{"box": {"x": 0, "y": 0, "w": 400, "h": 300}, "text": {"paragraphs": [
+                {"runs": [{"text": "Plain "}, {"text": "accent", "color": "#b91c1c", "sizePx": 20, "fontFamily": "Georgia"}]},
+                {"runs": [{"text": "Second"}], "listLevel": 2, "bullet": "number"},
+                {"runs": [{"text": "Third"}], "listLevel": 1, "bullet": "disc"}]}}"##
+        )
+    );
+}
+
+#[test]
 fn every_part_carries_the_call_it_came_from() {
     let line = line!() + 1;
     let g = graph(deck([slide([text("Hi").placeholder("title")])]));
@@ -123,7 +145,7 @@ fn refuses_what_the_documents_cannot_hold() {
     assert!(bad(page([shape()])).starts_with("shape() is not a block of a page()"));
     assert_eq!(bad(page([p(text("x"))])), "p(): text() is not a mark (the marks are b, i, u, s, code, a and br)");
     assert_eq!(bad(deck([slide([shape().x(1)])])), "the shape() 1 of slide-1 needs x, y, w and h (or a placeholder to take them from)");
-    assert_eq!(bad(deck([slide([text([p("a"), b("b")])])])), "text() of slide-1: a text with paragraphs holds only p()s");
+    assert_eq!(bad(deck([slide([text([p("a"), b("b")])])])), "text() of slide-1: a text with paragraphs holds only p()s and li()s");
     assert_eq!(bad(deck([slide([shape().shape("star").x(0).y(0).w(1).h(1)])])), "shape(): shape is one of rect, ellipse, triangle, line");
 }
 
