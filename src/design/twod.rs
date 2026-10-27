@@ -39,7 +39,9 @@
 //! among a layer's strokes and changes what is under it; in a
 //! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
-//! `stroke`, `color_overlay`, `gradient_overlay`). A value that
+//! `stroke`, `color_overlay`, `gradient_overlay`); a constrained sketch is a leaf whose geometry is its own data:
+//! `sketch().sketch(json(r#"{"points": {…}}"#)).x(40).y(60).unit("mm")` (the object a 3D document's sketch holds; its
+//! stored positions are the last solve), and it may be written straight on the drawing (it is then its own layer). A value that
 //! is an object is JSON text: `.brush(json(r#"{"kind": "round", "size": 4}"#))`. PIXELS ARE NOT CODE: a pixel layer
 //! names its image file by relative path (`.src("scan.png")`). Each node carries its element's call in `meta.source`; a
 //! `mask` is not a node, so a masked node carries the mask's call in `meta.sources.mask`. A tag the vocabulary does not
@@ -92,6 +94,9 @@ elements! {
     raster_layer = "raster-layer": leaf;
     /// A drawing's link to another drawing: `link().src("parts/Badge.draw.rs").x(40).y(60)`.
     link: leaf;
+    /// A constrained sketch: graphics' `Sketch` as JSON text, placed on the page:
+    /// `sketch().sketch(json(r#"{"points": {…}}"#)).x(40).y(60).unit("mm")`.
+    sketch: leaf;
     /// A drawing's modifier: the one node it changes.
     transform: children;
     /// A drawing's modifier: the one node it changes.
@@ -604,7 +609,9 @@ const DRAW_SOURCES: &[&str] = &["rect", "ellipse", "polygon", "path", "text", "b
 const DRAW_MODIFIERS: &[&str] = &["transform", "offset", "array", "mirror", "stroke", "fill", "blur", "levels", "threshold", "adjust", "crop", "bucket-fill"];
 /// Pixels a drawing places: each names its image file (`src`).
 const DRAW_PIXELS: &[&str] = &["image", "raster-layer"];
-const DRAW_LATER: &[&str] = &["sketch", "connector"];
+/// Drawables written with their own data: a constrained sketch (one `Sketch` object).
+const DRAW_DATA: &[&str] = &["sketch"];
+const DRAW_LATER: &[&str] = &["connector"];
 
 /// An address (`cloud://…`, `https://…`, a path from the site's root); anything else is a path from the file's folder.
 fn is_address(src: &str) -> bool {
@@ -976,9 +983,6 @@ impl Doc {
         if t == "layer" && !top {
             return Err(format!("{}: a layer() is a child of the drawing(); inside it, group with group()", place(el)));
         }
-        if t != "layer" && top {
-            return Err(format!("{} is inside a layer() (a drawing's children are its layers)", tag(t)));
-        }
         if t == "layer" || t == "group" {
             let children = kids.iter().map(|c| self.drawn(c, false)).collect::<Result<Vec<_>, _>>()?;
             return self.add(el, "group", spread(attrs(el, &[])?, wires("children", &children)));
@@ -1002,6 +1006,16 @@ impl Doc {
                     let points = pairs(points, &format!("{} points", place(el)))?;
                     a.set("points", points);
                 }
+            }
+            return self.add(el, t, a);
+        }
+        if DRAW_DATA.contains(&t) {
+            if !kids.is_empty() {
+                return Err(format!("{} takes no children", place(el)));
+            }
+            let a = attrs(el, &[])?;
+            if !matches!(a.get("sketch"), Some(Json::Obj(_))) {
+                return Err(format!("{}: sketch is its geometry, as the editor holds it ({{ points, segments, constraints, … }})", place(el)));
             }
             return self.add(el, t, a);
         }
@@ -1048,7 +1062,7 @@ impl Doc {
             return self.add(el, t, a.with("content", wire(&content, "out")).with("mask", wire(&mask, "out")));
         }
         if DRAW_LATER.contains(&t) {
-            return Err(format!("{} is not declared in code yet (a drawing in code holds shapes, images, links, groups and modifiers)", tag(t)));
+            return Err(format!("{} is not declared in code yet (a drawing in code holds shapes, images, sketches, links, groups and modifiers)", tag(t)));
         }
         Err(format!("{} is not read in a drawing (see commandagi::design::twod)", tag(t)))
     }
