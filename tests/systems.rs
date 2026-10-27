@@ -101,7 +101,8 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
             hole().id("m2-a").at([0.0, 0.0]).diameter(2.2),
             message().id("lte-only").text("AT+CNMP=38"),
             param().id("baud").value(115200).unit("Bd"),
-            side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]),
+            param().id("framing").value("8N1"),
+            side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]).rotation(90.0).face("bottom"),
             side().id("firmware").ref_("fw/config.h").defines(json(r#"{"BOARD": 1}"#)).pins(json(r#"{"RX_PIN": 4}"#)).params(json(r#"{"BAUD": "baud"}"#)),
             side().id("host").ref_("devices/cam/definition.tsx").channel("modem").params(json(r#"{"baud": "baud"}"#)),
         ])
@@ -114,6 +115,15 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         _ => panic!(),
     };
     assert_eq!(keys, ["name", "frame", "pins", "holes", "messages", "params", "sides"]);
+    assert_eq!(
+        doc.get("params").and_then(|s| if let Json::Arr(a) = s { a.get(1).cloned() } else { None }),
+        Some(j(r#"{"id": "framing", "value": "8N1"}"#)),
+        "a text a channel states has no unit"
+    );
+    assert_eq!(
+        doc.get("sides").and_then(|s| if let Json::Arr(a) = s { a.get(0).cloned() } else { None }),
+        Some(j(r#"{"id": "base", "ref": "ee/base.circuit.ts", "parts": ["J1", "J2"], "origin": [0.0, 1.4], "rotation": 90.0, "face": "bottom"}"#))
+    );
     assert_eq!(
         doc.get("sides").and_then(|s| if let Json::Arr(a) = s { a.get(1).cloned() } else { None }),
         Some(j(r#"{"id": "firmware", "ref": "fw/config.h", "defines": {"BOARD": 1}, "pins": {"RX_PIN": 4}, "params": {"BAUD": "baud"}}"#))
@@ -129,6 +139,10 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         (message().id("m"), "a message has its text, its code, or both"),
         (side().id("s").ref_("x").kind("mechanical"), "kind must be one of circuit, 3d, firmware, definition"),
         (side().id("s").ref_("x").channel(3), "channel is the id of a channel of the device definition"),
+        (side().id("s").ref_("x").rotation("90"), "rotation is the angle the interface's frame is turned on this side, in degrees counter-clockwise"),
+        (side().id("s").ref_("x").face("side"), "face must be one of top, bottom (got \"side\")"),
+        (param().id("p").value(true), "value is a number with its unit in unit (115200), or a text a channel states"),
+        (param().id("p").value("8N1").unit("Bd"), "a parameter stated as a text has no unit"),
         (frame().unit("in"), "positions are in mm"),
     ];
     for (el, message) in cases {
