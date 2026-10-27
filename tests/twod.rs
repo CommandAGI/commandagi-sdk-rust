@@ -71,6 +71,23 @@ fn a_drawings_placed_image_and_raster_layer_name_their_image_files() {
 }
 
 #[test]
+fn a_constrained_sketch_is_a_leaf_whose_geometry_is_its_own_data() {
+    let geometry = r#"{"points": {"p1": {"id": "p1", "x": 0, "y": 0}, "p2": {"id": "p2", "x": 40, "y": 0}}, "segments": {"s1": {"id": "s1", "type": "line", "a": "p1", "b": "p2"}}, "constraints": {}, "pointOrder": ["p1", "p2"], "segmentOrder": ["s1"], "constraintOrder": []}"#;
+    let g = graph(drawing([
+        sketch().sketch(json(geometry)).x(40).y(60).unit("mm").drawing_scale(2).annotations(false),
+    ]).width(100).height(80));
+    assert_eq!(
+        inputs(&g, "sketch"),
+        golden(&format!(r#"{{"sketch": {geometry}, "x": 40, "y": 60, "unit": "mm", "drawingScale": 2, "annotations": false}}"#)),
+    );
+    assert_eq!(
+        golden(&node(&g, "composite").get("inputs").unwrap().get("layers.1").unwrap().text()),
+        golden(&w("sketch")),
+        "written straight on the drawing, it is a layer of it",
+    );
+}
+
+#[test]
 fn a_paint_documents_strokes_chain_onto_their_layer_and_carry_its_fields() {
     let g = graph(
         painting([
@@ -241,7 +258,7 @@ fn refuses_by_name_what_the_vocabulary_cannot_say() {
     assert_eq!(bad(painting([layer([]).src("data:image/png;base64,AAAA")])), "layer(): src names an image file by relative path (\"scan.png\"); pixels are not written in code");
     assert_eq!(bad(painting([stroke([]).points(Vec::<i32>::new())])), "stroke() is painted on a layer: write it inside one");
     assert_eq!(bad(painting([layer([stroke([]).opacity(1)])])), "stroke(): opacity is the layer's (write it on the layer it is painted on)");
-    assert_eq!(bad(drawing([rect()])), "rect() is inside a layer() (a drawing's children are its layers)");
+    assert_eq!(bad(drawing([sketch()])), "sketch(): sketch is its geometry, as the editor holds it ({ points, segments, constraints, … })");
     assert_eq!(bad(drawing([layer([layer([])])])), "layer(): a layer() is a child of the drawing(); inside it, group with group()");
     assert_eq!(bad(drawing([layer([blur([])])])), "blur() wraps the one node it changes");
     assert_eq!(bad(drawing([layer([path().d("m 0 0 l 1 1")])])), "path(): d is written in absolute commands (M L H V C Q Z), not m");
