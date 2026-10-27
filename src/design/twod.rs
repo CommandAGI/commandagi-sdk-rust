@@ -142,6 +142,10 @@ elements! {
     gradient_fill = "gradientFill": leaf;
     /// A painting's Move of a layer's pixels (or its selected pixels).
     move_ = "move": leaf;
+    /// A painting's Eraser on a layer (or its selected pixels): `erase().selection(…)`.
+    erase: leaf;
+    /// A painting's Free Transform of a layer's pixels about a pivot: `free_transform().cx(…).cy(…).scale_x(1.5)`.
+    free_transform = "freeTransform": leaf;
     /// A painting's type layer: `text_layer([]).text("Title").x(…).y(…).size(96)`.
     text_layer = "textLayer": children;
     /// A painting layer's styles: `fx([drop_shadow().distance(8), stroke([]).size(3)])`.
@@ -902,7 +906,7 @@ fn filter_member(el: &El) -> Result<Json, String> {
 
 /// What is painted on a painting's pixel layer: strokes, the Paint Bucket, the Gradient, the Move tool. A filter
 /// ([`PHOTO_FILTERS`]) chains among them.
-pub const PAINT_CHAIN: &[&str] = &["stroke", "bucket", "gradientFill", "move"];
+pub const PAINT_CHAIN: &[&str] = &["stroke", "bucket", "gradientFill", "move", "erase", "freeTransform"];
 /// A painting's shape layers.
 pub const PAINT_SHAPES: &[&str] = &["rect", "ellipse", "polygon", "line"];
 

@@ -136,6 +136,8 @@ fn a_paintings_bucket_gradient_and_move_chain_on_a_layer_and_a_shape_is_a_layer(
                 bucket().x(5).y(6).tolerance(20).contiguous(true).color([1, 0, 0, 1]),
                 gradient_fill().shape("linear").from([0, 0]).to([100, 0]).stops(json(r#"[{"at": 0, "color": [0, 0, 0, 1]}, {"at": 1, "color": [1, 1, 1, 1]}]"#)),
                 move_().dx(12).dy(-3).selection(json(r#"[{"wand": [5, 6], "tolerance": 32, "contiguous": false}]"#)),
+                erase().selection(json(r#"[{"rect": [0, 0, 10, 10], "feather": 0}]"#)),
+                free_transform().cx(50).cy(40).dx(2).dy(3).scale_x(1.5).scale_y(1.5).angle(0.25),
             ])
             .name("Paint"),
             rect().name("Rectangle 1").x(4).y(5).w(30).h(20).fill([0, 0, 1, 1]).stroke([0, 0, 0, 1]).stroke_width(2),
@@ -152,7 +154,8 @@ fn a_paintings_bucket_gradient_and_move_chain_on_a_layer_and_a_shape_is_a_layer(
             w("paint.stroke")
         ))
     );
-    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.1").unwrap().text(), golden(&w("paint.move")));
+    assert_eq!(node(&g, "doc").get("inputs").unwrap().get("layers.1").unwrap().text(), golden(&w("paint.freeTransform")));
+    assert_eq!(node(&g, "paint.erase").get("inputs").unwrap().get("src").unwrap().text(), golden(&w("paint.move")));
     assert_eq!(
         inputs(&g, "paint.shape"),
         golden(r#"{"name": "Rectangle 1", "x": 4, "y": 5, "w": 30, "h": 20, "fill": [0, 0, 1, 1], "stroke": [0, 0, 0, 1], "strokeWidth": 2, "shape": "rect"}"#)
