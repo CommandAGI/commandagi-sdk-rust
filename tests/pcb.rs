@@ -34,7 +34,7 @@ fn a_board_declares_its_outline_stack_footprints_and_copper() {
     let l0 = line!() + 1;
     let root = board_of(vec![
         component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
-        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom").ref_at([0.0, -2.5]),
+        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom").ref_at([0.0, -2.5]).ref_rot(90.0).value_at([0.0, 2.5]),
         component().name("V1").footprint("smd-0805"),
         trace().layer("F.Cu").width(0.2).points([[11, 10], [18, 14], [24, 10]]).from(".R1 > .pin2").to(".R2 > .1"),
         trace().layer("B.Cu").width(0.25).points([[18, 14], [18, 20]]).from(".VIA1"),
@@ -64,7 +64,11 @@ fn a_board_declares_its_outline_stack_footprints_and_copper() {
     );
     assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("placement")).unwrap().text(), r#"{"x":25,"y":10,"rot":90,"side":"bottom"}"#);
     assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refAt")).unwrap().text(), "[0,-2.5]");
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refRot")).unwrap().text(), "90", "the reference text is turned a quarter where it sits");
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("valueAt")).unwrap().text(), "[0,2.5]");
     assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_at([0.0, 1.0])])).contains("ref_at needs pcb_x and pcb_y"));
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_rot(90.0)])).contains("ref_rot needs pcb_x and pcb_y"));
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").value_at([0.0, 1.0])])).contains("value_at needs pcb_x and pcb_y"));
     assert_eq!(node(&g, "fp_V1").get("inputs").and_then(|i| i.get("placement")), None, "a footprint with no pcb_x and pcb_y is not placed");
     assert_eq!(
         inputs(&g, "cu_1"),
@@ -156,6 +160,24 @@ fn a_board_says_what_a_kicad_board_holds() {
     assert_eq!(inputs(&g, "A1"), compact(r#"{"kind":"arc","points":[{"x":0,"y":0,"id":"start"},{"x":1,"y":1,"id":"p1"},{"x":2,"y":0,"id":"end"}],"widthMm":0.2,"layer":"F.Cu","terminals":[{"point":2,"ref":"C1","number":"1"}]}"#));
     assert_eq!(node(&g, "V1").get("inputs").and_then(|i| i.get("pads")).unwrap().text(), r#"[{"ref":"C1","number":"2"}]"#);
     assert_eq!(inputs(&g, "cu_2"), compact(r#"{"kind":"pour","points":[{"x":0,"y":0},{"x":9,"y":0},{"x":9,"y":9}],"layers":["In1.Cu"],"terminals":[{"point":0,"via":"V1"}],"net":"GND","kicad":"(min_thickness 0.25)"}"#));
+}
+
+#[test]
+fn an_ic_mask_layout_is_declared_by_its_polygons_units_and_library() {
+    let polygons = r#"[{"layer": 1, "datatype": 0, "points": [[0, 0], [4, 0], [4, 2], [0, 2]]}, {"layer": 2, "datatype": 1, "points": [[1, 1], [3, 1], [2, 1.5]]}]"#;
+    let g = graph(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.001).lib_name("Inverter")]).width(10.0).height(10.0));
+    let mut layout = node(&g, "masks").clone();
+    layout.remove("meta");
+    assert_eq!(layout.text(), compact(&format!(r#"{{"id":"masks","type":"eda.masks","inputs":{{"polygons":{polygons},"unitUmPerDb":0.001,"libName":"Inverter"}},"label":"Inverter"}}"#)));
+    // A die is its layout alone: with no board fact the file declares the layout and no board.
+    let die = graph(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.001)]));
+    let Some(Json::Obj(nodes)) = die.get("nodes") else { panic!() };
+    assert!(!nodes.iter().any(|(_, n)| n.get("type") == Some(&Json::from("eda.board"))));
+    assert_eq!(node(&die, "masks").get("label"), Some(&Json::from("Masks")));
+    assert!(bad(board_of(vec![masks().unit_um_per_db(0.001)])).contains("masks() needs polygons"));
+    assert!(bad(board_of(vec![masks().polygons(json(r#"[{"layer": 1, "datatype": 0, "points": [[0, 0], [1, 1]]}]"#)).unit_um_per_db(0.001)])).contains("polygons is the mask layout's polygons"));
+    assert!(bad(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.0)])).contains("unit_um_per_db is more than 0"));
+    assert!(bad(board_of(vec![masks().polygons(json(polygons))])).contains("masks() needs unit_um_per_db"));
 }
 
 #[test]
