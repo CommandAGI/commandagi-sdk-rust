@@ -27,7 +27,7 @@
 //! resistor|capacitor|inductor(name).resistance|capacitance|inductance(…)   an ideal two-terminal part
 //! voltagesource|currentsource(name).voltage|current(…).excitation(json(…)) an ideal source: pin 1 (`pos`) is +
 //! ground(name)                                                              a ground symbol (name "#PWR1"): net GND
-//! … .sch_x(…).sch_y(…).sch_rotation(…).sch_mirror(…)                        where its symbol sits on the sheet
+//! … .sch_x(…).sch_y(…).sch_rotation(…).sch_mirror(…).sch_style(…)           where its symbol sits on the sheet
 //! junction(name).sch_x(…).sch_y(…)                                          a wire vertex
 //! trace(from, to)                                                           a wire between two selectors:
 //!                                                                           ".R1 > .pin2", ".J1" (a junction),
@@ -37,7 +37,7 @@
 //! netlabel(net, connection)                                                 a label naming the net of a pin
 //! part(name).symbol("Lib:Name").library("x.kicad_sym").value(…)            a library part: its symbol named by its
 //!                                                                           library ref in a .kicad_sym, by path
-//! unit(part, n).sch_x(…).sch_y(…)                                           where unit n (2 or more) of a part sits;
+//! unit(part, n).sch_x(…).sch_y(…).sch_style(…)                              where unit n (2 or more) of a part sits;
 //!                                                                           the part's own sch_x, sch_y place unit 1
 //! code(name).source(path).inputs(json(…))                                   a code part: the parts another file
 //!                                                                           declares, run with these inputs
@@ -75,7 +75,8 @@
 //! ```
 //!
 //! `sch_x` and `sch_y` are the sheet's own coordinates: millimetres, Y DOWN. `sch_rotation` is 0, 90, 180 or 270
-//! degrees; `sch_mirror` is "x" or "y". A part with neither is declared and not placed. A library part's pins are the
+//! degrees; `sch_mirror` is "x" or "y"; `sch_style` is the De Morgan body style the placement shows (1, the format's
+//! default, unless the file says another). A part with neither is declared and not placed. A library part's pins are the
 //! library's: the editor reads them, and binds a pin named by number (".U1 > .pin5") to the unit that has it. A wire
 //! is a binding between two pins, never a coincidence of coordinates. Each node carries the call it came from in
 //! `meta.source` (`super::source`), so the circuit editor writes its edits back into the file. What the sheet cannot
@@ -151,6 +152,8 @@ attributes! {
         sch_rotation;
         /// The symbol's mirror: "x" or "y".
         sch_mirror;
+        /// The De Morgan body style the placement shows: 1 (the default) or more.
+        sch_style;
         /// A part's symbol, by its library ref: `"Device:R_Small"`.
         symbol;
         /// The `.kicad_sym` that holds a library part's symbol, by its path relative to this file.
@@ -241,7 +244,7 @@ const ROLES: &[&str] = &["schematic", "project", "library", "other"];
 const PART_PORT: &str = "part";
 const PART_BODY_PORT: &str = "@part";
 const VERTEX_PORT: &str = "v";
-const PLACE: &[&str] = &["schX", "schY", "schRotation", "schMirror"];
+const PLACE: &[&str] = &["schX", "schY", "schRotation", "schMirror", "schStyle"];
 /// A library part's wire end before the editor reads its library: the part node, and the pin by number.
 pub const LIBRARY_PIN_PORT: &str = "pin:";
 /// The node a code part declares (the graph's own `code` op): it runs another file.
@@ -387,13 +390,22 @@ fn fields_of(el: &El) -> Result<Option<Json>, String> {
     Ok(if forms.is_empty() { None } else { Some(Json::Arr(forms)) })
 }
 
-/// Add the placement of `unit` of `part` that `el` declares (its sch_x, sch_y, sch_rotation, sch_mirror).
+/// Add the placement of `unit` of `part` that `el` declares (its sch_x, sch_y, sch_rotation, sch_mirror, sch_style).
 fn place(s: &mut Scope, part: &mut Placed, unit: u32, el: &El, sockets: &[&str]) -> Result<(), String> {
     let (x, y, rot) = (num(el, "schX")?, num(el, "schY")?, num(el, "schRotation")?);
     let mirror = el.attr_of("schMirror");
+    let style = el.attr_of("schStyle");
     if x.is_none() && y.is_none() {
-        if rot.is_some() || mirror.is_some() {
-            let what = if rot.is_some() { "sch_rotation" } else { "sch_mirror" };
+        let unplaced = if rot.is_some() {
+            Some("sch_rotation")
+        } else if mirror.is_some() {
+            Some("sch_mirror")
+        } else if style.is_some() {
+            Some("sch_style")
+        } else {
+            None
+        };
+        if let Some(what) = unplaced {
             return Err(format!("{}: {what} needs sch_x and sch_y", el.call_text()));
         }
         if el.tag == "unit" {
@@ -411,9 +423,15 @@ fn place(s: &mut Scope, part: &mut Placed, unit: u32, el: &El, sockets: &[&str])
         Some(Json::Str(m)) if m == "x" || m == "y" => m.clone(),
         Some(_) => return Err(format!("{}: sch_mirror is \"x\" or \"y\"", el.call_text())),
     };
+    // A body style is 1 or more: 0 is "common to every style", which a placement never shows on its own.
+    let style = match style {
+        None => 1.0,
+        Some(Json::Num(n)) if n.fract() == 0.0 && *n >= 1.0 => *n,
+        Some(_) => return Err(format!("{}: sch_style is 1 or more (KiCad's De Morgan body style)", el.call_text())),
+    };
     let inputs = vec![
         ("unit".to_string(), Json::Num(unit as f64)),
-        ("style".into(), Json::Num(1.0)),
+        ("style".into(), Json::Num(style)),
         ("at".into(), Json::obj().with("x", x.unwrap_or(0.0)).with("y", y.unwrap_or(0.0))),
         ("rot".into(), Json::Num(rot.unwrap_or(0.0))),
         ("mirror".into(), Json::from(mirror)),

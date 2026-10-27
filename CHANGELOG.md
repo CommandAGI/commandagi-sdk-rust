@@ -14,7 +14,7 @@ Added
 - `El::attr("name", value)` sets any attribute by its TypeScript name, so a field no module trait lists (a port of a
   node type of your own, a media effect no spec names) compiles: `node().id("blur").attr("cutoff", 4)`. The getter is
   `attr_of`; `with_attr` stays the same call.
-
+- `.sch_style(…)`: a placement's De Morgan body style, which selects the pins and body the library draws for it. 1 is the default and writes nothing.
 - A monitor source names the connected account it reads as (`<source connection="gmail@jacobfv123@gmail.com">`); the api worker reads it (`via="worker"` only).
 - `<component refRot={90}>`: how far a part's reference text is turned where it sits, in degrees, in the footprint's own frame (the placer turns a text it has no upright place for).
 
