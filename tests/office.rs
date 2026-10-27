@@ -110,6 +110,33 @@ fn every_part_carries_the_call_it_came_from() {
 }
 
 #[test]
+fn a_sheet_with_a_source_is_a_data_sheet() {
+    let one = |el: El| document(workbook([el])).0;
+    let doc = one(sheet([]).name("Sales").source("sales.parquet").format("parquet").query("select * from sales"));
+    assert_eq!(
+        golden(&doc.text()),
+        golden(
+            r#"{"format": "workbook", "version": 1, "sheets": [{"id": "sheet-1", "name": "Sales", "kind": "data",
+                "source": {"kind": "file", "ref": "sales.parquet", "format": "parquet"}, "query": "select * from sales"}]}"#
+        )
+    );
+    assert_eq!(
+        golden(&one(sheet([]).name("Prices").source("https://example.test/prices.csv")).text()),
+        golden(r#"{"format": "workbook", "version": 1, "sheets": [{"id": "sheet-1", "name": "Prices", "kind": "data", "source": {"kind": "remote", "engine": "http", "url": "https://example.test/prices.csv"}}]}"#)
+    );
+    assert_eq!(
+        golden(&one(sheet([]).name("Devices").source("surface:devices")).text()),
+        golden(r#"{"format": "workbook", "version": 1, "sheets": [{"id": "sheet-1", "name": "Devices", "kind": "data", "source": {"kind": "surface", "surface": "devices"}}]}"#)
+    );
+    assert_eq!(bad(workbook([sheet([cell().at("A1").value(1)]).name("Sales").source("sales.parquet")])), "sheet().name(\"Sales\"): a data sheet holds nothing: its source and query say what it reads");
+    assert_eq!(bad(workbook([sheet([]).name("Sales").source("sales.parquet").rows(10)])), "sheet().name(\"Sales\"): a data sheet reads a table, so it has no rows");
+    assert_eq!(bad(workbook([sheet([]).name("Sales").query("select 1")])), "sheet().name(\"Sales\"): a grid sheet reads no source (a sheet() with a source is a data sheet)");
+    assert_eq!(bad(workbook([sheet([]).name("Sales").source("self")])), "sheet().name(\"Sales\"): source is a file beside the workbook, an http(s) URL or surface:<id>, not \"self\"");
+    assert_eq!(bad(workbook([sheet([]).name("Sales").source("surface:planets")])), "sheet().name(\"Sales\"): source is surface:<id>, a platform surface (threads, devices, snapshots, drive, notifications, marketplace, credits), not \"surface:planets\"");
+    assert_eq!(bad(workbook([sheet([]).name("Sales").source("sales.parquet").format("csvz")])), "sheet().name(\"Sales\"): format is one of parquet, arrow, feather, csv, tsv, json, ndjson, avro, orc, sqlite, duckdb, xlsx, auto");
+}
+
+#[test]
 fn refuses_what_the_documents_cannot_hold() {
     assert_eq!(bad(workbook([sheet([cell().at("A1").formula("SUM(B1)")])])), "cell().at(\"A1\"): a formula starts with = (\"=SUM(B2:B4)\")");
     assert_eq!(
