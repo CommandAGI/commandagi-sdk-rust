@@ -98,7 +98,7 @@ fn declare(root: El) -> Result<Declared, String> {
 /// How a message names a record: its call with the attribute that names it (`step().id("x")`).
 fn at(t: &DocTree, key: &str) -> String {
     let call = super::element::fn_name(t.tag);
-    match t.attr(key) {
+    match t.attr_of(key) {
         Some(v) => format!("{call}().{}({})", super::element::rust_name(key), v.text()),
         None => format!("{call}()"),
     }
@@ -124,32 +124,32 @@ fn said(v: Option<&Json>) -> String {
 }
 
 fn money(t: &DocTree, w: &str) -> Result<(), String> {
-    need(t.attr("ratePerHour").is_none() || num(t.attr("ratePerHour")).is_some_and(|r| r >= 0.0), || format!("{w}: ratePerHour is a number of at least 0 (money an hour)"))?;
-    need(t.attr("currency").is_none() || matches!(t.attr("currency"), Some(Json::Str(s)) if s.len() == 3 && s.chars().all(|c| c.is_ascii_uppercase())), || format!("{w}: currency is an ISO 4217 code (USD)"))
+    need(t.attr_of("ratePerHour").is_none() || num(t.attr_of("ratePerHour")).is_some_and(|r| r >= 0.0), || format!("{w}: ratePerHour is a number of at least 0 (money an hour)"))?;
+    need(t.attr_of("currency").is_none() || matches!(t.attr_of("currency"), Some(Json::Str(s)) if s.len() == 3 && s.chars().all(|c| c.is_ascii_uppercase())), || format!("{w}: currency is an ISO 4217 code (USD)"))
 }
 
 fn tool_ok(t: &DocTree) -> Result<(), String> {
     let w = at(t, "id");
-    need(is_id(t.attr("id")), || format!(r#"{w}: id is letters, digits, ".", "_" and "-""#))?;
-    need(t.attr("ref").is_none() || matches!(t.attr("ref"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: ref is a device definition, or an item or body of a 3D document (<file>#<id>)"))?;
+    need(is_id(t.attr_of("id")), || format!(r#"{w}: id is letters, digits, ".", "_" and "-""#))?;
+    need(t.attr_of("ref").is_none() || matches!(t.attr_of("ref"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: ref is a device definition, or an item or body of a 3D document (<file>#<id>)"))?;
     money(t, &w)
 }
 
 fn input_ok(t: &DocTree) -> Result<(), String> {
     let w = at(t, "name");
-    need(is_id(t.attr("name")), || format!(r#"{w}: name is letters, digits, ".", "_" and "-""#))?;
-    need(t.attr("type").is_none() || matches!(t.attr("type"), Some(Json::Str(s)) if FLOW_INPUT_TYPES.contains(&s.as_str())), || format!("{w}: type is one of {} (got {})", FLOW_INPUT_TYPES.join(", "), said(t.attr("type"))))?;
+    need(is_id(t.attr_of("name")), || format!(r#"{w}: name is letters, digits, ".", "_" and "-""#))?;
+    need(t.attr_of("type").is_none() || matches!(t.attr_of("type"), Some(Json::Str(s)) if FLOW_INPUT_TYPES.contains(&s.as_str())), || format!("{w}: type is one of {} (got {})", FLOW_INPUT_TYPES.join(", "), said(t.attr_of("type"))))?;
     for k in ["private", "required"] {
-        need(t.attr(k).is_none() || matches!(t.attr(k), Some(Json::Bool(_))), || format!("{w}: {k} is true or false"))?;
+        need(t.attr_of(k).is_none() || matches!(t.attr_of(k), Some(Json::Bool(_))), || format!("{w}: {k} is true or false"))?;
     }
-    need(!(matches!(t.attr("private"), Some(Json::Bool(true))) && t.attr("default").is_some()), || format!("{w}: a private input states no default: its value is bound by the run and never written in the document"))?;
-    if let Some(d) = t.attr("default") {
-        let ok = match t.attr("type").and_then(Json::as_str) {
+    need(!(matches!(t.attr_of("private"), Some(Json::Bool(true))) && t.attr_of("default").is_some()), || format!("{w}: a private input states no default: its value is bound by the run and never written in the document"))?;
+    if let Some(d) = t.attr_of("default") {
+        let ok = match t.attr_of("type").and_then(Json::as_str) {
             Some("number") => matches!(d, Json::Num(_)),
             Some("boolean") => matches!(d, Json::Bool(_)),
             _ => matches!(d, Json::Str(_)),
         };
-        need(ok, || format!("{w}: default is a {} (the input's type)", t.attr("type").and_then(Json::as_str).unwrap_or("text")))?;
+        need(ok, || format!("{w}: default is a {} (the input's type)", t.attr_of("type").and_then(Json::as_str).unwrap_or("text")))?;
     }
     Ok(())
 }
@@ -197,18 +197,18 @@ fn action_needs(kind: &str) -> &'static [&'static str] {
 
 fn step_ok(t: &DocTree) -> Result<(), String> {
     let w = at(t, "id");
-    need(is_id(t.attr("id")), || format!(r#"{w}: id is letters, digits, ".", "_" and "-""#))?;
-    need(t.attr("order").is_none() || num(t.attr("order")).is_some_and(|o| o >= 1.0 && o.fract() == 0.0), || format!("{w}: order is a whole number from 1"))?;
-    need(t.attr("kind").is_none() || matches!(t.attr("kind"), Some(Json::Str(s)) if FLOW_STEP_KINDS.contains(&s.as_str())), || format!("{w}: kind must be one of {} (got {})", FLOW_STEP_KINDS.join(", "), said(t.attr("kind"))))?;
+    need(is_id(t.attr_of("id")), || format!(r#"{w}: id is letters, digits, ".", "_" and "-""#))?;
+    need(t.attr_of("order").is_none() || num(t.attr_of("order")).is_some_and(|o| o >= 1.0 && o.fract() == 0.0), || format!("{w}: order is a whole number from 1"))?;
+    need(t.attr_of("kind").is_none() || matches!(t.attr_of("kind"), Some(Json::Str(s)) if FLOW_STEP_KINDS.contains(&s.as_str())), || format!("{w}: kind must be one of {} (got {})", FLOW_STEP_KINDS.join(", "), said(t.attr_of("kind"))))?;
     for k in ["minutes", "setupMinutes"] {
-        need(t.attr(k).is_none() || num(t.attr(k)).is_some_and(|m| m >= 0.0), || format!("{w}: {k} is a number of at least 0"))?;
+        need(t.attr_of(k).is_none() || num(t.attr_of(k)).is_some_and(|m| m >= 0.0), || format!("{w}: {k} is a number of at least 0"))?;
     }
     money(t, &w)?;
-    if t.attr("kind").and_then(Json::as_str) == Some("note") {
-        let no_time = t.attr("minutes").is_none() || num(t.attr("minutes")) == Some(0.0);
-        need(t.attr("tool").is_none() && no_time && t.children.is_empty(), || format!("{w}: a note step names no tool, takes no time (minutes 0 or absent) and holds no param, measure, visit or expect"))?;
+    if t.attr_of("kind").and_then(Json::as_str) == Some("note") {
+        let no_time = t.attr_of("minutes").is_none() || num(t.attr_of("minutes")) == Some(0.0);
+        need(t.attr_of("tool").is_none() && no_time && t.children.is_empty(), || format!("{w}: a note step names no tool, takes no time (minutes 0 or absent) and holds no param, measure, visit or expect"))?;
     }
-    let kind = t.attr("kind").and_then(Json::as_str).unwrap_or("");
+    let kind = t.attr_of("kind").and_then(Json::as_str).unwrap_or("");
     let action = FLOW_ACTION_KINDS.contains(&kind);
     if action {
         let says = |n: &str| match n {
@@ -217,67 +217,67 @@ fn step_ok(t: &DocTree) -> Result<(), String> {
             "command" => "its command",
             _ => "what it calls (ref)",
         };
-        let missing: Vec<&str> = action_needs(kind).iter().copied().filter(|n| t.attr(n).is_none()).map(says).collect();
+        let missing: Vec<&str> = action_needs(kind).iter().copied().filter(|n| t.attr_of(n).is_none()).map(says).collect();
         need(missing.is_empty(), || format!("{w}: a {kind} step states {}", missing.join(" and ")))?;
-        need(t.attr("tool").is_none() && t.attr("by").is_none() && t.attr("fixture").is_none(), || format!("{w}: an action step names no tool, no fixture and no by: it acts on its channel (or calls what its ref names)"))?;
+        need(t.attr_of("tool").is_none() && t.attr_of("by").is_none() && t.attr_of("fixture").is_none(), || format!("{w}: an action step names no tool, no fixture and no by: it acts on its channel (or calls what its ref names)"))?;
         need(!t.children.iter().any(|c| c.tag == "visit" || c.tag == "measure"), || format!("{w}: an action step takes no visit or measure: say what must be observed after it in an <expect>"))?;
         need(t.children.iter().any(|c| c.tag == "expect"), || format!("{w}: an action step declares what must be observed after it (<expect name equals>)"))?;
-        need(t.attr("surprise").is_some(), || format!("{w}: an action step says where a surprise goes (surprise: parent, agent or person)"))?;
+        need(t.attr_of("surprise").is_some(), || format!("{w}: an action step says where a surprise goes (surprise: parent, agent or person)"))?;
     }
-    need(t.attr("surprise").is_none() || matches!(t.attr("surprise"), Some(Json::Str(s)) if FLOW_SURPRISE.contains(&s.as_str())), || format!("{w}: surprise is one of {} (got {})", FLOW_SURPRISE.join(", "), said(t.attr("surprise"))))?;
-    let surprise = t.attr("surprise").and_then(Json::as_str);
-    need(surprise.is_none() || surprise == Some("parent") || matches!(t.attr("surpriseTo"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: surprise {} names who handles it (surpriseTo: an agent or a person)", said(t.attr("surprise"))))?;
-    need(surprise != Some("parent") || t.attr("surpriseTo").is_none(), || format!("{w}: a surprise that goes to the parent names no surpriseTo"))?;
-    if t.attr("after").is_some() {
-        let Some(Json::Str(raw)) = t.attr("after") else { return Err(format!("{w}: after names the steps this one follows (their ids, space separated)")) };
+    need(t.attr_of("surprise").is_none() || matches!(t.attr_of("surprise"), Some(Json::Str(s)) if FLOW_SURPRISE.contains(&s.as_str())), || format!("{w}: surprise is one of {} (got {})", FLOW_SURPRISE.join(", "), said(t.attr_of("surprise"))))?;
+    let surprise = t.attr_of("surprise").and_then(Json::as_str);
+    need(surprise.is_none() || surprise == Some("parent") || matches!(t.attr_of("surpriseTo"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: surprise {} names who handles it (surpriseTo: an agent or a person)", said(t.attr_of("surprise"))))?;
+    need(surprise != Some("parent") || t.attr_of("surpriseTo").is_none(), || format!("{w}: a surprise that goes to the parent names no surpriseTo"))?;
+    if t.attr_of("after").is_some() {
+        let Some(Json::Str(raw)) = t.attr_of("after") else { return Err(format!("{w}: after names the steps this one follows (their ids, space separated)")) };
         need(!raw.trim().is_empty(), || format!("{w}: after names the steps this one follows (their ids, space separated)"))?;
         let ids: Vec<&str> = raw.split_whitespace().collect();
         for i in &ids {
             need(is_id(Some(&Json::Str(i.to_string()))), || format!("{w}: after names a step's id (got {i:?})"))?;
         }
-        need(!ids.contains(&t.attr("id").and_then(Json::as_str).unwrap_or("")), || format!("{w}: after does not name the step itself"))?;
+        need(!ids.contains(&t.attr_of("id").and_then(Json::as_str).unwrap_or("")), || format!("{w}: after does not name the step itself"))?;
         let mut seen = std::collections::HashSet::new();
         need(ids.iter().all(|i| seen.insert(*i)), || format!("{w}: after names a step twice"))?;
     }
-    let names: Vec<&Json> = t.children.iter().filter(|c| c.tag == "param").filter_map(|c| c.attr("name")).collect();
+    let names: Vec<&Json> = t.children.iter().filter(|c| c.tag == "param").filter_map(|c| c.attr_of("name")).collect();
     if let Some(twice) = names.iter().enumerate().find(|(i, n)| names[..*i].contains(n)).map(|(_, n)| *n) {
         return Err(format!("{w}: two params are named {}", twice.text()));
     }
-    let expects: Vec<&Json> = t.children.iter().filter(|c| c.tag == "expect").filter_map(|c| c.attr("name")).collect();
+    let expects: Vec<&Json> = t.children.iter().filter(|c| c.tag == "expect").filter_map(|c| c.attr_of("name")).collect();
     if let Some(twice) = expects.iter().enumerate().find(|(i, n)| expects[..*i].contains(n)).map(|(_, n)| *n) {
         return Err(format!("{w}: two expects are named {}", twice.text()));
     }
     for c in &t.children {
         if c.tag == "param" {
             let pw = at(c, "name");
-            need(matches!(c.attr("name"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{pw}: name says what the parameter is"))?;
-            need(matches!(c.attr("value"), Some(Json::Num(_) | Json::Str(_) | Json::Bool(_))), || format!("{pw}: value is a number, a text or true/false"))?;
-            need(c.attr("unit").is_none() || matches!(c.attr("unit"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{pw}: unit is a unit's symbol (rpm, sccm, mTorr, °C, s)"))?;
+            need(matches!(c.attr_of("name"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{pw}: name says what the parameter is"))?;
+            need(matches!(c.attr_of("value"), Some(Json::Num(_) | Json::Str(_) | Json::Bool(_))), || format!("{pw}: value is a number, a text or true/false"))?;
+            need(c.attr_of("unit").is_none() || matches!(c.attr_of("unit"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{pw}: unit is a unit's symbol (rpm, sccm, mTorr, °C, s)"))?;
         } else if c.tag == "visit" {
             let vw = format!("{w} {}", at(c, "tool"));
-            need(is_id(c.attr("tool")), || format!("{vw}: tool is the id of one of the flow's tools"))?;
+            need(is_id(c.attr_of("tool")), || format!("{vw}: tool is the id of one of the flow's tools"))?;
             for k in ["minutes", "setupMinutes"] {
-                need(c.attr(k).is_none() || num(c.attr(k)).is_some_and(|m| m >= 0.0), || format!("{vw}: {k} is a number of at least 0"))?;
+                need(c.attr_of(k).is_none() || num(c.attr_of(k)).is_some_and(|m| m >= 0.0), || format!("{vw}: {k} is a number of at least 0"))?;
             }
             money(c, &vw)?;
         } else if c.tag == "expect" {
             let ew = at(c, "name");
-            need(matches!(c.attr("name"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{ew}: name says what is observed (a screen, an exit code, a reply)"))?;
-            need(matches!(c.attr("equals"), Some(Json::Num(_) | Json::Str(_) | Json::Bool(_))), || format!("{ew}: equals is the value the observation must have (a number, a text or true/false)"))?;
-            need(c.attr("tolerance").is_none() || num(c.attr("tolerance")).is_some_and(|v| v >= 0.0), || format!("{ew}: tolerance is a number of at least 0"))?;
-            need(c.attr("tolerance").is_none() || num(c.attr("equals")).is_some(), || format!("{ew}: a tolerance holds of a number: equals is not a number"))?;
-            need(c.attr("within").is_none() || num(c.attr("within")).is_some_and(|v| v > 0.0), || format!("{ew}: within is a number of seconds, more than 0"))?;
+            need(matches!(c.attr_of("name"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{ew}: name says what is observed (a screen, an exit code, a reply)"))?;
+            need(matches!(c.attr_of("equals"), Some(Json::Num(_) | Json::Str(_) | Json::Bool(_))), || format!("{ew}: equals is the value the observation must have (a number, a text or true/false)"))?;
+            need(c.attr_of("tolerance").is_none() || num(c.attr_of("tolerance")).is_some_and(|v| v >= 0.0), || format!("{ew}: tolerance is a number of at least 0"))?;
+            need(c.attr_of("tolerance").is_none() || num(c.attr_of("equals")).is_some(), || format!("{ew}: a tolerance holds of a number: equals is not a number"))?;
+            need(c.attr_of("within").is_none() || num(c.attr_of("within")).is_some_and(|v| v > 0.0), || format!("{ew}: within is a number of seconds, more than 0"))?;
         } else {
             let mw = at(c, "id");
-            need(is_id(c.attr("id")), || format!(r#"{mw}: id is letters, digits, ".", "_" and "-""#))?;
+            need(is_id(c.attr_of("id")), || format!(r#"{mw}: id is letters, digits, ".", "_" and "-""#))?;
             for k in ["nominal", "min", "max", "plus", "minus"] {
-                need(c.attr(k).is_none() || num(c.attr(k)).is_some(), || format!("{mw}: {k} is a number"))?;
+                need(c.attr_of(k).is_none() || num(c.attr_of(k)).is_some(), || format!("{mw}: {k} is a number"))?;
             }
             for k in ["plus", "minus"] {
-                need(c.attr(k).is_none() || num(c.attr(k)).is_some_and(|v| v >= 0.0), || format!("{mw}: {k} is a number of at least 0"))?;
+                need(c.attr_of(k).is_none() || num(c.attr_of(k)).is_some_and(|v| v >= 0.0), || format!("{mw}: {k} is a number of at least 0"))?;
             }
-            need((c.attr("plus").is_none() && c.attr("minus").is_none()) || c.attr("nominal").is_some(), || format!("{mw}: plus and minus are tolerances of the nominal: give nominal"))?;
-            if let (Some(lo), Some(hi)) = (num(c.attr("min")), num(c.attr("max"))) {
+            need((c.attr_of("plus").is_none() && c.attr_of("minus").is_none()) || c.attr_of("nominal").is_some(), || format!("{mw}: plus and minus are tolerances of the nominal: give nominal"))?;
+            if let (Some(lo), Some(hi)) = (num(c.attr_of("min")), num(c.attr_of("max"))) {
                 need(lo <= hi, || format!("{mw}: min is at most max"))?;
             }
         }
@@ -286,11 +286,11 @@ fn step_ok(t: &DocTree) -> Result<(), String> {
 }
 
 fn flow_of(t: &DocTree) -> Result<Json, String> {
-    need(t.attr("of").is_none() || matches!(t.attr("of"), Some(Json::Str(_))), || "flow(): of is a ref to what the flow makes (a 3D document, or <file>#<item or body>)".to_string())?;
+    need(t.attr_of("of").is_none() || matches!(t.attr_of("of"), Some(Json::Str(_))), || "flow(): of is a ref to what the flow makes (a 3D document, or <file>#<item or body>)".to_string())?;
     for c in t.children.iter().filter(|c| c.tag == "input") {
         input_ok(c)?;
     }
-    let inputs: Vec<String> = t.children.iter().filter(|c| c.tag == "input").filter_map(|c| c.attr("name").and_then(Json::as_str).map(str::to_string)).collect();
+    let inputs: Vec<String> = t.children.iter().filter(|c| c.tag == "input").filter_map(|c| c.attr_of("name").and_then(Json::as_str).map(str::to_string)).collect();
     for c in &t.children {
         if c.tag == "tool" {
             tool_ok(c)?;
@@ -298,27 +298,27 @@ fn flow_of(t: &DocTree) -> Result<Json, String> {
             step_ok(c)?;
             let sw = at(c, "id");
             for b in c.children.iter().filter(|b| b.tag == "param") {
-                bound(b.attr("value"), &at(b, "name"), &inputs)?;
+                bound(b.attr_of("value"), &at(b, "name"), &inputs)?;
             }
-            bound(c.attr("command"), &sw, &inputs)?;
-            bound(c.attr("instruction"), &sw, &inputs)?;
+            bound(c.attr_of("command"), &sw, &inputs)?;
+            bound(c.attr_of("instruction"), &sw, &inputs)?;
         }
     }
-    let step_ids: Vec<String> = t.children.iter().filter(|c| c.tag == "step").filter_map(|c| c.attr("id").and_then(Json::as_str).map(str::to_string)).collect();
+    let step_ids: Vec<String> = t.children.iter().filter(|c| c.tag == "step").filter_map(|c| c.attr_of("id").and_then(Json::as_str).map(str::to_string)).collect();
     for c in t.children.iter().filter(|c| c.tag == "step") {
-        if let Some(Json::Str(raw)) = c.attr("after") {
+        if let Some(Json::Str(raw)) = c.attr_of("after") {
             for i in raw.split_whitespace() {
                 need(step_ids.iter().any(|id| id == i), || format!("{}: after names the step {i:?}, which this flow does not declare", at(c, "id")))?;
             }
         }
     }
-    let measures: Vec<&Json> = t.children.iter().flat_map(|c| c.children.iter()).filter(|m| m.tag == "measure").filter_map(|m| m.attr("id")).collect();
+    let measures: Vec<&Json> = t.children.iter().flat_map(|c| c.children.iter()).filter(|m| m.tag == "measure").filter_map(|m| m.attr_of("id")).collect();
     if let Some(again) = measures.iter().enumerate().find(|(i, m)| measures[..*i].contains(m)).map(|(_, m)| *m) {
         return Err(format!("measure().id({}): two measures have this id (a ref names it as <file>#<id>)", again.text()));
     }
     let mut out = Json::obj();
     for k in FLOW_FIELDS {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }

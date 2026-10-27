@@ -96,15 +96,15 @@ fn declare(root: El) -> Result<Declared, String> {
 
 fn check(t: &DocTree) -> Result<(), String> {
     for k in ["color", "doubleSided"] {
-        if matches!(t.attr(k), Some(v) if !matches!(v, Json::Bool(_))) {
+        if matches!(t.attr_of(k), Some(v) if !matches!(v, Json::Bool(_))) {
             return Err(format!("letter(): {} is true or false", rust_name(k)));
         }
     }
-    if matches!(t.attr("mailClass"), Some(v) if *v != Json::from("first") && *v != Json::from("standard")) {
+    if matches!(t.attr_of("mailClass"), Some(v) if *v != Json::from("first") && *v != Json::from("standard")) {
         return Err(r#"letter(): mail_class is "first" or "standard""#.into());
     }
     for c in &t.children {
-        if c.tag == "paragraph" && !matches!(c.attr("text"), Some(Json::Str(_))) {
+        if c.tag == "paragraph" && !matches!(c.attr_of("text"), Some(Json::Str(_))) {
             return Err("paragraph(): text is text".into());
         }
         if c.tag == "to" || c.tag == "from" {
@@ -125,14 +125,14 @@ fn piece_of(t: &DocTree, mut out: Json) -> Result<Json, String> {
         }
     }
     if let Some(f) = t.single("front") {
-        match f.attr("image") {
+        match f.attr_of("image") {
             Some(image @ Json::Str(_)) => {
                 out.set("front", image.clone());
             }
             _ => return Err("front(): image is the ref of a JPEG or PNG".into()),
         }
     }
-    let paragraphs: Vec<Json> = t.children.iter().filter(|c| c.tag == "paragraph").filter_map(|c| c.attr("text").cloned()).collect();
+    let paragraphs: Vec<Json> = t.children.iter().filter(|c| c.tag == "paragraph").filter_map(|c| c.attr_of("text").cloned()).collect();
     Ok(out.with("paragraphs", paragraphs))
 }
 
@@ -140,7 +140,7 @@ fn letter_of(t: &DocTree) -> Result<Json, String> {
     let mut head = Json::obj();
     for k in LETTER_FIELDS {
         // An empty text is not said, as the TypeScript SDK drops it.
-        if let Some(v) = t.attr(k).filter(|v| **v != Json::from("")) {
+        if let Some(v) = t.attr_of(k).filter(|v| **v != Json::from("")) {
             head.set(k, v.clone());
         }
     }
@@ -149,7 +149,7 @@ fn letter_of(t: &DocTree) -> Result<Json, String> {
 
 fn postcard_of(t: &DocTree) -> Result<Json, String> {
     let mut head = Json::obj();
-    if let Some(size) = t.attr("size") {
+    if let Some(size) = t.attr_of("size") {
         let said = match size {
             Json::Str(s) => POSTCARD_SIZES.iter().any(|p| p == s),
             _ => false,

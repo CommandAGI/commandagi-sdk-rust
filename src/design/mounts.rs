@@ -84,38 +84,38 @@ fn assignee_ok(v: &Json) -> bool {
 /// One mount as its element declares it, or why it does not read (the TypeScript SDK's `mountOf`). A field written
 /// `json("null")` is written, as a JSX attribute written `{null}` is: only an absent one is not.
 pub fn mount_of(t: &DocTree) -> Result<Json, String> {
-    let label = t.attr("label");
+    let label = t.attr_of("label");
     let Some(Json::Str(name)) = label.filter(|v| is_text(v, 200)) else {
         let said = label.map(Json::text).unwrap_or_else(|| "undefined".into());
         return Err(format!("mount(): label is a short text that names it in its thread, not {said}"));
     };
     let at = format!("mount().label({})", Json::Str(name.clone()).text());
     for k in ["task", "folder", "project", "assignee"] {
-        if let Some(v) = t.attr(k).filter(|v| !is_text(v, 1000)) {
+        if let Some(v) = t.attr_of(k).filter(|v| !is_text(v, 1000)) {
             return Err(format!("{at} {k} is a text (a ref or an address), not {}", v.text()));
         }
     }
-    if t.attr("labels").is_some_and(|v| !is_texts(v)) {
+    if t.attr_of("labels").is_some_and(|v| !is_texts(v)) {
         return Err(format!("{at} labels is a list of texts"));
     }
-    if let Some(v) = t.attr("status") {
+    if let Some(v) = t.attr_of("status") {
         let known = matches!(v, Json::Arr(items) if items.iter().all(|s| matches!(s, Json::Str(s) if MOUNT_STATUSES.contains(&s.as_str()))));
         if !is_texts(v) || !known {
             return Err(format!("{at} status is a list of {}", MOUNT_STATUSES.join(", ")));
         }
     }
-    if let Some(v) = t.attr("assignee").filter(|v| !assignee_ok(v)) {
+    if let Some(v) = t.attr_of("assignee").filter(|v| !assignee_ok(v)) {
         return Err(format!("{at} assignee is user:<id> or agent:<id>, not {}", v.text()));
     }
-    let query = ["folder", "project", "assignee", "labels", "status"].iter().any(|k| t.attr(k).is_some());
-    match (t.attr("task").is_some(), query) {
+    let query = ["folder", "project", "assignee", "labels", "status"].iter().any(|k| t.attr_of(k).is_some());
+    match (t.attr_of("task").is_some(), query) {
         (true, true) => return Err(format!("{at} mounts one task, or a list (folder, project, assignee, labels, status): not both")),
         (false, false) => return Err(format!("{at} mounts nothing: give task, folder, project, or a query (assignee, labels, status)")),
         _ => {}
     }
     let mut out = Json::obj();
     for k in MOUNT_FIELDS {
-        match t.attr(k) {
+        match t.attr_of(k) {
             Some(Json::Arr(items)) if items.is_empty() => {}
             Some(v) => {
                 out.set(k, v.clone());

@@ -319,13 +319,13 @@ fn facet_text(x: &Json) -> String {
 pub(crate) fn part_field_forms(at: &str, el: &El) -> Result<Vec<Json>, String> {
     let mut forms = Vec::new();
     for (i, (prop, name)) in PART_FIELDS.iter().enumerate() {
-        match el.attr(prop) {
+        match el.attr_of(prop) {
             None => {}
             Some(Json::Str(v)) if !v.trim().is_empty() && in_grammar(prop, v) => forms.push(field_form(name, v)),
             Some(_) => return Err(format!("{at}: {} is text ({:?})", rust_name(prop), FIELD_EXAMPLES[i])),
         }
     }
-    match el.attr("attrs") {
+    match el.attr_of("attrs") {
         None => {}
         Some(Json::Obj(attrs)) if attrs.iter().all(|(_, v)| is_text(Some(v))) => {
             for (name, v) in attrs {
@@ -340,10 +340,10 @@ pub(crate) fn part_field_forms(at: &str, el: &El) -> Result<Vec<Json>, String> {
         }
         Some(_) => return Err(format!("{at}: attrs is an object of text ({{ Tolerance: \"1%\" }})")),
     }
-    if let Some(v) = el.attr("suppliers") {
+    if let Some(v) = el.attr_of("suppliers") {
         forms.extend(offer_forms(at, v)?);
     }
-    if let Some(v) = el.attr("alternates") {
+    if let Some(v) = el.attr_of("alternates") {
         let alternate = |a: &Json| {
             matches!(a, Json::Obj(_))
                 && is_text(a.get("manufacturer"))
@@ -356,14 +356,14 @@ pub(crate) fn part_field_forms(at: &str, el: &El) -> Result<Vec<Json>, String> {
         }
         forms.push(field_form("Alternates", &v.text()));
     }
-    if let Some(v) = el.attr("datasheet") {
+    if let Some(v) = el.attr_of("datasheet") {
         if !is_text(Some(v)) {
             return Err(format!("{at}: datasheet is a URL or a path"));
         }
         forms.push(field_form("Datasheet", v.as_str().unwrap_or_default()));
     }
     for (arg, fields) in FACET_FIELDS {
-        let Some(v) = el.attr(arg) else { continue };
+        let Some(v) = el.attr_of(arg) else { continue };
         let facet = check_facet(at, arg, v)?;
         for (k, prop) in *fields {
             if let Some(x) = facet.get(k) {

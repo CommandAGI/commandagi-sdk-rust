@@ -543,7 +543,7 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
             put(&mut out, "name", text_of(el, "name", false)?);
             let points: Vec<Json> = point_list(el, "points", 3, None)?.iter().map(|(x, y)| Json::Arr(vec![(*x).into(), (*y).into()])).collect();
             out.push(("points".into(), Json::Arr(points)));
-            if el.attr("layers").is_some() {
+            if el.attr_of("layers").is_some() {
                 let layers: Vec<Json> = copper_layers(el, None)?.into_iter().map(Json::from).collect();
                 out.push(("layers".into(), Json::Arr(layers)));
             }
@@ -605,7 +605,7 @@ fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
     refuse_unknown(el, &fields)?;
     let w = at(el);
     let mut out = vec![("fact".to_string(), Json::from("fab"))];
-    if let Some(v) = el.attr("suppliers") {
+    if let Some(v) = el.attr_of("suppliers") {
         out.push(("suppliers".into(), check_offers(&w, v)?));
     }
     for k in ["finish", "mask", "silk"] {
@@ -631,7 +631,7 @@ fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
     if let Some(t) = plain(el, "thicknesses", thick, "a list of the finished thicknesses the house offers (mm)")? {
         out.push(("thicknesses".into(), t));
     }
-    if let Some(a) = el.attr("assembly") {
+    if let Some(a) = el.attr_of("assembly") {
         if !is_object(a) || a_keys(a).any(|k| k != "house" && k != "sides") {
             return Err(format!("{w}: assembly is {{ house, sides }}"));
         }
@@ -652,7 +652,7 @@ fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
         }
         out.push(("assembly".into(), a.clone()));
     }
-    if let Some(i) = el.attr("inspection") {
+    if let Some(i) = el.attr_of("inspection") {
         if !is_object(i) {
             return Err(format!("{w}: inspection is an object ({{ {} }})", INSPECTION_KEYS.join(", ")));
         }
@@ -678,7 +678,7 @@ fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
         out.push(("inspection".into(), i.clone()));
     }
     for k in ["compliance", "shipping"] {
-        if let Some(v) = el.attr(k) {
+        if let Some(v) = el.attr_of(k) {
             out.push((k.into(), check_facet(&w, k, v)?));
         }
     }
@@ -696,7 +696,7 @@ fn a_keys(v: &Json) -> impl Iterator<Item = &str> {
 
 /// How a message names an element: `component().name("R1")`, `trace()`.
 fn at(el: &El) -> String {
-    match el.attr("name") {
+    match el.attr_of("name") {
         Some(v @ Json::Str(_)) => format!("{}().name({})", fn_name(el.tag), v.text()),
         _ => format!("{}()", fn_name(el.tag)),
     }
@@ -720,7 +720,7 @@ fn finite(v: &Json) -> Option<f64> {
 }
 
 fn num(el: &El, prop: &str, required: bool) -> Result<Option<f64>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None if required => Err(format!("{} needs {}", at(el), rust_name(prop))),
         None => Ok(None),
         Some(v) => finite(v).map(Some).ok_or_else(|| format!("{}: {} is a number (mm or degrees), not {}", at(el), rust_name(prop), v.text())),
@@ -736,7 +736,7 @@ fn positive(el: &El, prop: &str, required: bool) -> Result<Option<f64>, String> 
 }
 
 fn text_of(el: &El, prop: &str, required: bool) -> Result<Option<String>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None if required => Err(format!("{} needs {}", at(el), rust_name(prop))),
         None => Ok(None),
         Some(Json::Str(s)) => Ok(Some(s.clone())),
@@ -757,7 +757,7 @@ fn pair(v: &Json) -> Option<(f64, f64)> {
 }
 
 fn point_list(el: &El, prop: &str, least: usize, count: Option<usize>) -> Result<Vec<(f64, f64)>, String> {
-    let list = match el.attr(prop) {
+    let list = match el.attr_of(prop) {
         Some(Json::Arr(list)) if list.len() >= least && count.is_none_or(|c| list.len() == c) => list,
         _ => {
             let n = count.map(|c| c.to_string()).unwrap_or_else(|| format!("at least {least}"));
@@ -771,7 +771,7 @@ fn point_list(el: &El, prop: &str, least: usize, count: Option<usize>) -> Result
 }
 
 fn at_point(el: &El, prop: &str) -> Result<Json, String> {
-    let v = el.attr(prop).unwrap_or(&Json::Null);
+    let v = el.attr_of(prop).unwrap_or(&Json::Null);
     let (x, y) = pair(v).ok_or_else(|| format!("{}: {} is [x, y] in mm, not {}", at(el), rust_name(prop), if *v == Json::Null { "undefined".into() } else { v.text() }))?;
     Ok(xy(x, y))
 }
@@ -781,7 +781,7 @@ fn copper(layer: &str) -> bool {
 }
 
 fn copper_layers(el: &El, fallback: Option<&[&str]>) -> Result<Vec<String>, String> {
-    let layers: Option<Vec<Json>> = match el.attr("layers") {
+    let layers: Option<Vec<Json>> = match el.attr_of("layers") {
         Some(Json::Arr(l)) => Some(l.clone()),
         Some(_) => None,
         None => fallback.map(|f| f.iter().map(|l| Json::from(*l)).collect()),
@@ -802,7 +802,7 @@ fn kicad_of(el: &El, prop: &str, inputs: &mut Vec<(String, Json)>) -> Result<(),
 
 /// Plain data an attribute holds, when `check` says it has the shape it needs.
 fn plain(el: &El, prop: &str, check: impl Fn(&Json) -> bool, what: &str) -> Result<Option<Json>, String> {
-    match el.attr(prop) {
+    match el.attr_of(prop) {
         None => Ok(None),
         Some(v) if check(v) => Ok(Some(v.clone())),
         Some(_) => Err(format!("{}: {} is {what}", at(el), rust_name(prop))),
@@ -870,7 +870,7 @@ fn footprint_ref(fp: &str) -> bool {
 }
 
 fn declare(root: El) -> Result<Declared, String> {
-    if root.attr("schematic").is_none() {
+    if root.attr_of("schematic").is_none() {
         return Err("board(): schematic is the schematic file's path, relative to this file (a board in code names its schematic)".into());
     }
     declare_board_file(&root, None).map(Declared::Graph)
@@ -879,11 +879,11 @@ fn declare(root: El) -> Result<Declared, String> {
 /// Declare a board in code (its root is `board([…]).schematic("…")`).
 pub fn declare_board_file(root: &El, name: Option<&str>) -> Result<Json, String> {
     refuse_unknown(root, &["schematic", "name", "width", "height", "core", "copper", "thickness", "layers", "surface"])?;
-    let schematic = match root.attr("schematic") {
+    let schematic = match root.attr_of("schematic") {
         Some(Json::Str(s)) if !s.trim().is_empty() && !s.starts_with('/') => s.clone(),
         _ => return Err("board(): schematic is the schematic file's path, relative to this file".into()),
     };
-    let title = match root.attr("name") {
+    let title = match root.attr_of("name") {
         Some(Json::Str(n)) => n.clone(),
         _ => name.unwrap_or("Board").to_string(),
     };
@@ -1007,7 +1007,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
         if let Some(p) = process {
             inputs.push(("process".into(), p));
         }
-        if el.attr("overallThickness").is_some() {
+        if el.attr_of("overallThickness").is_some() {
             inputs.push(("overallThickness".into(), positive(el, "overallThickness", false)?.unwrap_or_default().into()));
         }
         let label = text_of(el, "label", false)?.unwrap_or_else(|| "Cross-section".into());
@@ -1048,7 +1048,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
     let mut kicad_forms = 0;
     let mut fabs = 0;
     for el in &children {
-        let nm = el.attr("name");
+        let nm = el.attr_of("name");
         if el.tag == "component" {
             let nm = match nm {
                 Some(Json::Str(n)) if !n.is_empty() => n.clone(),
@@ -1110,7 +1110,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
         if !CONDUCTORS.contains(&el.tag) {
             continue;
         }
-        match el.attr("name").and_then(Json::as_str) {
+        match el.attr_of("name").and_then(Json::as_str) {
             Some(nm) => ids.push(nm.to_string()),
             None => loop {
                 n += 1;
@@ -1201,11 +1201,11 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
             }
             "component" => {
                 refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "refRot", "valueAt", "chart", "uuid", "kicad"])?;
-                let reference = el.attr("name").and_then(Json::as_str).unwrap_or_default().to_string();
-                let fp = el.attr("footprint");
+                let reference = el.attr_of("name").and_then(Json::as_str).unwrap_or_default().to_string();
+                let fp = el.attr_of("footprint");
                 let fp_text = fp.and_then(Json::as_str);
                 let shown = |v: Option<&Json>| v.map(Json::text).unwrap_or_else(|| "undefined".into());
-                let library = el.attr("library");
+                let library = el.attr_of("library");
                 if let Some(library) = library {
                     let pretty = library.as_str().is_some_and(|l| {
                         let l = l.to_lowercase();
@@ -1228,11 +1228,11 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 let fp = fp_text.unwrap_or_default();
                 // A library footprint named with no library is named only: its pads are not on the board yet, so it is not placed.
                 let named = library.is_none() && !BOARD_FOOTPRINTS.contains(&fp);
-                if named && (el.attr("pcbX").is_some() || el.attr("pcbY").is_some()) {
+                if named && (el.attr_of("pcbX").is_some() || el.attr_of("pcbY").is_some()) {
                     return Err(format!("{}: a footprint is placed with its pads: name its library (a .pretty folder)", at(el)));
                 }
                 let (x, y, rot) = (num(el, "pcbX", false)?, num(el, "pcbY", false)?, num(el, "pcbRotation", false)?);
-                let side = el.attr("layer");
+                let side = el.attr_of("layer");
                 if side.is_some_and(|s| s.as_str() != Some("top") && s.as_str() != Some("bottom")) {
                     return Err(format!("{}: layer is \"top\" or \"bottom\"", at(el)));
                 }
@@ -1244,7 +1244,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 }
                 // Where the reference text sits, in the footprint's own frame (its library's, on the top): the placer
                 // moves it off copper and off other references.
-                let ref_at = el.attr("refAt");
+                let ref_at = el.attr_of("refAt");
                 if ref_at.is_some_and(|v| !matches!(v, Json::Arr(l) if l.len() == 2 && l.iter().all(|n| finite(n).is_some()))) {
                     return Err(format!("{}: ref_at is [x, y] in mm, in the footprint's own frame", at(el)));
                 }
@@ -1258,7 +1258,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 }
                 // Where its value text sits, in the same frame: the layout moves it too where the footprint draws it on
                 // a silkscreen.
-                let value_at = el.attr("valueAt");
+                let value_at = el.attr_of("valueAt");
                 if value_at.is_some_and(|v| !matches!(v, Json::Arr(l) if l.len() == 2 && l.iter().all(|n| finite(n).is_some()))) {
                     return Err(format!("{}: value_at is [x, y] in mm, in the footprint's own frame", at(el)));
                 }
@@ -1308,7 +1308,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     allowed.extend(["segmentUuids", "surface"]);
                 }
                 refuse_unknown(el, &allowed)?;
-                let on_surface = match el.attr("surface") {
+                let on_surface = match el.attr_of("surface") {
                     None => false,
                     Some(Json::Bool(true)) => true,
                     Some(_) => return Err(format!("{}: surface is true or left out", at(el))),
@@ -1317,16 +1317,16 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     return Err(format!("{}: surface runs the trace on the board's surface, and the board() has no surface", at(el)));
                 }
                 let pts = if is_trace { point_list(el, "points", 2, None)? } else { point_list(el, "points", 3, Some(3))? };
-                let layer = match el.attr("layer") {
+                let layer = match el.attr_of("layer") {
                     Some(Json::Str(l)) if copper(l) => l.clone(),
                     _ => return Err(format!("{}: layer is a copper layer (\"F.Cu\", \"In1.Cu\", \"B.Cu\")", at(el))),
                 };
                 let count = pts.len();
                 let mut terminals = Vec::new();
-                if let Some(from) = el.attr("from") {
+                if let Some(from) = el.attr_of("from") {
                     terminals.push(end(from, el, 0)?);
                 }
-                if let Some(to) = el.attr("to") {
+                if let Some(to) = el.attr_of("to") {
                     terminals.push(end(to, el, count - 1)?);
                 }
                 let segment_uuids = plain(el, "segmentUuids", |v| matches!(v, Json::Arr(l) if l.iter().all(|u| u.as_str().is_some())), "a list of uuids, one per segment")?;
@@ -1368,7 +1368,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if diameter <= drill {
                     return Err(format!("{}: the diameter is more than the drill", at(el)));
                 }
-                let pads: Vec<Json> = match el.attr("pads") {
+                let pads: Vec<Json> = match el.attr_of("pads") {
                     None => Vec::new(),
                     Some(Json::Arr(p)) if !p.is_empty() => p.clone(),
                     Some(_) => return Err(format!("{}: pads is a list of pins (\".R1 > .pin2\")", at(el))),
@@ -1401,7 +1401,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
             "pour" => {
                 refuse_unknown(el, &["name", "layers", "points", "terminals", "net", "uuid", "kicad"])?;
                 let pts = point_list(el, "points", 3, None)?;
-                let raw: Vec<Json> = match el.attr("terminals") {
+                let raw: Vec<Json> = match el.attr_of("terminals") {
                     None => Vec::new(),
                     Some(Json::Arr(list))
                         if list.iter().all(|t| matches!(t, Json::Arr(p) if p.len() == 2 && p[0].as_f64().is_some_and(|n| n.is_finite() && n.fract() == 0.0) && p[1].as_str().is_some())) =>
@@ -1440,7 +1440,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     let kinds: Vec<&str> = GRAPHICS.iter().map(|(k, _)| *k).collect();
                     return Err(format!("{}: kind is {}", at(el), kinds.join(", ")));
                 };
-                let filled = match el.attr("filled") {
+                let filled = match el.attr_of("filled") {
                     None => None,
                     Some(Json::Bool(b)) => Some(*b),
                     Some(_) => return Err(format!("{}: filled is true or false", at(el))),
@@ -1450,7 +1450,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     return Err(format!("{}: a {kind} is not filled", at(el)));
                 }
                 let mut inputs = vec![("fact".to_string(), Json::from("graphic"))];
-                if el.attr("id").is_some() {
+                if el.attr_of("id").is_some() {
                     inputs.push(("id".into(), text_of(el, "id", false)?.unwrap_or_default().into()));
                 }
                 inputs.push(("kind".into(), kind.as_str().into()));
@@ -1474,7 +1474,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     return Err("text(): field is \"reference\" or \"value\"".into());
                 }
                 let mut inputs = vec![("fact".to_string(), Json::from("text"))];
-                if el.attr("id").is_some() {
+                if el.attr_of("id").is_some() {
                     inputs.push(("id".into(), text_of(el, "id", false)?.unwrap_or_default().into()));
                 }
                 match (t, field) {
@@ -1525,7 +1525,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if code.fract() != 0.0 || code < 0.0 {
                     return Err(format!("{}: code is a KiCad net code (0 or more)", at(el)));
                 }
-                let name = el.attr("name").cloned().unwrap_or(Json::Null);
+                let name = el.attr_of("name").cloned().unwrap_or(Json::Null);
                 let inputs = vec![("fact".to_string(), Json::from("net")), ("name".into(), name), ("code".into(), code.into())];
                 s.add(BOARD_FACT, inputs, None, Some("Net"), meta(el))?;
             }
