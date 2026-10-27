@@ -199,6 +199,24 @@ fn a_mask_is_the_one_layer_it_holds_and_carries_its_call() {
 }
 
 #[test]
+fn a_mask_naming_a_layer_of_the_stack_is_wired_to_it() {
+    let g = graph(photo([
+        exposure([mask([]).of("Brush").enabled(false)]).name("Mood").ev(-0.5),
+        fill([]).name("Brush"),
+    ]));
+    let adjust = node(&g, "photo.adjust");
+    assert_eq!(adjust.get("inputs").unwrap().get("mask").unwrap().text(), golden(&w("photo.fill")));
+    assert_eq!(adjust.get("inputs").unwrap().get("maskEnabled").unwrap().text(), "false");
+    assert!(node(&g, "photo.fill").get("inputs").unwrap().get("mask").is_none());
+    assert_eq!(bad(photo([exposure([mask([]).of("Nope")])])), "exposure()'s mask() is masked by \"Nope\", and no layer is named that");
+    assert_eq!(
+        bad(photo([exposure([mask([]).of("B")]), fill([]).name("B"), fill([]).name("B")])),
+        "exposure()'s mask() is masked by \"B\", and 2 layers are named that"
+    );
+    assert_eq!(bad(photo([exposure([mask([fill([])]).of("B")]), fill([]).name("B")])), "mask(of=\"B\") in exposure() holds no layer: it names a layer of the stack");
+}
+
+#[test]
 fn a_nest_engrave_is_a_nest_engrave_node_on_the_engraves_channel() {
     let g = graph(
         nest([

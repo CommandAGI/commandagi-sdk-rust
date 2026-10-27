@@ -103,6 +103,15 @@ impl Scope {
         Ok(nid)
     }
 
+    /// Set one input of a node already declared (a mask names a layer that may be declared after it).
+    pub fn set_input(&mut self, id: &str, port: &str, value: Json) {
+        if let Some((_, node)) = self.nodes.iter_mut().find(|(nid, _)| nid == id) {
+            let mut inputs = node.get("inputs").cloned().unwrap_or(Json::obj());
+            inputs.set(port, value);
+            node.set("inputs", inputs);
+        }
+    }
+
     /// The graph: `{id, nodes, meta}`.
     pub fn build(self) -> Json {
         Json::obj().with("id", self.id.as_str()).with("nodes", Json::Obj(self.nodes)).with("meta", self.meta)

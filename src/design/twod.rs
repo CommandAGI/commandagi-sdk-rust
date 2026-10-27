@@ -37,7 +37,8 @@
 //! (`src`: a path from this file's folder, or an address; `.inputs(json(r#"{"size": 40}"#))` gives values to the
 //! parameters that drawing declares); a painting's filter (`gaussian_blur([]).radius(3)`, the photo's filters) chains
 //! among a layer's strokes and changes what is under it; in a
-//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
+//! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it, and
+//! `mask([]).of("Shadow")` names a layer the stack shows, by its `name`; a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
 //! `inner_glow`, `bevel_emboss`, `satin`, `stroke`, `color_overlay`, `gradient_overlay`, `pattern_overlay`); a
 //! constrained sketch is a leaf whose geometry is its own data:
@@ -130,7 +131,8 @@ elements! {
     raster: children;
     /// A photo's gradient layer.
     gradient: children;
-    /// The one layer that masks a layer, a stroke or a filter (`.enabled(false)`: turned off).
+    /// The one layer that masks a layer, a stroke or a filter (`.enabled(false)`: turned off); `mask([]).of("Shadow")`
+    /// names a layer the stack shows, by its name.
     mask: children;
     /// A painting's line layer: `line().from(json("[0, 0]")).to(json("[40, 30]"))`.
     line: leaf;
@@ -458,6 +460,8 @@ attributes! {
         off;
         /// A mask is on.
         enabled;
+        /// A mask's layer: the name of a layer the stack shows.
+        of;
         /// A style's angle, in degrees.
         angle;
         /// A shadow's distance.
@@ -951,6 +955,22 @@ const PHOTO: StackKind = StackKind {
 
 // ── The declaration ────────────────────────────────────────────────────────────────────────────────────────────
 
+/// What a `<mask>` is: the one layer it holds, or a layer the stack shows, named by `of`.
+enum MaskOf<'a> {
+    /// `<mask>`: the held layer's node, whether the mask is on, and the element.
+    Held(String, bool, &'a El),
+    /// `<mask of="Name" />`: the layer's name, whether the mask is on, and the element.
+    Named(String, bool, &'a El),
+}
+
+impl<'a> MaskOf<'a> {
+    fn el(&self) -> &'a El {
+        match self {
+            MaskOf::Held(_, _, m) | MaskOf::Named(_, _, m) => m,
+        }
+    }
+}
+
 /// One 2D graph being declared: the scope, and what is written on its nodes after they are added.
 #[derive(Default)]
 struct Doc {
@@ -959,6 +979,10 @@ struct Doc {
     disabled: Vec<String>,
     /// What a node holds that is not a node (its mask element, its styles): its `meta.sources`.
     sources: Vec<(String, Json)>,
+    /// Each slot's top node, by the name its layer element wrote (a `mask(of="…")` names one).
+    layers: Vec<(String, String)>,
+    /// Masks that name a layer, wired once every layer is declared: (node, name, on, where it was written).
+    masks: Vec<(String, String, bool, String)>,
 }
 
 impl Doc {
@@ -1193,23 +1217,50 @@ impl Doc {
     /// A layer's (or a stroke's, or a filter's) `mask`: the one stack layer it holds, declared outside the stack and
     /// wired to the node's `mask` port. The `mask` element is not a node: its call is the masked node's
     /// `meta.sources.mask`.
-    fn mask_of<'a>(&mut self, kind: &StackKind, el: &'a El) -> Result<Option<(String, &'a El)>, String> {
+    fn mask_of<'a>(&mut self, kind: &StackKind, el: &'a El) -> Result<Option<MaskOf<'a>>, String> {
         let masks: Vec<&El> = el.child_elements().filter(|c| c.tag == "mask").collect();
         let Some(m) = masks.first() else { return Ok(None) };
         if masks.len() > 1 {
             return Err(format!("{} has one mask()", place(el)));
         }
-        for (k, v) in entries(&attrs(m, &[])?) {
-            if k != "enabled" || !matches!(v, Json::Bool(_)) {
-                return Err(format!("mask() in {} has one attribute, enabled (write the rest on the layer it holds)", place(el)));
+        let a = attrs(m, &[])?;
+        for (k, v) in entries(&a) {
+            if (k != "enabled" && k != "of") || (k == "enabled" && !matches!(v, Json::Bool(_))) || (k == "of" && !matches!(v, Json::Str(_))) {
+                return Err(format!("mask() in {} has enabled and of (write the rest on the layer it holds or names)", place(el)));
             }
+        }
+        let on = a.get("enabled") != Some(&Json::Bool(false));
+        if let Some(Json::Str(of)) = a.get("of") {
+            let of = of.as_str().to_string();
+            if m.child_elements().next().is_some() {
+                return Err(format!("mask(of=\"{of}\") in {} holds no layer: it names a layer of the stack", place(el)));
+            }
+            return Ok(Some(MaskOf::Named(of, on, m)));
         }
         let held: Vec<&El> = m.child_elements().collect();
         if held.len() != 1 {
             return Err(format!("mask() in {} holds one layer", place(el)));
         }
-        let ids = self.stack(kind, &held)?;
-        Ok(Some((ids[0].clone(), m)))
+        let ids = self.stack(kind, &held, false)?;
+        Ok(Some(MaskOf::Held(ids[0].clone(), on, m)))
+    }
+
+    /// Wire every `mask(of="…")` to the layer it names: a name must match exactly one layer of the stack.
+    fn resolve_masks(&mut self) -> Result<(), String> {
+        for (id, of, on, what) in std::mem::take(&mut self.masks) {
+            let hits: Vec<String> = self.layers.iter().filter(|(n, _)| *n == of).map(|(_, id)| id.clone()).collect();
+            if hits.is_empty() {
+                return Err(format!("{what} is masked by \"{of}\", and no layer is named that"));
+            }
+            if hits.len() > 1 {
+                return Err(format!("{what} is masked by \"{of}\", and {} layers are named that", hits.len()));
+            }
+            self.scope().set_input(&id, "mask", wire(&hits[0], "out"));
+            if !on {
+                self.scope().set_input(&id, "maskEnabled", Json::Bool(false));
+            }
+        }
+        Ok(())
     }
 
     /// A painting layer's `fx`: its styles in order (the layer's `fx`), and where each was written.
@@ -1250,11 +1301,11 @@ impl Doc {
         let mask = self.mask_of(kind, el)?;
         let styles = Self::styles_of(kind, el)?;
         let mut inputs = match &mask {
-            Some((id, m)) => {
+            Some(MaskOf::Held(id, on, _)) => {
                 let i = inputs.with("mask", wire(id, "out"));
-                if m.attr("enabled") == Some(&Json::Bool(false)) { i.with("maskEnabled", false) } else { i }
+                if *on { i } else { i.with("maskEnabled", false) }
             }
-            None => inputs,
+            _ => inputs,
         };
         let mut sources = Json::obj();
         if let Some((fx, at)) = styles {
@@ -1262,7 +1313,10 @@ impl Doc {
             sources = at;
         }
         let id = self.add(el, node_type, inputs)?;
-        if let Some(at) = mask.and_then(|(_, m)| m.source_json()) {
+        if let Some(MaskOf::Named(of, on, _)) = &mask {
+            self.masks.push((id.clone(), of.clone(), *on, format!("{}'s mask()", place(el))));
+        }
+        if let Some(at) = mask.as_ref().and_then(|m| m.el().source_json()) {
             sources.set("mask", at);
         }
         if !entries(&sources).is_empty() {
@@ -1271,7 +1325,8 @@ impl Doc {
         Ok(id)
     }
 
-    fn stack(&mut self, kind: &StackKind, children: &[&El]) -> Result<Vec<String>, String> {
+    /// `in_stack`: these children are slots of the stack (a mask's own held layer is not one a `mask(of=…)` may name).
+    fn stack(&mut self, kind: &StackKind, children: &[&El], in_stack: bool) -> Result<Vec<String>, String> {
         let mut slots = Vec::new();
         for &el in children {
             let Some((layer_type, inputs)) = (kind.layer)(el)? else {
@@ -1288,7 +1343,7 @@ impl Doc {
             if !stack.is_empty() && layer_type != group {
                 return Err(format!("{}: only a group() holds layers", place(el)));
             }
-            let inner = if layer_type == group { self.stack(kind, &stack)? } else { Vec::new() };
+            let inner = if layer_type == group { self.stack(kind, &stack, in_stack)? } else { Vec::new() };
             let mut top = self.add_masked(kind, el, &layer_type, spread(inputs.clone(), wires("layers", &inner)))?;
             // Each chain member carries the layer's fields: the stack reads them off whichever member is on top.
             let mut carried = Json::obj().with("name", "Layer").with("visible", true).with("opacity", 1i64).with("blend", "normal");
@@ -1301,6 +1356,11 @@ impl Doc {
                 let own = (kind.chain)(c)?;
                 let inputs = spread(carried.clone(), entries(&own).to_vec()).with("src", wire(&top, "out"));
                 top = self.add_masked(kind, c, &(kind.chain_type)(c), inputs)?;
+            }
+            if in_stack {
+                if let Some(Json::Str(name)) = inputs.get("name") {
+                    self.layers.push((name.as_str().to_string(), top.clone()));
+                }
             }
             slots.push(top);
         }
@@ -1315,7 +1375,8 @@ impl Doc {
         let title = a.get("name").and_then(Json::as_str).map(str::to_string).unwrap_or_else(unnamed);
         self.s = Some(Scope::new(&format!("{}:{}", kind.prefix, slug(&title)), Json::obj().with("domain", kind.prefix).with("name", title)));
         let kids: Vec<&El> = root.child_elements().collect();
-        let layers = self.stack(kind, &kids)?;
+        let layers = self.stack(kind, &kids, true)?;
+        self.resolve_masks()?;
         let Json::Obj(inputs) = spread(a, wires("layers", &layers)) else { unreachable!() };
         let doc = self.scope().add(&format!("{}.doc", kind.prefix), inputs, Some("doc"), None, meta(root))?;
         Ok(self.build(&doc))
