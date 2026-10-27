@@ -328,9 +328,25 @@ impl Mapper<'_> {
             .map(|m| {
                 let (s, _) = self.off(m.dot_token.span());
                 let (_, t) = self.off(m.paren_token.span.close());
-                let mut p = Json::obj().with("name", m.method.to_string()).with("start", s as f64).with("end", t as f64);
-                match m.args.first() {
-                    Some(a) if m.args.len() == 1 => {
+                // `.attr("name", value)` is the SDK's generic setter: the attribute it writes is the name it names, a
+                // field no vocabulary trait lists. `.with_attr(…)` is the same call, and a hand-written file may use it.
+                let generic = matches!(m.method.to_string().as_str(), "attr" | "with_attr")
+                    && m.args.len() == 2
+                    && matches!(m.args.first(), Some(Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. })));
+                let (name, one) = if generic {
+                    match (m.args.first(), m.args.iter().nth(1)) {
+                        (Some(Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(n), .. })), value) => (n.value(), value),
+                        _ => (m.method.to_string(), None),
+                    }
+                } else {
+                    (m.method.to_string(), if m.args.len() == 1 { m.args.first() } else { None })
+                };
+                let mut p = Json::obj().with("name", name).with("start", s as f64).with("end", t as f64);
+                if generic {
+                    p.set("generic", true);
+                }
+                match one {
+                    Some(a) => {
                         let (vs, ve) = self.off(a.span());
                         p.set("valueStart", vs as f64);
                         p.set("valueEnd", ve as f64);
@@ -339,7 +355,7 @@ impl Mapper<'_> {
                             None => p = p.with("literal", false).with("expr", self.source(a.span())),
                         }
                     }
-                    _ => p = p.with("literal", false).with("expr", m.args.iter().map(|a| self.source(a.span())).collect::<Vec<_>>().join(", ")),
+                    None => p = p.with("literal", false).with("expr", m.args.iter().map(|a| self.source(a.span())).collect::<Vec<_>>().join(", ")),
                 }
                 p.with("line", m.method.span().start().line as f64)
             })

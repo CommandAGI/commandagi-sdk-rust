@@ -56,7 +56,7 @@ fn values_are_numbers_strings_bools_homogeneous_arrays_and_json_text() {
         .points(2.5f32)
         .frozen_rows(3usize);
     assert_eq!(el.attrs, vec![("points".to_string(), Json::Num(2.5)), ("frozenRows".to_string(), Json::Num(3.0))], "the last value wins in the first one's place");
-    let v = |e: El| e.attr("points").unwrap().text();
+    let v = |e: El| e.attr_of("points").unwrap().text();
     assert_eq!(v(rect().points(0.1f32)), "0.1");
     assert_eq!(v(rect().points(-4i64)), "-4");
     assert_eq!(v(rect().points("a")), r#""a""#);

@@ -103,17 +103,17 @@ fn testplan_of(t: &DocTree) -> Result<Json, String> {
         }
     }
     for s in t.children.iter().filter(|c| c.tag == "step") {
-        let at = match s.attr("id") {
+        let at = match s.attr_of("id") {
             Some(id) => format!("step().id({})", id.text()),
             None => "step()".into(),
         };
-        if let Some(v) = s.attr("verifies") {
+        if let Some(v) = s.attr_of("verifies") {
             let refs = matches!(v, Json::Arr(items) if items.iter().all(|r| matches!(r, Json::Str(s) if !s.is_empty())));
             if !refs {
                 return Err(format!("{at} verifies is a list of refs to requirements, not {}", v.text()));
             }
         }
-        if let Some(v) = s.attr("command") {
+        if let Some(v) = s.attr_of("command") {
             if !matches!(v, Json::Obj(_)) {
                 return Err(format!("{at} command is one record in the channel format's shape ({{ verb: … }}), not {}", v.text()));
             }

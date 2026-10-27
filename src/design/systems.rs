@@ -160,7 +160,7 @@ fn declare(root: El) -> Result<Declared, String> {
 /// How a message names a record: its call with the attribute that names it (`requirement().id("x")`).
 fn at(t: &DocTree, key: &str) -> String {
     let call = super::element::fn_name(t.tag);
-    match t.attr(key) {
+    match t.attr_of(key) {
         Some(v) => format!("{call}().{}({})", super::element::rust_name(key), v.text()),
         None => format!("{call}()"),
     }
@@ -202,7 +202,7 @@ fn need(cond: bool, message: impl FnOnce() -> String) -> Result<(), String> {
 fn grouped(t: &DocTree, lists: &[(&str, &str)]) -> Json {
     let mut out = Json::obj();
     for k in ROOT_FIELDS {
-        if let Some(v) = t.attr(k) {
+        if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }
@@ -218,14 +218,14 @@ fn grouped(t: &DocTree, lists: &[(&str, &str)]) -> Json {
 fn requirements_of(t: &DocTree) -> Result<Json, String> {
     for c in &t.children {
         let w = at(c, "id");
-        let id_ok = matches!(c.attr("id"), Some(Json::Str(s)) if !s.is_empty() && s.chars().next().unwrap().is_ascii_alphanumeric() && s.chars().all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch)));
+        let id_ok = matches!(c.attr_of("id"), Some(Json::Str(s)) if !s.is_empty() && s.chars().next().unwrap().is_ascii_alphanumeric() && s.chars().all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch)));
         need(id_ok, || format!(r#"{w}: id is letters, digits, ".", "_" and "-" (a ref names it as <file>#<id>)"#))?;
-        need(matches!(c.attr("text"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: text says what is required"))?;
-        need(c.attr("method").is_none() || one_of(c.attr("method"), VERIFICATION_METHODS), || format!("{w}: method must be one of {} (got {})", VERIFICATION_METHODS.join(", "), said(c.attr("method"))))?;
+        need(matches!(c.attr_of("text"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: text says what is required"))?;
+        need(c.attr_of("method").is_none() || one_of(c.attr_of("method"), VERIFICATION_METHODS), || format!("{w}: method must be one of {} (got {})", VERIFICATION_METHODS.join(", "), said(c.attr_of("method"))))?;
         for k in ["verifiedBy", "design"] {
-            need(c.attr(k).map_or(true, refs), || format!("{w}: {k} is a ref or a list of refs"))?;
+            need(c.attr_of(k).map_or(true, refs), || format!("{w}: {k} is a ref or a list of refs"))?;
         }
-        need(c.attr("parent").is_none() || string(c.attr("parent")), || format!("{w}: parent is a ref to the requirement this one is derived from"))?;
+        need(c.attr_of("parent").is_none() || string(c.attr_of("parent")), || format!("{w}: parent is a ref to the requirement this one is derived from"))?;
     }
     Ok(grouped(t, &[("requirement", "requirements")]))
 }
@@ -233,55 +233,55 @@ fn requirements_of(t: &DocTree) -> Result<Json, String> {
 /// A built-in quantity, or a declared one's name (lower-case letters, digits and "-") with its unit: the unit names the
 /// family the host converts within (m3/h, m2, slm).
 fn quantity_of(c: &DocTree, w: &str) -> Result<(), String> {
-    if one_of(c.attr("quantity"), BUDGET_QUANTITIES) {
+    if one_of(c.attr_of("quantity"), BUDGET_QUANTITIES) {
         return Ok(());
     }
-    let q = c.attr("quantity").and_then(Json::as_str);
+    let q = c.attr_of("quantity").and_then(Json::as_str);
     let named = matches!(q, Some(s) if s.chars().next().is_some_and(|ch| ch.is_ascii_lowercase()) && s.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'));
-    need(named, || format!(r#"{w}: quantity must be one of {}, or a quantity's name in lower-case letters, digits and "-" ("exhaust-flow") (got {})"#, BUDGET_QUANTITIES.join(", "), said(c.attr("quantity"))))?;
-    need(matches!(c.attr("unit"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: a quantity of {} states its unit (unit="m3/h"): the unit names what it measures"#, q.unwrap_or_default()))
+    need(named, || format!(r#"{w}: quantity must be one of {}, or a quantity's name in lower-case letters, digits and "-" ("exhaust-flow") (got {})"#, BUDGET_QUANTITIES.join(", "), said(c.attr_of("quantity"))))?;
+    need(matches!(c.attr_of("unit"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: a quantity of {} states its unit (unit="m3/h"): the unit names what it measures"#, q.unwrap_or_default()))
 }
 
 fn system_of(t: &DocTree) -> Result<Json, String> {
     for c in &t.children {
         let w = at(c, if c.tag == "bom" { "ref" } else { "id" });
         match c.tag {
-            "rail" => need(num(c.attr("voltage")), || format!("{w}: voltage is a number of volts"))?,
-            "converter" => need(matches!(c.attr("efficiency"), Some(Json::Num(e)) if *e > 0.0 && *e <= 1.0), || format!("{w}: efficiency is a number in (0, 1] (0.88 for 88 %)"))?,
+            "rail" => need(num(c.attr_of("voltage")), || format!("{w}: voltage is a number of volts"))?,
+            "converter" => need(matches!(c.attr_of("efficiency"), Some(Json::Num(e)) if *e > 0.0 && *e <= 1.0), || format!("{w}: efficiency is a number in (0, 1] (0.88 for 88 %)"))?,
             "load" => {
-                need(c.attr("current").is_some() || c.attr("power").is_some(), || format!("{w}: a load states its current (A) or its power (W)"))?;
+                need(c.attr_of("current").is_some() || c.attr_of("power").is_some(), || format!("{w}: a load states its current (A) or its power (W)"))?;
                 for k in ["current", "power", "voltage", "peakCurrent", "peakPower", "inrushCurrent"] {
-                    need(c.attr(k).is_none() || num(c.attr(k)), || format!("{w}: {k} is a number"))?;
+                    need(c.attr_of(k).is_none() || num(c.attr_of(k)), || format!("{w}: {k} is a number"))?;
                 }
-                need(c.attr("duty").is_none() || matches!(c.attr("duty"), Some(Json::Num(d)) if *d > 0.0 && *d <= 1.0), || format!("{w}: duty is the share of time the load draws, a number in (0, 1] (0.25 for 25 %)"))?;
+                need(c.attr_of("duty").is_none() || matches!(c.attr_of("duty"), Some(Json::Num(d)) if *d > 0.0 && *d <= 1.0), || format!("{w}: duty is the share of time the load draws, a number in (0, 1] (0.25 for 25 %)"))?;
             }
             "contribution" => {
                 quantity_of(c, &w)?;
-                need(c.attr("quantity").and_then(Json::as_str) != Some("cost"), || {
+                need(c.attr_of("quantity").and_then(Json::as_str) != Some("cost"), || {
                     format!("{w}: a cost is stated in the design's logistics (a part's suppliers, a made part's rate), which a cost budget's design rolls up, not as a contribution")
                 })?;
-                need(num(c.attr("value")), || format!("{w}: value is a number"))?;
-                need(matches!(c.attr("source"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: source says where the number was read (a datasheet, a measurement, "estimate: …")"#))?;
+                need(num(c.attr_of("value")), || format!("{w}: value is a number"))?;
+                need(matches!(c.attr_of("source"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: source says where the number was read (a datasheet, a measurement, "estimate: …")"#))?;
             }
             "budget" => {
                 quantity_of(c, &w)?;
-                need(num(c.attr("limit")), || format!("{w}: limit is a number"))?;
-                need(c.attr("margin").is_none() || matches!(c.attr("margin"), Some(Json::Num(m)) if *m >= 0.0 && *m < 1.0), || format!("{w}: margin is a fraction of the limit kept free, in [0, 1)"))?;
-                let q = c.attr("quantity").and_then(Json::as_str);
+                need(num(c.attr_of("limit")), || format!("{w}: limit is a number"))?;
+                need(c.attr_of("margin").is_none() || matches!(c.attr_of("margin"), Some(Json::Num(m)) if *m >= 0.0 && *m < 1.0), || format!("{w}: margin is a fraction of the limit kept free, in [0, 1)"))?;
+                let q = c.attr_of("quantity").and_then(Json::as_str);
                 if q == Some("power") {
-                    need(string(c.attr("rail")) && string(c.attr("mode")), || format!("{w}: a power budget names its rail and its mode"))?;
+                    need(string(c.attr_of("rail")) && string(c.attr_of("mode")), || format!("{w}: a power budget names its rail and its mode"))?;
                 }
-                need(c.attr("peak").is_none() || (matches!(c.attr("peak"), Some(Json::Bool(_))) && q == Some("power")), || {
+                need(c.attr_of("peak").is_none() || (matches!(c.attr_of("peak"), Some(Json::Bool(_))) && q == Some("power")), || {
                     format!("{w}: peak is true or false, on a power budget (each load at its peakCurrent or peakPower)")
                 })?;
                 if q == Some("cost") {
-                    need(string(c.attr("design")), || format!(r#"{w}: a cost budget names the design whose logistics roll-up it reads (design="cad/Assembly.3d.rs")"#))?;
+                    need(string(c.attr_of("design")), || format!(r#"{w}: a cost budget names the design whose logistics roll-up it reads (design="cad/Assembly.3d.rs")"#))?;
                 }
                 if q == Some("thermal") {
-                    need(string(c.attr("mode")) && num(c.attr("resistance")), || format!("{w}: a thermal budget names its mode and the thermal resistance to the ambient (resistance, K/W)"))?;
+                    need(string(c.attr_of("mode")) && num(c.attr_of("resistance")), || format!("{w}: a thermal budget names its mode and the thermal resistance to the ambient (resistance, K/W)"))?;
                 }
             }
-            "check" => need(one_of(c.attr("kind"), SYSTEM_CHECK_KINDS), || format!("{w}: kind must be one of {} (got {})", SYSTEM_CHECK_KINDS.join(", "), said(c.attr("kind"))))?,
+            "check" => need(one_of(c.attr_of("kind"), SYSTEM_CHECK_KINDS), || format!("{w}: kind must be one of {} (got {})", SYSTEM_CHECK_KINDS.join(", "), said(c.attr_of("kind"))))?,
             _ => {}
         }
     }
@@ -295,31 +295,31 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
     for c in &t.children {
         let w = at(c, if c.tag == "pin" { "number" } else { "id" });
         match c.tag {
-            "frame" => need(c.attr("unit").is_none() || c.attr("unit") == Some(&Json::from("mm")), || format!(r#"{w}: positions are in mm (unit "mm")"#))?,
+            "frame" => need(c.attr_of("unit").is_none() || c.attr_of("unit") == Some(&Json::from("mm")), || format!(r#"{w}: positions are in mm (unit "mm")"#))?,
             "pin" => {
-                need(int(c.attr("number")) && c.attr("number").and_then(Json::as_f64).unwrap_or(0.0) > 0.0, || format!("{w}: number is the pin's number, 1, 2, 3 …"))?;
-                need(c.attr("at").is_none() || pair(c.attr("at"), 2), || format!("{w}: at is [x, y] mm in the interface's frame"))?;
-                need(c.attr("gpio").is_none() || int(c.attr("gpio")), || format!("{w}: gpio is the GPIO number of the pin on the side that has one"))?;
-                need(c.attr("required").map_or(true, |v| matches!(v, Json::Bool(_))), || format!("{w}: required is true or false"))?;
+                need(int(c.attr_of("number")) && c.attr_of("number").and_then(Json::as_f64).unwrap_or(0.0) > 0.0, || format!("{w}: number is the pin's number, 1, 2, 3 …"))?;
+                need(c.attr_of("at").is_none() || pair(c.attr_of("at"), 2), || format!("{w}: at is [x, y] mm in the interface's frame"))?;
+                need(c.attr_of("gpio").is_none() || int(c.attr_of("gpio")), || format!("{w}: gpio is the GPIO number of the pin on the side that has one"))?;
+                need(c.attr_of("required").map_or(true, |v| matches!(v, Json::Bool(_))), || format!("{w}: required is true or false"))?;
             }
             "hole" => {
-                need(pair(c.attr("at"), 2), || format!("{w}: at is [x, y] mm in the interface's frame"))?;
-                need(c.attr("diameter").is_none() || num(c.attr("diameter")), || format!("{w}: diameter is mm"))?;
+                need(pair(c.attr_of("at"), 2), || format!("{w}: at is [x, y] mm in the interface's frame"))?;
+                need(c.attr_of("diameter").is_none() || num(c.attr_of("diameter")), || format!("{w}: diameter is mm"))?;
             }
-            "message" => need(c.attr("text").is_some() || c.attr("code").is_some(), || format!("{w}: a message has its text, its code, or both"))?,
+            "message" => need(c.attr_of("text").is_some() || c.attr_of("code").is_some(), || format!("{w}: a message has its text, its code, or both"))?,
             "param" => {
-                need(num(c.attr("value")) || matches!(c.attr("value"), Some(Json::Str(s)) if !s.trim().is_empty()), || {
+                need(num(c.attr_of("value")) || matches!(c.attr_of("value"), Some(Json::Str(s)) if !s.trim().is_empty()), || {
                     format!(r#"{w}: value is a number with its unit in unit (115200), or a text a channel states (a format, a dialect, a transport: "8N1")"#)
                 })?;
-                need(c.attr("unit").is_none() || num(c.attr("value")), || format!("{w}: a parameter stated as a text has no unit (unit is for a number)"))?;
+                need(c.attr_of("unit").is_none() || num(c.attr_of("value")), || format!("{w}: a parameter stated as a text has no unit (unit is for a number)"))?;
             }
             "side" => {
-                need(c.attr("kind").is_none() || one_of(c.attr("kind"), SIDE_KINDS), || format!("{w}: kind must be one of {} (got {})", SIDE_KINDS.join(", "), said(c.attr("kind"))))?;
-                need(c.attr("origin").is_none() || pair(c.attr("origin"), 2) || pair(c.attr("origin"), 3), || format!("{w}: origin is where the interface's frame sits in this side's frame, [x, y] or [x, y, z] mm"))?;
-                need(c.attr("rotation").is_none() || num(c.attr("rotation")), || format!("{w}: rotation is the angle the interface's frame is turned on this side, in degrees counter-clockwise"))?;
-                need(c.attr("face").is_none() || one_of(c.attr("face"), SIDE_FACES), || format!("{w}: face must be one of {} (got {})", SIDE_FACES.join(", "), said(c.attr("face"))))?;
-                need(c.attr("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
-                need(c.attr("channel").is_none() || string(c.attr("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
+                need(c.attr_of("kind").is_none() || one_of(c.attr_of("kind"), SIDE_KINDS), || format!("{w}: kind must be one of {} (got {})", SIDE_KINDS.join(", "), said(c.attr_of("kind"))))?;
+                need(c.attr_of("origin").is_none() || pair(c.attr_of("origin"), 2) || pair(c.attr_of("origin"), 3), || format!("{w}: origin is where the interface's frame sits in this side's frame, [x, y] or [x, y, z] mm"))?;
+                need(c.attr_of("rotation").is_none() || num(c.attr_of("rotation")), || format!("{w}: rotation is the angle the interface's frame is turned on this side, in degrees counter-clockwise"))?;
+                need(c.attr_of("face").is_none() || one_of(c.attr_of("face"), SIDE_FACES), || format!("{w}: face must be one of {} (got {})", SIDE_FACES.join(", "), said(c.attr_of("face"))))?;
+                need(c.attr_of("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
+                need(c.attr_of("channel").is_none() || string(c.attr_of("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
             }
             _ => {}
         }

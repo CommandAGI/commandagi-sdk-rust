@@ -491,7 +491,7 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
                 let is_column = c.tag == "column";
                 let size_prop = if is_column { "width" } else { "height" };
                 only(c, &["at", size_prop])?;
-                let index = match (is_column, c.attr("at")) {
+                let index = match (is_column, c.attr_of("at")) {
                     (true, Some(Json::Str(s))) if (1..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_uppercase()) => Some(col_index(s)),
                     (false, Some(Json::Num(r))) if r.fract() == 0.0 && *r >= 1.0 => Some(*r as u64 - 1),
                     _ => None,
@@ -504,7 +504,7 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
                     Some(v) if v > 0.0 => v,
                     _ => return Err(format!("{}: {size_prop} is a number of pixels", place(c))),
                 };
-                let key = match c.attr("at") {
+                let key = match c.attr_of("at") {
                     Some(Json::Str(s)) if is_column => s.clone(),
                     _ => (index + 1).to_string(),
                 };
@@ -518,13 +518,13 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
             only(c, &["at", "value", "formula", "numFmt", "bold", "italic", "align", "bg", "color", "wrap"])?;
             let at = txt(c, "at")?.map(|a| a.to_uppercase());
             let Some((at, (letters, row))) = at.as_deref().and_then(|a| a1(a).map(|m| (a.to_string(), m))) else {
-                let given = c.attr("at").map(Json::text).unwrap_or_else(|| "nothing".into());
+                let given = c.attr_of("at").map(Json::text).unwrap_or_else(|| "nothing".into());
                 return Err(format!("cell(): at is an A1 reference (\"B4\"), not {given}"));
             };
             if cells.iter().any(|(k, _)| *k == at) {
                 return Err(format!("two cells of {name} are at {at}"));
             }
-            let v = c.attr("value");
+            let v = c.attr_of("value");
             if matches!(v, Some(Json::Arr(_) | Json::Obj(_))) {
                 return Err(format!("{}: value is text, a number or true/false", place(c)));
             }

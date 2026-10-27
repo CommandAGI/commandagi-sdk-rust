@@ -11,6 +11,9 @@ Added
 - A side places the interface's frame by `rotation` (degrees, counter-clockwise) and `face` (`back`: read from the
   mating part, the frame mirrored through its y axis, so a hole or pin placed on it is mirrored too).
 - A painting's or a photo's `mask([]).of("Name")` names a layer the stack shows, by its `name`, and wires the masked node to it; the element holds no layer of its own.
+- `El::attr("name", value)` sets any attribute by its TypeScript name, so a field no module trait lists (a port of a
+  node type of your own, a media effect no spec names) compiles: `node().id("blur").attr("cutoff", 4)`. The getter is
+  `attr_of`; `with_attr` stays the same call.
 
 - A monitor source names the connected account it reads as (`<source connection="gmail@jacobfv123@gmail.com">`); the api worker reads it (`via="worker"` only).
 - `<component refRot={90}>`: how far a part's reference text is turned where it sits, in degrees, in the footprint's own frame (the placer turns a text it has no upright place for).

@@ -36,8 +36,8 @@
 //! whose name is not an attribute name (`layers.3`) is written in `.inputs(json(r#"{"layers.3": null}"#))`.
 //!
 //! [`OntologyAttrs`] has a method for each field the ontology's files and the shipped definitions use. A field it has
-//! no method for (a port of a node type of your own) is a method of a trait of the file's own, which sets the field by
-//! its TypeScript name: `fn cutoff(self, v: impl Into<Value>) -> El { self.with_attr("cutoff", v) }`.
+//! no method for (a port of a node type of your own) is set by [`El::attr`], which takes any name:
+//! `node().id("blur").attr("cutoff", 4)`.
 //!
 //! A run gives back what the TypeScript SDK gives: for a world, a definition, a dashboard and a geo project, the
 //! document (`{format, document, sources}`, each element's site keyed by its tree path) beside an empty graph; for a
@@ -247,7 +247,7 @@ fn is_record(v: Option<&Json>) -> bool {
 /// How a message names an element: its call with the attribute that names it (`node().id("a")`).
 fn call(t: &DocTree, key: &str) -> String {
     let f = super::element::fn_name(t.tag);
-    match t.attr(key) {
+    match t.attr_of(key) {
         Some(v @ Json::Str(_)) => format!("{f}().{}({})", rust_name(key), v.text()),
         _ => format!("{f}()"),
     }
@@ -256,7 +256,7 @@ fn call(t: &DocTree, key: &str) -> String {
 // ── world.rs ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 fn world_of(t: &DocTree) -> Result<Json, String> {
-    match t.attr("kind") {
+    match t.attr_of("kind") {
         Some(Json::Str(k)) if k == "physical" || k == "simulation" => {}
         other => {
             return Err(format!("world(): kind is \"physical\" or \"simulation\", said explicitly, not {}", text(other)));
@@ -288,7 +288,7 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
 // ── definition.rs ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 fn device_of(t: &DocTree) -> Result<Json, String> {
-    if t.attr("channels").is_some() {
+    if t.attr_of("channels").is_some() {
         return Err("device(): write each channel as a channel() element, not a channels attribute".into());
     }
     let channels: Vec<Json> = kids(t, "channel").map(DocTree::record).collect();
@@ -302,7 +302,7 @@ fn device_of(t: &DocTree) -> Result<Json, String> {
 // ── <name>.dashboard.rs ────────────────────────────────────────────────────────────────────────────────────────────
 
 fn dashboard_of(t: &DocTree) -> Result<Json, String> {
-    if let Some(k) = DASHBOARD_STRUCTURE.iter().find(|k| t.attr(k).is_some()) {
+    if let Some(k) = DASHBOARD_STRUCTURE.iter().find(|k| t.attr_of(k).is_some()) {
         return Err(format!("dashboard(): {k} is written as elements (param(), split(), pane(), region()), not an attribute"));
     }
     let is_layout = |c: &&DocTree| c.tag == "split" || c.tag == "pane";
@@ -312,7 +312,7 @@ fn dashboard_of(t: &DocTree) -> Result<Json, String> {
     }
     fn layout(n: &DocTree, panes: &mut Vec<(String, Json)>) -> Result<Json, String> {
         if n.tag == "pane" {
-            let id = js_string(n.attr("id"));
+            let id = js_string(n.attr_of("id"));
             if panes.iter().any(|(k, _)| *k == id) {
                 return Err(format!("two pane() have id {:?}", id));
             }
@@ -324,7 +324,7 @@ fn dashboard_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("a split() has two sides (this one has {})", sides.len()));
         }
         let children = sides.into_iter().map(|c| layout(c, panes)).collect::<Result<Vec<_>, _>>()?;
-        let attr = |k: &str| n.attr(k).cloned().unwrap_or(Json::Null);
+        let attr = |k: &str| n.attr_of(k).cloned().unwrap_or(Json::Null);
         Ok(Json::obj().with("kind", "split").with("axis", attr("axis")).with("ratio", attr("ratio")).with("children", children))
     }
     let mut panes = Vec::new();
@@ -332,7 +332,7 @@ fn dashboard_of(t: &DocTree) -> Result<Json, String> {
     let params: Vec<Json> = kids(t, "param").map(DocTree::record).collect();
     let mut regions = Json::obj();
     for r in kids(t, "region") {
-        regions.set(&js_string(r.attr("side")), Json::Obj(omit(&r.attrs, &["side"])));
+        regions.set(&js_string(r.attr_of("side")), Json::Obj(omit(&r.attrs, &["side"])));
     }
     let mut out = Json::obj().with("format", "commandagi-dashboard");
     for (k, v) in &t.attrs {
@@ -414,16 +414,16 @@ fn opgraph_of(t: &DocTree) -> Result<Json, String> {
     let mut nodes: Vec<(String, Json)> = Vec::new();
     let mut outputs: Vec<Json> = Vec::new();
     for n in kids(t, "node") {
-        let id = js_string(n.attr("id"));
+        let id = js_string(n.attr_of("id"));
         let at = call(n, "id");
-        if !matches!(n.attr("type"), Some(Json::Str(s)) if !s.is_empty()) {
+        if !matches!(n.attr_of("type"), Some(Json::Str(s)) if !s.is_empty()) {
             return Err(format!("{at} needs a type_"));
         }
         if id.contains(':') {
             return Err(format!("{at}: an id has no colon (a wire names \"node:port\")"));
         }
         let mut inputs = Json::Obj(n.attrs.iter().filter(|(k, _)| !NODE_ATTRS.contains(&k.as_str())).cloned().collect());
-        if let Some(given) = n.attr("inputs") {
+        if let Some(given) = n.attr_of("inputs") {
             let Json::Obj(ports) = given else { return Err(format!("{at} inputs is an object of ports")) };
             for (k, v) in ports {
                 if port_is_attribute(k) {
@@ -432,43 +432,43 @@ fn opgraph_of(t: &DocTree) -> Result<Json, String> {
                 inputs.set(k, v.clone());
             }
         }
-        let mut meta = match n.attr("meta") {
+        let mut meta = match n.attr_of("meta") {
             None => Json::obj(),
             Some(m @ Json::Obj(_)) => m.clone(),
             Some(_) => return Err(format!("{at} meta is an object")),
         };
         for k in ["x", "y"] {
-            if let Some(v) = n.attr(k) {
+            if let Some(v) = n.attr_of(k) {
                 meta.set(k, v.clone());
             }
         }
         if let Some(s) = &n.source {
             meta.set("source", s.clone());
         }
-        let mut node = Json::obj().with("id", id.as_str()).with("type", n.attr("type").cloned().unwrap_or(Json::Null));
-        if let Some(label @ Json::Str(_)) = n.attr("label") {
+        let mut node = Json::obj().with("id", id.as_str()).with("type", n.attr_of("type").cloned().unwrap_or(Json::Null));
+        if let Some(label @ Json::Str(_)) = n.attr_of("label") {
             node.set("label", label.clone());
         }
         node.set("inputs", inputs);
-        if n.attr("disabled") == Some(&Json::Bool(true)) {
+        if n.attr_of("disabled") == Some(&Json::Bool(true)) {
             node.set("disabled", true);
         }
         if meta != Json::obj() {
             node.set("meta", meta);
         }
-        if n.attr("output") == Some(&Json::Bool(true)) {
+        if n.attr_of("output") == Some(&Json::Bool(true)) {
             outputs.push(Json::from(id.as_str()));
         }
         nodes.push((id, node));
     }
     for w in kids(t, "wire") {
-        let (from_node, from_port) = end_of(w.attr("from"), "from")?;
-        let (to_node, to_port) = end_of(w.attr("to"), "to")?;
+        let (from_node, from_port) = end_of(w.attr_of("from"), "from")?;
+        let (to_node, to_port) = end_of(w.attr_of("to"), "to")?;
         if !nodes.iter().any(|(k, _)| *k == to_node) {
-            return Err(format!("wire().to({}): no node().id({})", text(w.attr("to")), Json::from(to_node).text()));
+            return Err(format!("wire().to({}): no node().id({})", text(w.attr_of("to")), Json::from(to_node).text()));
         }
         if !nodes.iter().any(|(k, _)| *k == from_node) {
-            return Err(format!("wire().from({}): no node().id({})", text(w.attr("from")), Json::from(from_node).text()));
+            return Err(format!("wire().from({}): no node().id({})", text(w.attr_of("from")), Json::from(from_node).text()));
         }
         let target = &mut nodes.iter_mut().find(|(k, _)| *k == to_node).expect("checked").1;
         let literal = target.get("inputs").and_then(|i| i.get(&to_port)).cloned();
@@ -496,12 +496,12 @@ fn opgraph_of(t: &DocTree) -> Result<Json, String> {
             target.set("meta", meta);
         }
     }
-    let mut meta = if is_record(t.attr("meta")) { t.attr("meta").cloned().unwrap_or_else(Json::obj) } else { Json::obj() };
-    if let Some(name) = t.attr("name") {
+    let mut meta = if is_record(t.attr_of("meta")) { t.attr_of("meta").cloned().unwrap_or_else(Json::obj) } else { Json::obj() };
+    if let Some(name) = t.attr_of("name") {
         meta.set("name", name.clone());
     }
-    meta.set("domain", t.attr("domain").filter(|d| **d != Json::Null).cloned().unwrap_or_else(|| NODE_GRAPH_ID.into()));
-    let id = match t.attr("id") {
+    meta.set("domain", t.attr_of("domain").filter(|d| **d != Json::Null).cloned().unwrap_or_else(|| NODE_GRAPH_ID.into()));
+    let id = match t.attr_of("id") {
         Some(Json::Str(s)) => s.clone(),
         _ => NODE_GRAPH_ID.to_string(),
     };

@@ -209,7 +209,7 @@ pub fn time_of(value: &Json, what: &str) -> Result<Json, String> {
 
 /// How a message names an element: `task().id("ship")`.
 fn call(t: &DocTree) -> String {
-    match t.attr("id") {
+    match t.attr_of("id") {
         Some(v @ Json::Str(_)) => format!("{}().id({})", fn_name(t.tag), v.text()),
         _ => format!("{}()", fn_name(t.tag)),
     }
@@ -228,7 +228,7 @@ fn fields_of(t: &DocTree) -> Result<Json, String> {
 fn task_of(t: &DocTree) -> Result<Json, String> {
     let mut subtasks = Vec::new();
     for c in t.children.iter().filter(|c| c.tag == "subtask") {
-        match c.attr("ref") {
+        match c.attr_of("ref") {
             Some(r @ Json::Str(s)) if !s.is_empty() => subtasks.push(r.clone()),
             other => {
                 let said = other.map(Json::text).unwrap_or_else(|| "undefined".into());
@@ -238,7 +238,7 @@ fn task_of(t: &DocTree) -> Result<Json, String> {
     }
     let mut out = fields_of(t)?;
     if let Some(s) = t.single("sketch") {
-        match s.attr("ref") {
+        match s.attr_of("ref") {
             Some(r @ Json::Str(text)) if !text.is_empty() => {
                 out.set("sketch", r.clone());
             }
