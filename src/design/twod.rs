@@ -39,7 +39,7 @@
 //! among a layer's strokes and changes what is under it; in a
 //! painting or a photo a `mask` child of a layer, a stroke or a filter holds the one layer that masks it; a painting's
 //! `text_layer` is a type layer; a painting layer's `fx` holds its styles (`drop_shadow`, `inner_shadow`, `outer_glow`,
-//! `stroke`, `color_overlay`, `gradient_overlay`). A value that
+//! `inner_glow`, `bevel_emboss`, `satin`, `stroke`, `color_overlay`, `gradient_overlay`, `pattern_overlay`). A value that
 //! is an object is JSON text: `.brush(json(r#"{"kind": "round", "size": 4}"#))`. PIXELS ARE NOT CODE: a pixel layer
 //! names its image file by relative path (`.src("scan.png")`). Each node carries its element's call in `meta.source`; a
 //! `mask` is not a node, so a masked node carries the mask's call in `meta.sources.mask`. A tag the vocabulary does not
@@ -144,10 +144,18 @@ elements! {
     inner_shadow = "innerShadow": leaf;
     /// A layer style: a glow around the layer.
     outer_glow = "outerGlow": leaf;
+    /// A layer style: a glow inside the layer's edge (or from its centre).
+    inner_glow = "innerGlow": leaf;
+    /// A layer style: a lit and shaded bevel of the layer's edge.
+    bevel_emboss = "bevelEmboss": leaf;
+    /// A layer style: a shading of the layer's interior.
+    satin: leaf;
     /// A layer style: the layer's colour replaced.
     color_overlay = "colorOverlay": leaf;
     /// A layer style: a gradient over the layer.
     gradient_overlay = "gradientOverlay": leaf;
+    /// A layer style: a built-in pattern over the layer.
+    pattern_overlay = "patternOverlay": leaf;
     /// A photo's adjustment.
     exposure: children;
     /// A photo's adjustment.
@@ -506,7 +514,7 @@ attributes! {
 pub(crate) const FAMILY: Family = Family { module: "twod", roots: &["drawing", "painting", "photo", "nest"], declare };
 
 /// A painting layer's styles: the tags of its `fx`.
-pub const LAYER_STYLES: &[&str] = &["dropShadow", "innerShadow", "outerGlow", "stroke", "colorOverlay", "gradientOverlay"];
+pub const LAYER_STYLES: &[&str] = &["dropShadow", "innerShadow", "outerGlow", "innerGlow", "bevelEmboss", "satin", "stroke", "colorOverlay", "gradientOverlay", "patternOverlay"];
 
 /// A photo's adjustments: each a layer whose attributes are the adjustment.
 pub const PHOTO_ADJUSTMENTS: &[&str] = &["exposure", "levels", "curves", "hsl", "vibrance", "colorBalance", "blackWhite", "invert", "threshold", "posterize", "develop"];
