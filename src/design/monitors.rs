@@ -9,7 +9,7 @@
 //! fn corporation(cik: &str, ticker: &str, name: &str) -> El {
 //!     monitor([
 //!         source().id("filings").adapter("sec-filings").params(json(&format!(r#"{{"cik": "{cik}"}}"#))).every("15m"),
-//!         follows().monitor("../../central-banks/fed").where_(json(r#"{"class": "fomc.*"}"#)),
+//!         follows().monitor("../../central-banks/fed").match_("fomc.*"),
 //!     ])
 //!     .title(format!("{name} ({ticker})"))
 //!     .class("corporation")
@@ -18,9 +18,9 @@
 //! # commandagi::design::declare(corporation("0001045810", "NVDA", "NVIDIA")).unwrap();
 //! ```
 //!
-//! A follow names the followed monitor's folder, relative to this monitor's folder, and its `where` says which of its
-//! records it takes: a record predicate (`.where_(json(r#"{"class": "fomc.*"}"#))`). A discover's `into` is written
-//! `into_` (`Into::into` has the name). Nothing adds a default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes` and `discovers` are always lists.
+//! A follow names the followed monitor's folder, relative to this monitor's folder. A follow's `match` is written
+//! `match_` (a Rust keyword), and a discover's `into` is written `into_` (`Into::into` has the name). Nothing adds a
+//! default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes` and `discovers` are always lists.
 //!
 //! A `derive` folds other monitors' records into this one's, each port named to a folder; a `discover` gives each thing
 //! its records name a folder and a thread of its own, an instance of a class (`<file>#<Component>`):
@@ -69,7 +69,7 @@ attributes! {
         session; snapshot; profile; keep; max_cost_per_day; unit; vantage;
         /// The connected account it reads as (`gmail@jacobfv123@gmail.com`); the api worker (via="worker") reads it.
         connection;
-        monitor; match_; where_; prompt;
+        monitor; match_; prompt;
         op; inputs;
         into_ = "into"; of; when; slug; props; name; max; visibility;
     }
@@ -82,7 +82,7 @@ pub const SOURCE_FIELDS: &[&str] = &[
     "id", "adapter", "params", "every", "via", "exit", "host", "mode", "retain", "since", "session", "snapshot", "profile",
     "keep", "maxCostPerDay", "unit", "vantage", "connection",
 ];
-pub const FOLLOW_FIELDS: &[&str] = &["monitor", "where"];
+pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match", "when"];
 pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
 pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
@@ -342,6 +342,7 @@ fn word_ok(s: &str) -> bool {
     !b.is_empty() && b[0].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-')
 }
 
+/// A follow's filter: `name=value` terms joined by `,` (`conversation=123`).
 /// A class: its file (`.ts`, `.tsx`, `.js`, `.jsx`), `#`, its exported name (`../exploit.tsx#Exploit`).
 fn class_ref_ok(s: &str) -> bool {
     let Some((file, name)) = s.split_once('#') else { return false };
@@ -499,9 +500,11 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
         match c.tag {
             "source" => sources.push(source_of(c)?),
             "follows" => {
-                word(c, "monitor", "monitor")?;
-                if let Some(bad) = c.attr_of("where").and_then(when_shape) {
-                    return Err(format!("{} where: {bad}", call(c, "monitor")));
+                for k in ["monitor", "match"] {
+                    word(c, k, "monitor")?;
+                }
+                if let Some(bad) = c.attr_of("when").filter(|v| !matches!(v, Json::Null)).and_then(when_shape) {
+                    return Err(format!("{} when: {bad}", call(c, "monitor")));
                 }
                 if matches!(c.attr_of("monitor"), Some(Json::Str(m)) if m == "." || m == "./") {
                     return Err(format!("{} names this monitor; a follow names another monitor's folder", call(c, "monitor")));
@@ -556,7 +559,7 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
         .collect();
     let follows = list("follows")
         .iter()
-        .map(|f| Json::obj().with("monitor", or_null(f, "monitor")).with("where", or_null(f, "where")))
+        .map(|f| Json::obj().with("monitor", or_null(f, "monitor")).with("match", or_null(f, "match")).with("when", or_null(f, "when")))
         .collect();
     let derives = list("derives")
         .iter()
