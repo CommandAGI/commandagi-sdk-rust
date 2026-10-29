@@ -91,7 +91,7 @@ pub const ASK_FIELDS: &[&str] = &[
 /// The fields of one `change()` of a change proposal: the file it edits, the version it was made from, the edited copy.
 pub const CHANGE_FIELDS: &[&str] = &["file", "base", "proposed"];
 /// The fields of a project's body (`ProjectDoc`), but its views.
-pub const PROJECT_FIELDS: &[&str] = &["id", "name", "glyph", "defaultViewId", "subprojects", "archived", "readme", "createdAt", "updatedAt"];
+pub const PROJECT_FIELDS: &[&str] = &["id", "name", "glyph", "defaultViewId", "subprojects", "files", "archived", "readme", "createdAt", "updatedAt"];
 /// The fields of a project's view (`TaskView`).
 pub const VIEW_FIELDS: &[&str] = &["id", "name", "mode", "groupBy", "filter", "laneOrder"];
 /// The fields that are times: epoch milliseconds in the document, a date or a UTC time in code.
