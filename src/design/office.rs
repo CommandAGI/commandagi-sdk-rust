@@ -37,6 +37,9 @@
 //! ```text
 //! workbook([sheets]).title(…)                                           the workbook
 //! sheet([cells]).name .rows .cols .frozen_rows .frozen_cols .color     a grid sheet (200 rows, 26 columns unless it says)
+//! sheet([]).name .source .query .format                                a data sheet: what it reads and the SQL over it
+//!                                                                      (source: a file beside the workbook, an http(s)
+//!                                                                      URL or "surface:<id>"; format "parquet", "sqlite" …)
 //! cell().at("B4").value(…) | .formula("=…") .num_fmt .bold .italic .align .bg .color .wrap
 //! column().at("A").width(…)   row().at(3).height(…)                    a column's width or a row's height, in pixels
 //! page([blocks]).title .paper .font                                    the page; paper "letter" or "a4"; font "sans", "serif", "mono"
@@ -173,6 +176,12 @@ attributes! {
         frozen_rows;
         /// A sheet's frozen columns.
         frozen_cols;
+        /// A data sheet's source: a file beside the workbook, an http(s) URL or `surface:<id>`.
+        source;
+        /// A data sheet's format: "parquet", "sqlite" …
+        format;
+        /// A data sheet's SQL over its source.
+        query;
         /// A colour: a sheet's tab, a cell's text, a text box's text.
         color;
         /// Where a cell is ("B4"), a column's letters ("B"), a row's number (3).
@@ -398,6 +407,36 @@ pub fn workbook_schema() -> &'static Json {
 }
 
 /// An A1 range: one reference, or two with a colon between (`A1:C20`), in either case.
+const DATA_FORMATS: &[&str] = &[
+    "parquet", "arrow", "feather", "csv", "tsv", "json", "ndjson", "avro", "orc", "sqlite", "duckdb", "xlsx", "auto",
+];
+const SURFACES: &[&str] = &["threads", "devices", "snapshots", "drive", "notifications", "marketplace", "credits"];
+
+/// A data sheet's source as its `source` text names it: a file beside the workbook, an http(s) URL, or `surface:<id>`.
+fn data_source_of(el: &El, text: &str, format: Option<&str>) -> Result<Json, String> {
+    if text.starts_with("http://") || text.starts_with("https://") {
+        return Ok(defined(vec![("kind", Some("remote".into())), ("engine", Some("http".into())), ("url", Some(text.into())), ("format", js(format.map(str::to_string)))]));
+    }
+    if let Some(id) = text.strip_prefix("surface:") {
+        if !SURFACES.contains(&id) {
+            return Err(format!("{}: source is surface:<id>, a platform surface ({}), not {}", place(el), SURFACES.join(", "), Json::from(text).text()));
+        }
+        if format.is_some() {
+            return Err(format!("{}: a surface source has no format", place(el)));
+        }
+        return Ok(Json::obj().with("kind", "surface").with("surface", id));
+    }
+    // The workbook's own file is its code, so a data sheet names another file.
+    let scheme = text.find("://").is_some_and(|at| {
+        let head = &text[..at];
+        !head.is_empty() && head.chars().next().is_some_and(|c| c.is_ascii_lowercase()) && head.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '+' | '.' | '-'))
+    });
+    if text == "self" || scheme {
+        return Err(format!("{}: source is a file beside the workbook, an http(s) URL or surface:<id>, not {}", place(el), Json::from(text).text()));
+    }
+    Ok(defined(vec![("kind", Some("file".into())), ("ref", Some(text.into())), ("format", js(format.map(str::to_string)))]))
+}
+
 fn is_range(text: &str) -> bool {
     let upper = text.to_uppercase();
     let mut ends = upper.split(':');
@@ -437,7 +476,7 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
         if el.tag != "sheet" {
             return Err(format!("{} is not read in a workbook() (it holds sheet()s)", tag(el.tag)));
         }
-        only(el, &["name", "rows", "cols", "frozenRows", "frozenCols", "color"])?;
+        only(el, &["name", "rows", "cols", "frozenRows", "frozenCols", "color", "source", "format", "query"])?;
         let id = format!("sheet-{}", i + 1);
         let name = txt(el, "name")?.unwrap_or_else(|| format!("Sheet {}", i + 1));
         if seen.contains(&name.to_lowercase()) {
@@ -445,6 +484,30 @@ fn read_workbook(root: &El) -> Result<Declared, String> {
         }
         seen.push(name.to_lowercase());
         sources.put(format!("sheet:{id}"), el);
+        if let Some(source) = txt(el, "source")? {
+            let format = one_of(el, "format", DATA_FORMATS)?;
+            let query = txt(el, "query")?;
+            if !el.children.is_empty() {
+                return Err(format!("{}: a data sheet holds nothing: its source and query say what it reads", place(el)));
+            }
+            for k in ["rows", "cols", "frozenRows", "frozenCols"] {
+                if el.attr_of(k).is_some() {
+                    return Err(format!("{}: a data sheet reads a table, so it has no {k}", place(el)));
+                }
+            }
+            sheets.push(defined(vec![
+                ("id", Some(id.into())),
+                ("name", Some(name.into())),
+                ("color", js(txt(el, "color")?)),
+                ("kind", Some("data".into())),
+                ("source", Some(data_source_of(el, &source, format.as_deref())?)),
+                ("query", js(query)),
+            ]));
+            continue;
+        }
+        if el.attr_of("query").is_some() || el.attr_of("format").is_some() {
+            return Err(format!("{}: a grid sheet reads no source (a sheet() with a source is a data sheet)", place(el)));
+        }
         let mut cells: Vec<(String, Json)> = Vec::new();
         let mut col_widths: BTreeMap<u64, f64> = BTreeMap::new();
         let mut row_heights: BTreeMap<u64, f64> = BTreeMap::new();
