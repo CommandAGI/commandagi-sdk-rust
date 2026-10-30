@@ -1,5 +1,6 @@
-//! SIGNED RECORDS IN RUST — a market contract (`.contract.rs`) and a product instance (`.instance.rs`), written as
-//! elements. The same elements, and the same documents, as the TypeScript SDK's `records.ts` and the Python SDK's
+//! RECORDS IN RUST — a market contract (`.contract.rs`) and a product instance (`.instance.rs`), which are signed, a
+//! hardware release (`.release.rs`) and a unit's calibration (`.calibration.rs`: `calibration([joint()…,
+//! rezero()…]).device(…).serial(…)`), written as elements. The same elements, and the same documents, as the TypeScript SDK's `records.ts` and the Python SDK's
 //! `records.py`:
 //!
 //! ```
@@ -45,20 +46,28 @@ elements! {
     check: leaf;
     /// An output a release made: `.path("outputs/Plate.step").digest(…).from(…).kind("step")`.
     output: leaf;
+    /// A unit's calibration: its joints and its re-zeros. `.device("../../devices/arm/definition.tsx").serial(…)`.
+    calibration: children;
+    /// A calibrated joint: `.name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json")`.
+    joint: leaf;
+    /// A re-zero, appended, never edited: `.joint("shoulder_lift").zero(0.015).at(…).by("person:owner").reason(…)`.
+    rezero: leaf;
 }
 
 attributes! {
-    /// The fields of a contract record, a party, a product instance, an event and a release, chained on their elements.
+    /// The fields of a contract record, a party, a product instance, an event, a release and a calibration, chained on
+    /// their elements.
     pub trait RecordsAttrs {
         id; terms; created_at;
         principal; role; acted_by; agent; sig; signed_at;
         serial; product_id; model; release;
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
         rev; of; frozen; product; note; previous; path; digest; file; status; accepted; reason; from;
+        device; name; zero; kp; kv; run; joint;
     }
 }
 
-pub(crate) const FAMILY: Family = Family { module: "records", roots: &["contract", "instance", "release"], declare };
+pub(crate) const FAMILY: Family = Family { module: "records", roots: &["contract", "instance", "release", "calibration"], declare };
 
 /// The fields of a contract record (packages/domain/core/src/contract-document.ts `ContractDoc`), but its parties.
 pub const CONTRACT_FIELDS: &[&str] = &["id", "terms", "createdAt"];
@@ -76,6 +85,13 @@ pub const RELEASE_OUTPUT_FIELDS: &[&str] = &["path", "digest", "from", "kind"];
 pub const RELEASE_CHECK_STATUSES: &[&str] = &["passed", "failed", "skipped", "accepted"];
 /// The fields of a provenance event (`InstanceEvent`).
 pub const INSTANCE_EVENT_FIELDS: &[&str] = &["seq", "kind", "at", "prev", "by", "to", "contractRef", "attestationRef", "data", "sig"];
+/// The fields of a unit's calibration: the definition it calibrates (a ref), the unit's serial, a note.
+pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note"];
+/// The fields of one calibrated joint: its zero (rad, what its encoder reads at the chain's zero), its servo's gains,
+/// the run that measured them.
+pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "zero", "kp", "kv", "run"];
+/// The fields of one re-zero: the joint, its new zero (rad), when (epoch ms), who (person:<id> | agent:<id>), why.
+pub const REZERO_FIELDS: &[&str] = &["joint", "zero", "at", "by", "reason"];
 
 const CONTRACT: Vocabulary = Vocabulary {
     format: "contract",
@@ -113,12 +129,79 @@ const RELEASE: Vocabulary = Vocabulary {
     from_tree: release_of,
 };
 
+/// A unit's calibration (`<name>.calibration.rs`): what one physical unit measures off its definition. A unit of a
+/// world names it (`unit().calibration("arm.calibration.rs")`). Each `joint()` holds the joint's zero and its servo's
+/// gains as this unit has them; each `rezero()` is an event of the unit, oldest first. A joint's zero is its newest
+/// re-zero's, else its `joint()`'s. A re-zero is appended, never edited.
+const CALIBRATION: Vocabulary = Vocabulary {
+    format: "calibration",
+    noun: "a unit's calibration",
+    root: "calibration",
+    tags: &[
+        TagRule::new("calibration", &[]).required(&["device"]).attrs(CALIBRATION_FIELDS),
+        TagRule::new("joint", &["calibration"]).key("name").required(&["name"]).attrs(CALIBRATION_JOINT_FIELDS),
+        TagRule::new("rezero", &["calibration"]).required(&["joint", "zero", "at", "by"]).attrs(REZERO_FIELDS),
+    ],
+    from_tree: calibration_of,
+};
+
 fn declare(root: El) -> Result<Declared, String> {
     declare_document(&root, match &*root.tag {
         "contract" => &CONTRACT,
         "release" => &RELEASE,
+        "calibration" => &CALIBRATION,
         _ => &INSTANCE,
     })
+}
+
+fn finite(v: Option<&Json>) -> Option<f64> {
+    v.and_then(Json::as_f64).filter(|n| n.is_finite())
+}
+
+fn said(v: Option<&Json>) -> String {
+    v.map(Json::text).unwrap_or_else(|| "undefined".into())
+}
+
+fn calibration_of(t: &DocTree) -> Result<Json, String> {
+    let list = |tag: &str| -> Vec<Json> { t.children.iter().filter(|c| c.tag == tag).map(DocTree::record).collect() };
+    let (joints, rezeros) = (list("joint"), list("rezero"));
+    for j in &joints {
+        let at = format!("joint().name({})", said(j.get("name")));
+        if j.get("zero").is_some() && finite(j.get("zero")).is_none() {
+            return Err(format!("{at}: zero is radians, not {}", said(j.get("zero"))));
+        }
+        if j.get("kp").is_some() && !finite(j.get("kp")).is_some_and(|n| n > 0.0) {
+            return Err(format!("{at}: kp is a positive number (N·m/rad), not {}", said(j.get("kp"))));
+        }
+        if j.get("kv").is_some() && !finite(j.get("kv")).is_some_and(|n| n >= 0.0) {
+            return Err(format!("{at}: kv is a number of at least 0 (N·m·s/rad), not {}", said(j.get("kv"))));
+        }
+    }
+    let mut last = f64::NEG_INFINITY;
+    for r in &rezeros {
+        let at = format!("rezero().joint({})", said(r.get("joint")));
+        if finite(r.get("zero")).is_none() {
+            return Err(format!("{at}: zero is radians, not {}", said(r.get("zero"))));
+        }
+        let Some(when) = finite(r.get("at")).filter(|n| n.fract() == 0.0) else {
+            return Err(format!("{at}: at is epoch milliseconds, not {}", said(r.get("at"))));
+        };
+        let by_ok = matches!(r.get("by"), Some(Json::Str(b)) if (b.starts_with("person:") && b.len() > 7) || (b.starts_with("agent:") && b.len() > 6));
+        if !by_ok {
+            return Err(format!("{at}: by is person:<id> or agent:<id>, not {}", said(r.get("by"))));
+        }
+        if when < last {
+            return Err(format!("{at}: the re-zeros are oldest first, and this one is older than the one before it"));
+        }
+        last = when;
+    }
+    let mut out = Json::obj();
+    for k in CALIBRATION_FIELDS {
+        if let Some(v) = t.attr_of(k) {
+            out.set(k, v.clone());
+        }
+    }
+    Ok(out.with("joints", joints).with("rezeros", rezeros))
 }
 
 fn release_of(t: &DocTree) -> Result<Json, String> {

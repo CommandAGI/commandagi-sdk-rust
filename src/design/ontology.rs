@@ -102,7 +102,7 @@ attributes! {
         origin_mm = "origin_mm"; size_mm = "size_mm"; dimensions_mm = "dimensions_mm";
         hz; at; rot; vel; shape; mass; friction; restitution; angular_damping = "angular_damping"; gravity; scale;
         backdrop; walls; grids; bodies; forces; particles; entities; relations; systems; robots; joints; links; kinematics;
-        dynamics; constraints; fidelity; motion; color; blend; balance; coupled; seals; release; optics; root;
+        dynamics; constraints; fidelity; motion; color; blend; balance; coupled; seals; release; calibration; optics; root;
         // A definition's and a channel's.
         id; type_; label; dir; medium; format; transport; interface; manufacturer; model_number = "model_number";
         product_url = "product_url"; price_usd = "price_usd"; record_hz = "record_hz"; spec_check = "spec_check";
@@ -130,8 +130,9 @@ pub(crate) const FAMILY: Family =
 /// The graph id and domain a node graph has unless its file says another (the node-graph editor's new graph).
 pub const NODE_GRAPH_ID: &str = "nodegraph";
 /// The fields of a unit in a world's file (packages/domain/world/worlds.js). `serial`: the serial number of the one physical
-/// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports).
-pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "group", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "tilt_deg", "release"];
+/// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports); `calibration`: a ref to the
+/// unit's own `.calibration.rs` (its joints' zeros and gains, and its re-zeros).
+pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "group", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "tilt_deg", "release", "calibration"];
 /// The fields of a group in a world's file: what one unit stands in. `group` nests a group in another (a shelf holds its
 /// levels); `size_mm` with `position` and `rotation` is the box the world view draws. A group has no device and no
 /// channel: nothing runs or is granted on it.

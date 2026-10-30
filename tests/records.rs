@@ -104,3 +104,25 @@ fn a_release_is_its_files_check_verdicts_and_outputs_in_order() {
     let (_, unit, _) = document(instance([]).serial("S").product_id("p").release("../releases/A/A.release.rs"));
     assert_eq!(unit.get("release"), Some(&Json::from("../releases/A/A.release.rs")));
 }
+
+#[test]
+fn a_calibration_is_its_joints_and_its_rezeros_oldest_first_each_checked() {
+    let root = calibration([
+        joint().name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json"),
+        rezero().joint("shoulder_lift").zero(0.015).at(1793318400000_i64).by("person:owner").reason("motor replaced"),
+    ])
+    .device("../../devices/so101-follower-arm/definition.tsx")
+    .serial("SO101-0007");
+    let (format, doc, _) = document(root);
+    assert_eq!(format, "calibration");
+    assert_eq!(
+        doc,
+        j(r#"{"device": "../../devices/so101-follower-arm/definition.tsx", "serial": "SO101-0007",
+              "joints": [{"name": "shoulder_lift", "zero": 0.012, "kp": 12, "kv": 0.6, "run": "runs/lift/run.json"}],
+              "rezeros": [{"joint": "shoulder_lift", "zero": 0.015, "at": 1793318400000, "by": "person:owner", "reason": "motor replaced"}]}"#)
+    );
+    let cal = |children: Vec<El>| calibration(children).device("d/definition.tsx");
+    assert!(bad(cal(vec![joint().name("a").kp(0)])).contains("kp is a positive number"));
+    assert!(bad(cal(vec![rezero().joint("a").zero(0.1).at(1).by("owner")])).contains("by is person:<id> or agent:<id>"));
+    assert!(bad(cal(vec![rezero().joint("a").zero(0.1).at(2).by("person:o"), rezero().joint("a").zero(0.2).at(1).by("person:o")])).contains("oldest first"));
+}

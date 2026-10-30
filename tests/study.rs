@@ -108,9 +108,37 @@ fn a_flow_study_is_the_fluid_its_inlets_and_outlets_on_one_body() {
 }
 
 #[test]
+fn a_step_response_study_names_its_steps_gains_and_window() {
+    let (format, doc, _) = document(
+        study([
+            step().id("lift").joint("shoulder_lift").from(0.54).to(0.84),
+            gains().joint("shoulder_lift").kp(12).kv(0.6),
+            response().duration(1).dt(0.001).band(0.02),
+            criterion().id("settle").quantity("settlingTime").limit(0.3).step("lift"),
+        ])
+        .kind("step-response")
+        .part("../worlds/arm-cell/world.tsx#arm")
+        .units(STEP_RESPONSE_UNITS),
+    );
+    assert_eq!(format, "study");
+    let golden = Json::parse(
+        r#"{"kind": "step-response", "part": "../worlds/arm-cell/world.tsx#arm", "units": "rad-s",
+            "steps": [{"id": "lift", "joint": "shoulder_lift", "from": 0.54, "to": 0.84}],
+            "gains": [{"joint": "shoulder_lift", "kp": 12, "kv": 0.6}],
+            "response": {"duration": 1, "dt": 0.001, "band": 0.02},
+            "criteria": [{"id": "settle", "quantity": "settlingTime", "limit": 0.3, "step": "lift"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(doc.text(), golden.text());
+    let sr = |children: Vec<El>| study(children).kind("step-response").part("definition.tsx");
+    assert_eq!(bad(sr(vec![mesh().size(2)])), "mesh() belongs to a structural study, not to a step-response one");
+    assert_eq!(bad(sr(vec![step().id("a").joint("j").from(0)])), r#"step().id("a") needs to"#);
+}
+
+#[test]
 fn a_study_refuses_by_name_what_it_has_no_words_for() {
     assert_eq!(bad(study([]).kind("structural")), "study() needs part");
-    assert_eq!(bad(study([]).kind("thermal").part("a.3d.tsx")), r#"study() kind is one of structural, flow, not "thermal""#);
+    assert_eq!(bad(study([]).kind("thermal").part("a.3d.tsx")), r#"study() kind is one of structural, flow, step-response, not "thermal""#);
     assert_eq!(bad(of(vec![force().id("f").faces(face("{}")).total([0, 0, 1])])), "force() stands in load_case(), not in study()");
     assert_eq!(bad(of(vec![fixture().id("a").type_("fixed")])), r#"fixture().id("a") needs faces"#);
     assert_eq!(bad(of(vec![mesh().order(2).size(2).poisson(0.3)])), "mesh(): poisson is not read (order, size, refine)");

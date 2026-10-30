@@ -42,7 +42,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::pcb` | a board |
 | `commandagi::design::threed` | a 3D part or assembly |
 | `commandagi::design::fab` | a machining setup, a slicing setup |
-| `commandagi::design::study` | a study (the question of an analysis of a part) |
+| `commandagi::design::study` | a study (the question of an analysis: `structural`, `flow` or `step-response`) |
 | `commandagi::design::testplans` | a test plan |
 | `commandagi::design::firmware` | a firmware release, a rollout |
 | `commandagi::design::office` | a workbook, a page, a deck |
@@ -55,7 +55,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::evals` | an eval (`eval`: its `case`s), a metric (`metric`) |
 | `commandagi::design::monitors` | a monitor |
 | `commandagi::design::agents` | an agent harness, an agent |
-| `commandagi::design::records` | a contract, a product instance |
+| `commandagi::design::records` | a contract, a product instance, a hardware release, a unit's calibration |
 | `commandagi::design::postal` | a letter, a postcard |
 | `commandagi::design::pdf` | a PDF |
 

@@ -25,7 +25,9 @@
 //! ```
 //!
 //! One root, `study([…]).kind(…).part(…).units(…)`, for every kind of study. A kind has its own tags: this module
-//! knows `structural` (FEA) and `flow` (CFD: `fluid()`, `inlet()`, `outlet()`, `flow_mesh()`, in `units("m-kg-s")`). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
+//! knows `structural` (FEA), `flow` (CFD: `fluid()`, `inlet()`, `outlet()`, `flow_mesh()`, in `units("m-kg-s")`) and
+//! `step-response` (a joint servo's tuning: `step()`, `gains()`, `response()`, in `units("rad-s")`; its `part` is a
+//! `definition.tsx` or a unit of a world, `world.tsx#<uid>`, whose calibration's gains then apply). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
 //! its attributes (methods in snake case of the native names: `.load_case("clamp")` on a criterion is `loadCase`). A
 //! load's tag is its `type`. A face pick is the 3D document's pick, written as `json(r#"…"#)`. Nothing adds a
 //! default: the runner says what it assumes. A tag of one kind is refused in a study of another, by name.
@@ -35,7 +37,8 @@
 //! ```text
 //! { kind, part, units, title?, material?, fixtures?: [{ id, type, faces, region?, stiffness?, axis? }], loadCases?: [{ id, loads: [{ type:
 //!   "force" | "pressure", id, faces, total | value }] }], mesh?, solver?, criteria?: [{ id, quantity, limit, region?,
-//!   loadCase?, note? }], revise?: [{ parameter, min, max }] }
+//!   loadCase?, step?, note? }], revise?: [{ parameter, min, max }], steps?: [{ id, joint, from, to }], gains?: [{ joint,
+//!   kp?, kv? }], response?: { duration, dt?, band? } }
 //! ```
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
@@ -72,6 +75,12 @@ elements! {
     outlet: leaf;
     /// A flow study's mesh: `flow_mesh().cells([20, 3, 3]).levels([1, 2, 4])`.
     flow_mesh = "flowMesh": leaf;
+    /// A step-response study's step, solved alone: `step().id("lift").joint("shoulder_lift").from(0.54).to(0.84)` (rad).
+    step: leaf;
+    /// The gains to try on a joint, in place of the definition's or the calibration's: `gains().joint(…).kp(12).kv(0.6)`.
+    gains: leaf;
+    /// A step-response study's window: `response().duration(1).dt(0.001).band(0.02)` (s, s, a fraction of the step).
+    response: leaf;
 }
 
 attributes! {
@@ -81,7 +90,7 @@ attributes! {
         kind;
         /// The part it studies, by its path from this file.
         part;
-        /// The unit set: `"mm-N-MPa-t"`, the only one.
+        /// The unit set: `"mm-N-MPa-t"` (structural), `"m-kg-s"` (flow), `"rad-s"` (step-response).
         units;
         title;
         /// A row id of the materials tables along the folder's search path.
@@ -139,6 +148,20 @@ attributes! {
         parameter;
         min;
         max;
+        /// The joint a step moves or a gains record tunes, by its name in the definition's chain.
+        joint;
+        /// Where a step starts and ends (rad, the chain's own angle).
+        from;
+        to;
+        /// A position servo's stiffness (N·m/rad) and damping (N·m·s/rad).
+        kp;
+        kv;
+        /// A step-response window (s), its sample period (s) and its settling band (a fraction of the step).
+        duration;
+        dt;
+        band;
+        /// The step a criterion reads (none: every step).
+        step;
     }
 }
 
@@ -148,7 +171,9 @@ pub(crate) const FAMILY: Family = Family { module: "study", roots: &["study"], d
 pub const STUDY_UNITS: &str = "mm-N-MPa-t";
 pub const STUDY_ROOT_FIELDS: &[&str] = &["kind", "part", "units", "title"];
 /// The kinds a study may name.
-pub const STUDY_KINDS: &[&str] = &["structural", "flow"];
+pub const STUDY_KINDS: &[&str] = &["structural", "flow", "step-response"];
+/// The unit set of a step-response study: radians and seconds.
+pub const STEP_RESPONSE_UNITS: &str = "rad-s";
 
 /// A tag of a study: the field of its parent record it fills, whether that field is a list, whether the tag is the
 /// record's `type` (a load is `force()` or `pressure()`, both in `loads`), and its kind (none: every kind's).
@@ -166,6 +191,7 @@ const fn tag(tag: &'static str, field: &'static str, list: bool, typed: bool, ki
 
 const S: Option<&str> = Some("structural");
 const F: Option<&str> = Some("flow");
+const R: Option<&str> = Some("step-response");
 pub const STUDY_TAGS: &[StudyTag] = &[
     tag("criterion", "criteria", true, false, None),
     tag("revise", "revise", true, false, None),
@@ -180,12 +206,16 @@ pub const STUDY_TAGS: &[StudyTag] = &[
     tag("inlet", "inlets", true, false, F),
     tag("outlet", "outlets", true, false, F),
     tag("flowMesh", "flowMesh", false, false, F),
+    tag("step", "steps", true, false, R),
+    tag("gains", "gains", true, false, R),
+    tag("response", "response", false, false, R),
 ];
 
 const IN_STUDY: &[&str] = &["study"];
 const FACES_LOAD: &[&str] = &["id", "faces", "total"];
 const PRESSURE: &[&str] = &["id", "faces", "value"];
 const FIXTURE: &[&str] = &["id", "type", "faces"];
+const STEP: &[&str] = &["id", "joint", "from", "to"];
 
 /// A study.
 pub const STUDY: Vocabulary = Vocabulary {
@@ -194,7 +224,7 @@ pub const STUDY: Vocabulary = Vocabulary {
     root: "study",
     tags: &[
         TagRule::new("study", &[]).required(&["kind", "part"]).attrs(STUDY_ROOT_FIELDS),
-        TagRule::new("criterion", IN_STUDY).key("id").required(&["id", "quantity", "limit"]).attrs(&["id", "quantity", "limit", "region", "loadCase", "note"]),
+        TagRule::new("criterion", IN_STUDY).key("id").required(&["id", "quantity", "limit"]).attrs(&["id", "quantity", "limit", "region", "loadCase", "step", "note"]),
         TagRule::new("revise", IN_STUDY).key("parameter").required(&["parameter", "min", "max"]).attrs(&["parameter", "min", "max"]),
         TagRule::new("material", IN_STUDY).single().required(&["grade"]).attrs(&["grade", "body", "poisson"]),
         TagRule::new("fixture", IN_STUDY).key("id").required(FIXTURE).attrs(&["id", "type", "faces", "region", "stiffness", "axis"]),
@@ -207,6 +237,9 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("inlet", IN_STUDY).key("id").required(&["id", "faces", "velocity"]).attrs(&["id", "faces", "velocity"]),
         TagRule::new("outlet", IN_STUDY).key("id").required(&["id", "faces"]).attrs(&["id", "faces"]),
         TagRule::new("flowMesh", IN_STUDY).single().required(&["cells"]).attrs(&["cells", "levels", "iterations", "wallModel"]),
+        TagRule::new("step", IN_STUDY).key("id").required(STEP).attrs(STEP),
+        TagRule::new("gains", IN_STUDY).key("joint").required(&["joint"]).attrs(&["joint", "kp", "kv"]),
+        TagRule::new("response", IN_STUDY).single().required(&["duration"]).attrs(&["duration", "dt", "band"]),
     ],
     from_tree: study_from_tree,
 };
