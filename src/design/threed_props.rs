@@ -3766,7 +3766,7 @@ pub struct CopyBodyProps {
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// Source body id (positional, captured when the feature is created).
+    /// The body to copy: its id, the feature that made it (`base`, `split:2`).
     pub body_id: String,
     /// Translation applied to the copy (mm).
     /// Unit: mm.

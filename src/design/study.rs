@@ -67,7 +67,7 @@ elements! {
     criterion: leaf;
     /// A parameter of the part the planner may change: `revise().parameter("thickness").min(3).max(8)`.
     revise: leaf;
-    /// A flow study's fluid: `fluid().nu(1e-6).body("body_0")` (kinematic viscosity, m²/s).
+    /// A flow study's fluid: `fluid().nu(1e-6).body("channel")` (kinematic viscosity, m²/s).
     fluid: leaf;
     /// Where the fluid enters, one or more: `inlet().id("inlet").faces(json(…)).velocity(0.5)` (m/s, into the body).
     inlet: leaf;
