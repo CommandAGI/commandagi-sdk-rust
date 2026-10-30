@@ -32,7 +32,8 @@
 //! the node's own fields. The encodings are the TypeScript SDK's: a drawing is its first artboard, and each
 //! `artboard([layer([…])])` after its layers is another; a top-level group of a drawing is a `layer`; a path's
 //! `d` (absolute M L H V C Q Z); a drawn brush stroke's `[x, y]` points; a paint stroke's `[x, y, pressure, t]` points;
-//! a modifier (`blur`, `transform`, `fill` …) wraps the one node it takes; `clip` takes its content, then its mask;
+//! a modifier (`blur`, `transform`, `fill` …) wraps the one node it takes; `compound([…]).op("minus")` holds its shapes
+//! (a live Pathfinder: `unite`, `minus`, `intersect` or `exclude`); `clip` takes its content, then its mask;
 //! `link().src("parts/Badge.draw.rs").x(40).y(60)` shows another drawing's first artboard as that file draws it now
 //! (`src`: a path from this file's folder, or an address; `.inputs(json(r#"{"size": 40}"#))` gives values to the
 //! parameters that drawing declares); a painting's filter (`gaussian_blur([]).radius(3)`, the photo's filters) chains
@@ -123,8 +124,9 @@ elements! {
     crop: children;
     /// A drawing's modifier: the one node it changes.
     bucket_fill = "bucket-fill": children;
-    /// A boolean of a drawing's shapes.
-    boolean: children;
+    /// A drawing's compound shape: the shapes it holds, combined live (`.op("unite" | "minus" | "intersect" |
+    /// "exclude")`).
+    compound: children;
     /// A drawing's clip: its content, then its mask.
     clip: children;
     /// A photo's pixel layer: `raster([filters]).src("photo.png")`.
@@ -322,7 +324,7 @@ attributes! {
         sweep;
         /// A mirror's axis.
         axis;
-        /// A boolean's operation.
+        /// A compound shape's operation.
         op;
         /// A kind.
         kind;
@@ -1106,10 +1108,10 @@ impl Doc {
             let input = self.drawn(kids[0], false)?;
             return self.add(el, t, a.with("in", wire(&input, "out")));
         }
-        if t == "boolean" {
+        if t == "compound" {
             let a = attrs(el, &[])?;
             let shapes = kids.iter().map(|c| self.drawn(c, false)).collect::<Result<Vec<_>, _>>()?;
-            return self.add(el, t, spread(a, wires("shapes", &shapes)));
+            return self.add(el, t, spread(a, wires("children", &shapes)));
         }
         if t == "clip" {
             if kids.len() != 2 {

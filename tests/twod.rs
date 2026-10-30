@@ -30,6 +30,14 @@ fn w(node: &str) -> String {
 }
 
 #[test]
+fn a_compound_is_one_node_that_holds_its_shapes_back_to_front() {
+    let g = graph(drawing([layer([compound([rect().x(0).y(0).w(100).h(100), ellipse().cx(100).cy(100).rx(40).ry(40)]).op("minus").fill("#0f172a")]).name("Art")]));
+    assert_eq!(inputs(&g, "group"), golden(&format!(r#"{{"name": "Art", "children.1": {}}}"#, w("compound"))));
+    assert_eq!(node(&g, "compound").get("type").unwrap().as_str(), Some("compound"));
+    assert_eq!(inputs(&g, "compound"), golden(&format!(r##"{{"op": "minus", "fill": "#0f172a", "children.1": {}, "children.2": {}}}"##, w("rect"), w("ellipse"))));
+}
+
+#[test]
 fn a_drawing_declares_the_composite_its_layer_groups_and_d_as_subpaths() {
     let g = graph(
         drawing([layer([
