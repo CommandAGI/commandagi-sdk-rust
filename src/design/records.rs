@@ -52,6 +52,8 @@ elements! {
     joint: leaf;
     /// A re-zero, appended, never edited: `.joint("shoulder_lift").zero(0.015).at(…).by("person:owner").reason(…)`.
     rezero: leaf;
+    /// A calibrated camera: `.channel("view").intrinsics(json(…)).extrinsics(json(…)).residual(json(…)).run(…).reality("simulation")`.
+    camera: leaf;
 }
 
 attributes! {
@@ -64,6 +66,7 @@ attributes! {
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
         rev; of; frozen; product; note; previous; path; digest; file; status; accepted; reason; from;
         device; name; zero; kp; kv; run; joint;
+        channel; robot; intrinsics; extrinsics; marker; residual; reality;
     }
 }
 
@@ -92,6 +95,11 @@ pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note"];
 pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "zero", "kp", "kv", "run"];
 /// The fields of one re-zero: the joint, its new zero (rad), when (epoch ms), who (person:<id> | agent:<id>), why.
 pub const REZERO_FIELDS: &[&str] = &["joint", "zero", "at", "by", "reason"];
+/// The fields of one calibrated camera: its video channel, the arm it was measured against, its intrinsics (pixels),
+/// its extrinsics (the camera in the world: mm and a unit quaternion, x right, y down, z forward), the marker in that
+/// arm's tool frame, the residual (reprojection px, and the position mm and rotation degrees it bounds, three sigma),
+/// the run that measured it and that run's reality, when and by whom.
+pub const CALIBRATION_CAMERA_FIELDS: &[&str] = &["channel", "robot", "intrinsics", "extrinsics", "marker", "residual", "run", "reality", "at", "by"];
 
 const CONTRACT: Vocabulary = Vocabulary {
     format: "contract",
@@ -132,7 +140,9 @@ const RELEASE: Vocabulary = Vocabulary {
 /// A unit's calibration (`<name>.calibration.rs`): what one physical unit measures off its definition. A unit of a
 /// world names it (`unit().calibration("arm.calibration.rs")`). Each `joint()` holds the joint's zero and its servo's
 /// gains as this unit has them; each `rezero()` is an event of the unit, oldest first. A joint's zero is its newest
-/// re-zero's, else its `joint()`'s. A re-zero is appended, never edited.
+/// re-zero's, else its `joint()`'s. A re-zero is appended, never edited. A camera unit's calibration holds a `camera()`
+/// per video channel: its lens and where it is, measured by a run that moved a marker through its view, with the
+/// residual that says how far to trust them; a new run replaces it.
 const CALIBRATION: Vocabulary = Vocabulary {
     format: "calibration",
     noun: "a unit's calibration",
@@ -141,6 +151,7 @@ const CALIBRATION: Vocabulary = Vocabulary {
         TagRule::new("calibration", &[]).required(&["device"]).attrs(CALIBRATION_FIELDS),
         TagRule::new("joint", &["calibration"]).key("name").required(&["name"]).attrs(CALIBRATION_JOINT_FIELDS),
         TagRule::new("rezero", &["calibration"]).required(&["joint", "zero", "at", "by"]).attrs(REZERO_FIELDS),
+        TagRule::new("camera", &["calibration"]).key("channel").required(&["channel", "intrinsics", "extrinsics", "residual"]).attrs(CALIBRATION_CAMERA_FIELDS),
     ],
     from_tree: calibration_of,
 };
@@ -164,7 +175,7 @@ fn said(v: Option<&Json>) -> String {
 
 fn calibration_of(t: &DocTree) -> Result<Json, String> {
     let list = |tag: &str| -> Vec<Json> { t.children.iter().filter(|c| c.tag == tag).map(DocTree::record).collect() };
-    let (joints, rezeros) = (list("joint"), list("rezero"));
+    let (joints, rezeros, cameras) = (list("joint"), list("rezero"), list("camera"));
     for j in &joints {
         let at = format!("joint().name({})", said(j.get("name")));
         if j.get("zero").is_some() && finite(j.get("zero")).is_none() {
@@ -195,13 +206,53 @@ fn calibration_of(t: &DocTree) -> Result<Json, String> {
         }
         last = when;
     }
+    for c in &cameras {
+        camera_checked(c)?;
+    }
     let mut out = Json::obj();
     for k in CALIBRATION_FIELDS {
         if let Some(v) = t.attr_of(k) {
             out.set(k, v.clone());
         }
     }
-    Ok(out.with("joints", joints).with("rezeros", rezeros))
+    let out = out.with("joints", joints).with("rezeros", rezeros);
+    Ok(if cameras.is_empty() { out } else { out.with("cameras", cameras) })
+}
+
+/// Whether `v` is an array of `n` finite numbers.
+fn numbers(v: Option<&Json>, n: usize) -> bool {
+    matches!(v, Some(Json::Arr(a)) if a.len() == n && a.iter().all(|x| finite(Some(x)).is_some()))
+}
+
+/// A `camera()` as a calibration holds it, or the reason it is not one (the TypeScript SDK's `cameraChecked`).
+fn camera_checked(c: &Json) -> Result<(), String> {
+    let at = format!("camera().channel({})", said(c.get("channel")));
+    let i = c.get("intrinsics");
+    let positive = |k: &str| finite(i.and_then(|i| i.get(k))).is_some_and(|n| n > 0.0);
+    let lens = matches!(i, Some(Json::Obj(_))) && ["width", "height", "fx", "fy"].iter().all(|k| positive(k)) && ["cx", "cy"].iter().all(|k| finite(i.and_then(|i| i.get(k))).is_some());
+    if !lens {
+        return Err(format!("{at}: intrinsics are {{ width, height, fx, fy, cx, cy }} in pixels (width, height, fx and fy positive), not {}", said(i)));
+    }
+    let e = c.get("extrinsics");
+    if !(matches!(e, Some(Json::Obj(_))) && numbers(e.and_then(|e| e.get("position_mm")), 3) && numbers(e.and_then(|e| e.get("quaternion")), 4)) {
+        return Err(format!("{at}: extrinsics are {{ position_mm: [x, y, z], quaternion: [x, y, z, w] }}, not {}", said(e)));
+    }
+    if let Some(m) = c.get("marker") {
+        if !(matches!(m, Json::Obj(_)) && numbers(m.get("position_mm"), 3) && numbers(m.get("quaternion"), 4)) {
+            return Err(format!("{at}: marker is {{ position_mm: [x, y, z], quaternion: [x, y, z, w] }}, not {}", m.text()));
+        }
+    }
+    let r = c.get("residual");
+    if !(matches!(r, Some(Json::Obj(_))) && finite(r.and_then(|r| r.get("rms_px"))).is_some_and(|n| n >= 0.0)) {
+        return Err(format!("{at}: residual has rms_px, the reprojection error in pixels, not {}", said(r)));
+    }
+    match c.get("reality") {
+        None if c.get("run").is_some() => return Err(format!("{at}: a camera measured by a run says its reality (a simulated run is never physical evidence)")),
+        Some(Json::Str(x)) if x != "physical" && x != "simulation" => return Err(format!("{at}: reality is physical or simulation, not {}", said(c.get("reality")))),
+        Some(v) if !matches!(v, Json::Str(_)) => return Err(format!("{at}: reality is physical or simulation, not {}", v.text())),
+        _ => {}
+    }
+    Ok(())
 }
 
 fn release_of(t: &DocTree) -> Result<Json, String> {

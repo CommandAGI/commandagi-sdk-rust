@@ -125,4 +125,14 @@ fn a_calibration_is_its_joints_and_its_rezeros_oldest_first_each_checked() {
     assert!(bad(cal(vec![joint().name("a").kp(0)])).contains("kp is a positive number"));
     assert!(bad(cal(vec![rezero().joint("a").zero(0.1).at(1).by("owner")])).contains("by is person:<id> or agent:<id>"));
     assert!(bad(cal(vec![rezero().joint("a").zero(0.1).at(2).by("person:o"), rezero().joint("a").zero(0.2).at(1).by("person:o")])).contains("oldest first"));
+    // A camera unit's calibration: its lens, where it is and the residual, with the run that measured it and its reality.
+    let lens = r#"{"width": 320, "height": 240, "fx": 207.6, "fy": 207.4, "cx": 160.1, "cy": 119.9}"#;
+    let cam = || camera().channel("view").robot("arm").intrinsics(json(lens)).extrinsics(json(r#"{"position_mm": [14.2, -509.1, 1006], "quaternion": [0.69, -0.06, -0.06, 0.72]}"#)).residual(json(r#"{"rms_px": 0.07, "position_mm": 0.83, "rotation_deg": 0.18}"#)).run("runs/c/run.json");
+    let (_, doc, _) = document(cal(vec![cam().reality("simulation")]));
+    assert_eq!(
+        doc.get("cameras"),
+        Some(&j(&format!(r#"[{{"channel": "view", "robot": "arm", "intrinsics": {lens}, "extrinsics": {{"position_mm": [14.2, -509.1, 1006], "quaternion": [0.69, -0.06, -0.06, 0.72]}}, "residual": {{"rms_px": 0.07, "position_mm": 0.83, "rotation_deg": 0.18}}, "run": "runs/c/run.json", "reality": "simulation"}}]"#)))
+    );
+    assert!(bad(cal(vec![cam()])).contains("says its reality"));
+    assert!(bad(cal(vec![cam().reality("simulation").intrinsics(json(r#"{"width": 320, "height": 240, "fx": 0, "fy": 1, "cx": 1, "cy": 1}"#))])).contains("intrinsics are"));
 }

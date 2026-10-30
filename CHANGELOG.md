@@ -8,6 +8,9 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A camera unit's calibration takes `camera().channel(…).intrinsics(json(…)).extrinsics(json(…)).residual(json(…))`
+  with `.robot(…)`, `.marker(…)`, `.run(…)`, `.reality(…)`: the lens, the camera in the world, the residual and the run
+  that measured it with its reality (the TypeScript SDK's `<camera>`).
 - A board's `<component>` takes `locked` (KiCad's footprint lock, `true` or left out), so a KiCad board's locked footprints keep the
   lock through the code and back to a `.kicad_pcb`.
 - A schematic's code part takes `.suppressed(true)`: a suppressed part is not run and declares nothing (the graph's
