@@ -57,6 +57,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::agents` | an agent harness, an agent |
 | `commandagi::design::records` | a contract, a product instance, a hardware release, a unit's calibration |
 | `commandagi::design::postal` | a letter, a postcard |
+| `commandagi::design::market` | a market recording |
 | `commandagi::design::pdf` | a PDF |
 
 The rules of a call (`src/design/mod.rs` has them in full):

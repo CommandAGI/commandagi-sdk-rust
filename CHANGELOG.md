@@ -12,6 +12,11 @@ Added
   disabled node).
 - A board's `trace()` takes `.rule(…)`, its routing rule: "45", "90" or "any" (the default). A value off these three is
   refused.
+- A market recording (`<name>.market.rs`, `commandagi::design::market`): `market([…])`, one element per record in time
+  order (`note`, `quote`, `trade`, `book` with `bid`/`ask`, `news`, `position`, `fill`, `order`, `order_update`,
+  `cancel`, `cancel_update`, `amend`, `amend_update`, `account` with `holding`/`open_order`/`problem`). Every field is
+  text; a price or a quantity is decimal text (`"185.09"`) and a number is refused by name. `market([])` declares
+  `{records: []}`, as `empty()` does.
 - A step-response study's `tune().joint(…).kp([low, high]).kv([low, high])`: the bounds the validation planner may
   search a joint's gains in when the study fails; what it finds is proposed as an edit of the unit's calibration.
 - A study of kind `step-response` (`.units("rad-s")`, `STEP_RESPONSE_UNITS`): `step().id(…).joint(…).from(…).to(…)`
