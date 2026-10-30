@@ -224,7 +224,7 @@ attributes! {
         cupsize; currency; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
         draft_angle; drill_mm; dynamics; edge; edge_weights; edges; electrical; electron; elements; end; engineering; entities;
         environment; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
-        footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; id; importer; indices;
+        footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; home; home_travel; id; importer; indices;
         input; inputs; instruction; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
         level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; minutes; mode;
         model_id; modifier; muscle; name; node_colors; node_groups; node_positions; node_sizes; node_types; normal;
