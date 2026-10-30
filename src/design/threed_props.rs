@@ -1548,7 +1548,7 @@ pub struct Placement {
     /// Uniform scale factor (1 = identity).
     /// Default: `1`.
     pub scale: Option<f64>,
-    /// Optional per-axis scale applied before scale. This is primarily used by linked interchange assets (KiCad WRL/STEP model records carry an XYZ scale). It is additive and backward-compatible: documents that omit it retain the historic uniform-scale placement.
+    /// Optional per-axis scale applied before scale. This is primarily used by linked interchange assets (KiCad WRL/STEP model records carry an XYZ scale). It is additive: documents that omit it retain the historic uniform-scale placement.
     pub scale_x_y_z: Option<Vec3>,
 }
 
@@ -4735,7 +4735,7 @@ impl ToJson for SourceImageTexture {
     }
 }
 
-/// Universal uncompressed pixel data (for DataTexture and legacy Basis RGBA output).
+/// Universal uncompressed pixel data (for DataTexture and Basis RGBA output).
 #[derive(Clone, Debug)]
 pub struct SourceDataTexture {
     pub width: f64,
