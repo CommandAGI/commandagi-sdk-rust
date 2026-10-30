@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A board's `<component>` takes `locked` (KiCad's footprint lock, `true` or left out), so a KiCad board's locked footprints keep the
+  lock through the code and back to a `.kicad_pcb`.
 - A schematic's code part takes `.suppressed(true)`: a suppressed part is not run and declares nothing (the graph's
   disabled node).
 - A board's `trace()` takes `.rule(…)`, its routing rule: "45", "90" or "any" (the default). A value off these three is

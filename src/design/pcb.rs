@@ -47,7 +47,7 @@
 //! kicad().version().generator().forms()
 //!                                   the KiCad forms the board carries for exchange and nothing else reads.
 //! net().name().code()               the KiCad net code of the schematic's net `name`.
-//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().ref_at().ref_rot().value_at().chart()
+//! component().name().footprint().library().pcb_x().pcb_y().pcb_rotation().layer().locked().ref_at().ref_rot().value_at().chart()
 //!                                   .uuid().kicad()
 //!                                   the schematic's part `name` on this board: one of the editor's own land patterns
 //!                                   (BOARD_FOOTPRINTS), or a library footprint by its ref ("Package_SO:SOIC-8") in
@@ -256,6 +256,8 @@ attributes! {
         pcb_y;
         /// A component's rotation (degrees).
         pcb_rotation;
+        /// KiCad's lock on a footprint: a mouse does not move it (`true`, or left out).
+        locked;
         /// Where a component's reference text sits: `[x, y]` in mm, in the footprint's own frame.
         ref_at;
         /// How far a component's reference text is turned where it sits (degrees).
@@ -1207,7 +1209,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 s.add("eda.masks", inputs, Some(&id), Some(&label), meta(el))?;
             }
             "component" => {
-                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "refAt", "refRot", "valueAt", "chart", "uuid", "kicad"])?;
+                refuse_unknown(el, &["name", "footprint", "library", "pcbX", "pcbY", "pcbRotation", "layer", "locked", "refAt", "refRot", "valueAt", "chart", "uuid", "kicad"])?;
                 let reference = el.attr_of("name").and_then(Json::as_str).unwrap_or_default().to_string();
                 let fp = el.attr_of("footprint");
                 let fp_text = fp.and_then(Json::as_str);
@@ -1272,6 +1274,11 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if value_at.is_some() && x.is_none() {
                     return Err(format!("{}: value_at needs pcb_x and pcb_y", at(el)));
                 }
+                let locked = match el.attr_of("locked") {
+                    None => false,
+                    Some(Json::Bool(true)) => true,
+                    Some(_) => return Err(format!("{}: locked is true or left out", at(el))),
+                };
                 let chart = text_of(el, "chart", false)?;
                 if chart.is_some() && surface.is_none() {
                     return Err(format!("{}: chart names a face of the board's surface, and the board() has no surface", at(el)));
@@ -1291,6 +1298,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if let (Some(x), Some(y)) = (x, y) {
                     let side = side.and_then(Json::as_str).unwrap_or("top");
                     inputs.push(("placement".into(), Json::obj().with("x", x).with("y", y).with("rot", rot.unwrap_or(0.0)).with("side", side)));
+                }
+                if locked {
+                    inputs.push(("locked".into(), Json::Bool(true)));
                 }
                 if let Some(r) = ref_at {
                     inputs.push(("refAt".into(), r.clone()));
