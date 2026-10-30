@@ -222,7 +222,7 @@ attributes! {
         break_after; builtin; builtin_planes; by; cap; caucasian; cell; center; centreline; chains; closed; collapsed;
         colormap; colors; comment; component; conductor; construction; consumes; control_points; corner; count; count2;
         cupsize; currency; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
-        draft_angle; drill_mm; dynamics; edge; edge_weights; edges; electrical; electron; elements; end; engineering; entities;
+        draft_angle; drill_mm; dynamics; edge; edge_weights; edges; efficiency; electrical; electron; elements; end; engineering; entities;
         environment; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
         footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; home; home_travel; id; importer; indices;
         input; inputs; instruction; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
