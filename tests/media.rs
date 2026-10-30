@@ -283,10 +283,10 @@ fn a_videos_own_artboards_and_the_overrides_a_clip_title_or_effect_sets_on_one()
     let g = graph(
         video([
             track([
-                clip([override_().artboard("Vertical").src("media/tall.mp4"), effect([override_().artboard("Vertical").amount(0.6)]).type_("vignette").amount(0.3)])
+                clip([override_([]).artboard("Vertical").src("media/tall.mp4"), effect([override_([]).artboard("Vertical").amount(0.6)]).type_("vignette").amount(0.3)])
                     .src("media/wide.mp4")
                     .out(4),
-                title([override_().artboard("Vertical").y(700).scale_x(0.8).font_size(64).crop_left(0.1)]).text("Hello").start(4).duration(2).y(300),
+                title([override_([]).artboard("Vertical").y(700).scale_x(0.8).font_size(64).crop_left(0.1)]).text("Hello").start(4).duration(2).y(300),
             ])
             .name("V1"),
             artboard([]).name("Vertical").width(1080).height(1920),
@@ -305,10 +305,49 @@ fn a_videos_own_artboards_and_the_overrides_a_clip_title_or_effect_sets_on_one()
     );
     let vertical = || artboard([]).name("Vertical").width(1080).height(1920);
     let with = |o: El| bad(video([track([title([o]).text("T").duration(1)]), vertical()]));
-    assert!(with(override_().artboard("Square").x(1)).contains("declares no artboard().name(\"Square\") (it declares \"Vertical\")"));
-    assert!(with(override_().artboard("Vertical")).contains("names what it sets"));
-    assert!(with(override_().artboard("Vertical").volume(0.5)).contains("volume is not read on a override_()"));
+    assert!(with(override_([]).artboard("Square").x(1)).contains("declares no artboard().name(\"Square\") (it declares \"Vertical\")"));
+    assert!(with(override_([]).artboard("Vertical")).contains("names what it sets"));
+    assert!(with(override_([]).artboard("Vertical").volume(0.5)).contains("volume is not read on a override_()"));
     assert!(bad(video([artboard([]).src("Poster.draw.tsx").duration(1)])).contains("an artboard of a drawing goes on a track()"));
-    assert!(bad(video([track([clip([override_().artboard("V").src("b.png")]).src("a.mp4").out(1)]), artboard([]).name("V").width(1).height(1)]))
+    assert!(bad(video([track([clip([override_([]).artboard("V").src("b.png")]).src("a.mp4").out(1)]), artboard([]).name("V").width(1).height(1)]))
         .contains("b.png is not a video file"));
+}
+
+#[test]
+fn an_override_sets_a_shapes_look_an_artboard_clips_inputs_and_its_own_keyframes_and_a_composition_names_its_artboard() {
+    let g = graph(video([
+        track([
+            shape([override_([]).artboard("Square").fill("#00ff00").stroke_width(4)]).kind("ellipse").duration(2).fill("#ff0000"),
+            artboard([override_([]).artboard("Square").inputs(json(r#"{"title": "Square"}"#))])
+                .src("Card.draw.tsx")
+                .start(2)
+                .duration(2)
+                .inputs(json(r#"{"title": "Wide"}"#)),
+            title([
+                keyframe().property("transform.y").time(0).value(0),
+                override_([keyframe().property("transform.y").time(0).value(100), keyframe().property("transform.y").time(1).value(300).easing("easeOut")])
+                    .artboard("Square"),
+            ])
+            .text("Hi")
+            .start(4)
+            .duration(2),
+            composition([]).src("Inner.vid.tsx").start(6).out(2).artboard("Vertical"),
+        ]),
+        artboard([]).name("Square").width(1080).height(1080),
+    ]));
+    assert_eq!(input(&g, "clip_Sticker", "overrides"), golden(r##"{"Square":{"sticker":{"fill":"#00ff00","strokeWidth":4}}}"##));
+    assert_eq!(input(&g, "clip_Card.draw.tsx", "overrides"), golden(r#"{"Square":{"inputs":{"title":"Square"}}}"#));
+    assert_eq!(
+        input(&g, "clip_Title", "overrides"),
+        golden(
+            r#"{"Square":{"keyframes":[{"property":"transform.y","keys":[{"id":"kf_clip_Title_Square","time":0,"value":100,"easing":"linear"},{"id":"kf_clip_Title_Square_2","time":1,"value":300,"easing":"easeOut"}]}]}}"#
+        )
+    );
+    assert!(input(&g, "clip_Title", "keyframes").matches("\"id\"").count() == 1, "the clip keeps its own keys");
+    assert_eq!(input(&g, "comp_Inner.vid.tsx", "__instance"), golden(r#"{"path":"Inner.vid.tsx","name":"Inner.vid.tsx","artboard":"Vertical"}"#));
+
+    let with = |o: El| bad(video([track([title([o]).text("T").duration(1)]), artboard([]).name("S").width(1).height(1)]));
+    assert!(with(override_([keyframe().property("volume").time(0).value(1)]).artboard("S")).contains("not \"volume\""));
+    assert!(with(override_([note()]).artboard("S")).contains("is not read in an override_()"));
+    assert!(with(override_([]).artboard("S").fill("#fff")).contains("fill is not read on a override_()"));
 }
