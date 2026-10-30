@@ -57,7 +57,8 @@
 //! never inlined. So are a nested composition (`composition([]).src("Intro.vid.rs")`: another video's code, a
 //! `video.instance` node whose frames are its clip's source; `.inputs(json(…))` are the values it gives that video's
 //! parameters) and an artboard (`artboard([]).src("Poster.draw.tsx")`: a drawing's page, drawn live; `.view(…)` names
-//! the page, else the first; `.crop(json(…))` the part of it to show). Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
+//! the page, else the first; `.crop(json(…))` the part of it to show; `.inputs(json(…))` the values it gives the
+//! drawing's parameters, so two artboards of one drawing can say two things). Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
 //! file, is seconds, as on a video). Each node carries the call that declared
 //! it in `meta.source`; what a node holds that is not a node (a clip's effects, transition, intro, outro and
 //! keyframes; a midi clip's notes; a video's markers) carries its call in `meta.sources`, by key. Anything the
@@ -154,7 +155,8 @@ attributes! {
         src;
         /// The clips that are one take's picture and sound, edited as a pair: the same name on each.
         link;
-        /// A composition's input values: the parameters of its video by name, `json(r#"{"hue": 30}"#)`.
+        /// A composition's or an artboard's input values: the parameters of its video or drawing by name,
+        /// `json(r#"{"hue": 30}"#)` (an artboard's may also be a text or a yes/no).
         inputs;
         /// The page of an artboard's drawing (its id or index; the first when not given).
         view;
@@ -675,6 +677,18 @@ fn input_values(el: &El) -> Result<Vec<(String, Json)>, String> {
     }
 }
 
+/// An artboard's input values: the drawing's parameters by name, each a number, a text or a yes/no. Read into the
+/// reference's `overrides`, which the drawing is run with.
+fn drawing_inputs(el: &El) -> Result<Option<Json>, String> {
+    match el.attr_of("inputs") {
+        None => Ok(None),
+        Some(Json::Obj(e)) if e.iter().all(|(_, v)| matches!(v, Json::Str(_) | Json::Bool(_)) || matches!(v, Json::Num(n) if n.is_finite())) => {
+            Ok(if e.is_empty() { None } else { Some(Json::Obj(e.clone())) })
+        }
+        Some(v) => Err(format!("{}: inputs is {{ parameter: number | text | true/false }}, not {}", place(el), v.text())),
+    }
+}
+
 /// An artboard's `crop`: the rectangle of the drawing's page to show, `{ x, y, width, height }` in the page's own units.
 fn crop_rect(el: &El) -> Result<Option<Json>, String> {
     match el.attr_of("crop") {
@@ -1093,7 +1107,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 source = Json::Null;
             } else if c.tag == "artboard" {
                 // A drawing's page, drawn live: the clip keeps the reference, never the drawing.
-                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation", "crop"]].concat())?;
+                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation", "crop", "inputs"]].concat())?;
                 if kind != "video" {
                     return Err(format!("{}: an artboard goes on a video track", place(c)));
                 }
@@ -1105,6 +1119,9 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 let mut reference = obj(&[("locator", src.as_str().into()), ("fileKind", "drawing".into()), ("representation", representation.into())]);
                 if let Some(view) = view {
                     reference.set("view", view);
+                }
+                if let Some(overrides) = drawing_inputs(c)? {
+                    reference.set("overrides", overrides);
                 }
                 inputs = obj(&[
                     ("kind", "renderable".into()),
