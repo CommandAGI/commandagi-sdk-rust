@@ -189,3 +189,15 @@ fn a_file_that_does_not_parse_says_where() {
     assert!(m.get("error").and_then(Json::as_str).unwrap().starts_with("line 1"));
     assert_eq!(arr(&m, "elements").len(), 0);
 }
+
+#[test]
+fn a_call_through_an_alias_keeps_its_own_name_and_the_import_says_what_it_is() {
+    let text = "use commandagi::design::schematic::{group, resistor as r};\nfn document() -> El { group(\"A\", [r(\"R1\").resistance(\"1k\")]) }\n";
+    let m = commandagi_map::map(text);
+    let tags: Vec<&str> = elements(&m).iter().map(|e| e.get("tag").and_then(Json::as_str).unwrap()).collect();
+    assert_eq!(tags, ["group", "r"], "the element is the call's own name; the import resolves it");
+    let imports = arr(&m, "imports");
+    let names = arr(&imports[0], "names");
+    assert_eq!((names[1].get("name").and_then(Json::as_str), names[1].get("asname").and_then(Json::as_str)), (Some("resistor"), Some("r")));
+    assert_eq!(names[0].get("asname"), Some(&Json::Null));
+}

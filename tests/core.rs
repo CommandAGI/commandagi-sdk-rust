@@ -155,3 +155,28 @@ fn run_leaves_the_answer_or_the_error() {
     assert_eq!(commandagi::abi::run(|| layer([])), 0);
     assert!(commandagi::abi::out_text().starts_with(r#"{"ok":false,"error":"layer() is not the root"#));
 }
+
+#[test]
+fn a_files_own_params_are_declared_in_the_answer_and_take_the_runs_inputs() {
+    use commandagi::design::params::{param, reset, set_inputs};
+    use commandagi::design::schematic::SchematicAttrs;
+    let file = || {
+        let r = param("r", 10.0).unit("ohm").min(1.0).label("Resistance").number();
+        let on = param("on", true).flag();
+        commandagi::design::schematic::group(if on { "On" } else { "Off" }, [commandagi::design::schematic::resistor("R1").resistance(format!("{r}"))])
+    };
+    reset();
+    assert_eq!(commandagi::abi::run(file), 1);
+    let out = Json::parse(&commandagi::abi::out_text()).unwrap();
+    assert_eq!(out.get("params").unwrap().text(), r#"{"r":{"default":10,"unit":"ohm","min":1,"label":"Resistance"},"on":{"default":true}}"#);
+    assert!(out.get("graph").unwrap().text().contains(r#""value":"10""#));
+    // The run's input wins over the default; an input of no declared name is ignored.
+    reset();
+    set_inputs(Json::obj().with("r", 4700.0).with("on", false).with("ghost", 1.0));
+    assert_eq!(commandagi::abi::run(file), 1);
+    let out = Json::parse(&commandagi::abi::out_text()).unwrap();
+    assert!(out.get("graph").unwrap().text().contains(r#""value":"4700""#));
+    assert_eq!(out.get("graph").unwrap().get("id"), Some(&Json::from("eda:Off")));
+    assert!(out.get("params").unwrap().get("ghost").is_none());
+    reset();
+}

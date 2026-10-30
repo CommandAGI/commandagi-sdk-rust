@@ -52,6 +52,7 @@ pub mod skills;
 pub mod office;
 pub mod ontology;
 pub mod part_fields;
+pub mod params;
 pub mod pcb;
 pub mod pdf;
 pub mod postal;

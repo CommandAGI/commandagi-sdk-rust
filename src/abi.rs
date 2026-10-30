@@ -8,10 +8,12 @@
 //! #[no_mangle] pub extern "C" fn commandagi_out_ptr() -> u32 { ::commandagi::abi::out_ptr() }
 //! #[no_mangle] pub extern "C" fn commandagi_out_len() -> u32 { ::commandagi::abi::out_len() }
 //! #[no_mangle] pub extern "C" fn commandagi_stem_alloc(len: u32) -> u32 { ::commandagi::abi::stem_alloc(len) }
+//! #[no_mangle] pub extern "C" fn commandagi_input_alloc(len: u32) -> u32 { ::commandagi::abi::input_alloc(len) }
 //! ```
 //!
 //! Before the run, the sandbox may write the file's stem (UTF-8) where `commandagi_stem_alloc` says: a document that
-//! names itself nothing is named after it.
+//! names itself nothing is named after it. It may also write the run's inputs (a JSON object of values by name)
+//! where `commandagi_input_alloc` says: a `param(…)` of the file takes its value there ([`design::params`]).
 //!
 //! The module has no imports. `commandagi_run` returns 1 and leaves the answer as UTF-8 at `commandagi_out_ptr`
 //! (`commandagi_out_len` bytes): `{"ok":true,"graph","params","sites"}`, and for a document that is not a graph also
@@ -19,12 +21,22 @@
 //! 0 and leaves `{"ok":false,"error"}`. A panic traps (a WebAssembly module cannot unwind); its hook leaves the error
 //! first, so the sandbox reads it after the trap.
 
-use crate::design::{declare, source, Declared, El, Json};
+use crate::design::{declare, params, source, Declared, El, Json};
 use std::cell::RefCell;
 
 thread_local! {
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     static STEM_IN: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    static INPUT_IN: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Room for the run's inputs, `len` bytes of JSON: where the sandbox writes them before `run`.
+pub fn input_alloc(len: u32) -> u32 {
+    INPUT_IN.with(|b| {
+        let mut b = b.borrow_mut();
+        *b = vec![0; len as usize];
+        b.as_mut_ptr() as usize as u32
+    })
 }
 
 /// Room for the file's stem, `len` bytes of UTF-8: where the sandbox writes it before `run`.
@@ -48,10 +60,10 @@ fn failed(error: String) -> String {
 pub fn answer(declared: Result<Declared, String>) -> Result<Json, String> {
     let out = Json::obj().with("ok", true);
     Ok(match declared? {
-        Declared::Graph(graph) => out.with("graph", graph).with("params", Json::obj()).with("sites", source::sites()),
+        Declared::Graph(graph) => out.with("graph", graph).with("params", params::declared()).with("sites", source::sites()),
         Declared::Document { format, document, sources } => out
             .with("graph", Json::obj().with("id", "Document").with("nodes", Json::obj()))
-            .with("params", Json::obj())
+            .with("params", params::declared())
             .with("sites", source::sites())
             .with("document", Json::obj().with("format", format).with("document", document).with("sources", sources)),
     })
@@ -71,6 +83,11 @@ pub fn run(document: impl FnOnce() -> El) -> u32 {
     }));
     set_out(failed("the file did not finish".into()));
     STEM_IN.with(|b| source::set_stem(&String::from_utf8_lossy(&b.borrow())));
+    INPUT_IN.with(|b| {
+        if !b.borrow().is_empty() {
+            params::set_inputs(Json::parse(&String::from_utf8_lossy(&b.borrow())).unwrap_or(Json::Null));
+        }
+    });
     match answer(declare(document())) {
         Ok(answer) => {
             set_out(answer.text());
