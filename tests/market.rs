@@ -118,3 +118,26 @@ fn what_the_vocabulary_cannot_read_is_refused_by_name() {
     assert!(bad(market([account([quote().t(T).sym("NRTH")]).t(T).venue("sim").mode("sim")])).contains("quote() stands in market(), not in account()"));
     assert!(bad(market([]).attr("venue", "sim")).contains("market(): venue is not read"));
 }
+
+#[test]
+fn a_bracket_is_an_order_with_two_exits_each_outcome_naming_its_leg() {
+    let (_, doc, _) = document(market([
+        order().t(T).id("o-a1b2c3d4e5f6").sym("NRTH").side("buy").qty("10").type_("limit").limit("184.50").take_profit("190.25")
+            .stop_loss("180").tif("gtc").venue("alpaca-paper").mode("paper").by("person:ada").grant("g-paper"),
+        order_update().t(T).order("o-a1b2c3d4e5f6").leg("take-profit").state("filled").mode("paper").ref_("alp-1003").filled("10"),
+        fill().t(T).sym("NRTH").side("sell").price("190.25").qty("10").order("o-a1b2c3d4e5f6").leg("take-profit").mode("paper"),
+    ]));
+    assert_eq!(
+        doc,
+        Json::parse(&format!(
+            r#"{{"records": [{{"kind": "order", "t": "{T}", "id": "o-a1b2c3d4e5f6", "sym": "NRTH", "side": "buy", "qty": "10", "type": "limit", "limit": "184.50", "takeProfit": "190.25", "stopLoss": "180", "tif": "gtc", "venue": "alpaca-paper", "mode": "paper", "by": "person:ada", "grant": "g-paper"}},
+                             {{"kind": "order-update", "t": "{T}", "order": "o-a1b2c3d4e5f6", "leg": "take-profit", "state": "filled", "mode": "paper", "ref": "alp-1003", "filled": "10"}},
+                             {{"kind": "fill", "t": "{T}", "sym": "NRTH", "side": "sell", "price": "190.25", "qty": "10", "order": "o-a1b2c3d4e5f6", "leg": "take-profit", "mode": "paper"}}]}}"#
+        ))
+        .unwrap()
+    );
+    assert_eq!(
+        bad(market([order().t(T).id("o-1").sym("NRTH").side("buy").qty("1").type_("market").tif("day").venue("sim").mode("sim").by("person:ada").grant("g").stop_loss(180.5)])),
+        r#"order(): stop_loss is decimal text ("185.09"), not a number"#
+    );
+}

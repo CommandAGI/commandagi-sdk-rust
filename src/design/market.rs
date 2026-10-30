@@ -81,8 +81,8 @@ attributes! {
     /// The fields of every record, chained on their elements. Each value is text.
     pub trait MarketAttrs {
         t; text; sym; last; bid; ask; vol; price; qty; side; headline; source; tone; avg;
-        by; order; mode; ref_; at; id; type_; tif; venue; grant; limit; stop; instrument; account; connection;
-        state; filled; error; src; cancel; amend;
+        by; order; mode; ref_; at; id; type_; tif; venue; grant; limit; stop; take_profit; stop_loss; instrument; account; connection;
+        state; filled; error; src; cancel; amend; leg;
         currency; status; value; buying_power; cash; equity; day_change; day_change_pct;
         pl; pl_pct; client; submitted; avg_price;
     }
@@ -114,13 +114,13 @@ const MARKET: Vocabulary = Vocabulary {
         TagRule::new("position", R).required(&["t", "sym", "qty", "avg"]).attrs(&["t", "sym", "qty", "avg"]),
         TagRule::new("fill", R)
             .required(&["t", "sym", "side", "price", "qty"])
-            .attrs(&["t", "sym", "side", "price", "qty", "by", "order", "mode", "ref", "at"]),
+            .attrs(&["t", "sym", "side", "price", "qty", "by", "order", "leg", "mode", "ref", "at"]),
         TagRule::new("order", R)
             .required(&["t", "id", "sym", "side", "qty", "type", "tif", "venue", "mode", "by", "grant"])
-            .attrs(&["t", "id", "sym", "side", "qty", "type", "tif", "venue", "mode", "by", "grant", "limit", "stop", "instrument", "account", "connection"]),
+            .attrs(&["t", "id", "sym", "side", "qty", "type", "tif", "venue", "mode", "by", "grant", "limit", "stop", "takeProfit", "stopLoss", "instrument", "account", "connection"]),
         TagRule::new("order-update", R)
             .required(&["t", "order", "state", "mode"])
-            .attrs(&["t", "order", "state", "mode", "ref", "filled", "avg", "error", "src"]),
+            .attrs(&["t", "order", "state", "mode", "leg", "ref", "filled", "avg", "error", "src"]),
         TagRule::new("cancel", R)
             .required(&["t", "id", "venue", "mode", "ref", "by", "grant"])
             .attrs(&["t", "id", "venue", "mode", "ref", "by", "grant", "order", "connection", "account"]),
@@ -147,7 +147,7 @@ const DECIMALS: &[(&str, &[&str])] = &[
     ("ask", &["price", "qty"]),
     ("position", &["qty", "avg"]),
     ("fill", &["price", "qty"]),
-    ("order", &["qty", "limit", "stop"]),
+    ("order", &["qty", "limit", "stop", "takeProfit", "stopLoss"]),
     ("order-update", &["filled", "avg"]),
     ("amend", &["qty", "limit", "stop"]),
     ("account", &["value", "buyingPower", "cash", "equity", "dayChange", "dayChangePct"]),
