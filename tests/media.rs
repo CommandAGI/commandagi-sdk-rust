@@ -238,6 +238,12 @@ fn a_composition_is_another_video_by_path_and_an_artboard_a_drawings_page() {
         input(&g, "clip_Poster.draw.tsx", "renderable"),
         golden(r#"{"ref": {"locator": "Poster.draw.tsx", "fileKind": "drawing", "representation": "auto", "view": "page_2"}, "fit": "cover"}"#)
     );
+    let cropped = graph(video([track([artboard([]).src("Poster.draw.tsx").duration(2).crop(json(r#"{"x": 10, "y": 20, "width": 400, "height": 300}"#))])]));
+    assert_eq!(
+        input(&cropped, "clip_Poster.draw.tsx", "renderable"),
+        golden(r#"{"ref": {"locator": "Poster.draw.tsx", "fileKind": "drawing", "representation": "auto"}, "fit": "contain", "crop": {"x": 10, "y": 20, "width": 400, "height": 300}}"#)
+    );
+    assert!(bad(video([track([artboard([]).src("Poster.draw.tsx").duration(2).crop(json(r#"{"x": 0, "y": 0, "width": 0, "height": 3}"#))])])).contains("crop is { x, y, width, height }"));
     assert_eq!(input(&g, "clip_Poster.draw.tsx", "source"), "null");
     assert_eq!(input(&g, "clip_Poster.draw.tsx", "opacity"), "0.5");
     let on_track = |c: El| bad(video([track([c])]));

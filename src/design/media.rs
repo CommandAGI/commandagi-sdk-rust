@@ -57,7 +57,7 @@
 //! never inlined. So are a nested composition (`composition([]).src("Intro.vid.rs")`: another video's code, a
 //! `video.instance` node whose frames are its clip's source; `.inputs(json(…))` are the values it gives that video's
 //! parameters) and an artboard (`artboard([]).src("Poster.draw.tsx")`: a drawing's page, drawn live; `.view(…)` names
-//! the page, else the first). Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
+//! the page, else the first; `.crop(json(…))` the part of it to show). Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
 //! file, is seconds, as on a video). Each node carries the call that declared
 //! it in `meta.source`; what a node holds that is not a node (a clip's effects, transition, intro, outro and
 //! keyframes; a midi clip's notes; a video's markers) carries its call in `meta.sources`, by key. Anything the
@@ -160,6 +160,8 @@ attributes! {
         fit;
         /// What an artboard's drawing is drawn as: "auto", "vector", "raster".
         representation;
+        /// The rectangle of an artboard's page to show, `json(r#"{"x": 0, "y": 0, "width": 400, "height": 300}"#)`.
+        crop;
         /// Where a clip or a note starts.
         start;
         /// How long a clip, a note, a transition or an animation lasts.
@@ -671,6 +673,21 @@ fn input_values(el: &El) -> Result<Vec<(String, Json)>, String> {
     }
 }
 
+/// An artboard's `crop`: the rectangle of the drawing's page to show, `{ x, y, width, height }` in the page's own units.
+fn crop_rect(el: &El) -> Result<Option<Json>, String> {
+    match el.attr_of("crop") {
+        None => Ok(None),
+        Some(Json::Obj(e))
+            if e.len() == 4
+                && ["x", "y", "width", "height"].iter().all(|k| e.iter().any(|(n, v)| n.as_str() == *k && matches!(v, Json::Num(x) if x.is_finite())))
+                && e.iter().all(|(n, v)| !(n.as_str() == "width" || n.as_str() == "height") || matches!(v, Json::Num(x) if *x > 0.0)) =>
+        {
+            Ok(Some(obj(&["x", "y", "width", "height"].iter().map(|k| (*k, e.iter().find(|(n, _)| n.as_str() == *k).unwrap().1.clone())).collect::<Vec<_>>())))
+        }
+        Some(v) => Err(format!("{}: crop is {{ x, y, width, height }} with a width and a height above 0, not {}", place(el), v.text())),
+    }
+}
+
 /// A clip's length: out − in at its speed, or its duration.
 fn clip_length(c: &El, in_point: f64, speed: f64, picture: bool) -> Result<f64, String> {
     let out = at_least(c, "out", 0.0)?;
@@ -1066,7 +1083,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 source = Json::Null;
             } else if c.tag == "artboard" {
                 // A drawing's page, drawn live: the clip keeps the reference, never the drawing.
-                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation"]].concat())?;
+                refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), &["src", "view", "fit", "representation", "crop"]].concat())?;
                 if kind != "video" {
                     return Err(format!("{}: an artboard goes on a video track", place(c)));
                 }
@@ -1090,7 +1107,11 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 common(c, &mut inputs)?;
                 inputs.set("volume", 1i64);
                 let fit = txt(c, "fit", Some(ARTBOARD_FITS))?.unwrap_or_else(|| ARTBOARD_FIT.into());
-                inputs.set("renderable", obj(&[("ref", reference), ("fit", fit.into())]));
+                let mut renderable = obj(&[("ref", reference), ("fit", fit.into())]);
+                if let Some(crop) = crop_rect(c)? {
+                    renderable.set("crop", crop);
+                }
+                inputs.set("renderable", renderable);
                 source = Json::Null;
             } else if c.tag == "title" {
                 refuse_unknown(c, &[clip_props_without(&["in", "out", "speed", "volume"]).as_slice(), TITLE_FIELDS, &["typewriter"]].concat())?;
