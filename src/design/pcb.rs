@@ -39,7 +39,7 @@
 //! masks().name().label().lib_name().unit_um_per_db().polygons()
 //!                                   an IC mask layout, flattened: each polygon {layer, datatype, points}, its
 //!                                   points in micrometres, the stream's units and the library it names.
-//! graphic().kind().layer().points().width().filled().id().kicad()
+//! graphic().kind().layer().points().width().filled().arcs().id().kicad()
 //!                                   a board drawing (line, arc, circle, rect, poly) on a layer.
 //! text().text()|.field().at().rotation().layer().size().size_x().thickness().kind().id().kicad()
 //! dimension().points().height().layer().width().text_size().id().kicad()
@@ -218,6 +218,8 @@ attributes! {
         points;
         /// A drawing is filled.
         filled;
+        /// A polygon's arcs: the indices in `points` where an arc's start, mid and end begin.
+        arcs;
         /// A drawing's, a text's or a dimension's KiCad id.
         id;
         /// The KiCad forms an element carries, as s-expression text.
@@ -1444,7 +1446,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 s.add(CONDUCTOR, inputs, Some(&id), Some("Pour"), meta(el))?;
             }
             "graphic" => {
-                refuse_unknown(el, &["kind", "layer", "points", "width", "filled", "id", "kicad"])?;
+                refuse_unknown(el, &["kind", "layer", "points", "width", "filled", "arcs", "id", "kicad"])?;
                 let kind = text_of(el, "kind", true)?.unwrap_or_default();
                 let Some((_, count)) = GRAPHICS.iter().find(|(k, _)| *k == kind) else {
                     let kinds: Vec<&str> = GRAPHICS.iter().map(|(k, _)| *k).collect();
@@ -1465,7 +1467,29 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 }
                 inputs.push(("kind".into(), kind.as_str().into()));
                 let least = if kind == "poly" { 2 } else { count.unwrap_or(2) };
-                inputs.push(("points".into(), point_list(el, "points", least, *count)?.iter().map(|(x, y)| xy(*x, *y)).collect::<Vec<_>>().into()));
+                let corners = point_list(el, "points", least, *count)?;
+                inputs.push(("points".into(), corners.iter().map(|(x, y)| xy(*x, *y)).collect::<Vec<_>>().into()));
+                // A polygon's arcs: where each one's three points (start, mid, end) begin in `points`.
+                if let Some(arcs) = el.attr_of("arcs") {
+                    let mut next = 0usize;
+                    let starts: Option<Vec<usize>> = match arcs {
+                        Json::Arr(list) if kind == "poly" && !list.is_empty() => list
+                            .iter()
+                            .map(|v| match v {
+                                Json::Num(n) if n.fract() == 0.0 && *n >= next as f64 && (*n as usize) + 3 <= corners.len() => {
+                                    next = *n as usize + 3;
+                                    Some(*n as usize)
+                                }
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => None,
+                    };
+                    if starts.is_none() {
+                        return Err(format!("{}: arcs is, on a poly, the increasing indices in points where an arc's start, mid and end begin (3 points each, not overlapping)", at(el)));
+                    }
+                    inputs.push(("arcStarts".into(), arcs.clone()));
+                }
                 inputs.push(("widthMm".into(), num(el, "width", true)?.unwrap_or_default().into()));
                 inputs.push(("layer".into(), text_of(el, "layer", true)?.unwrap_or_default().into()));
                 if !open {

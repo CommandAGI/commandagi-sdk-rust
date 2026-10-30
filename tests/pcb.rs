@@ -137,6 +137,14 @@ fn a_board_refuses_by_name_what_it_cannot_say() {
 }
 
 #[test]
+fn a_polygon_says_its_arcs() {
+    let pts = [[0, 0], [1, 0], [2, 1], [3, 0], [3, 3]];
+    let g = graph(board_of(vec![graphic().kind("poly").layer("F.Mask").points(pts).width(0).filled(true).arcs([1])]).width(10).height(10));
+    assert!(g.text().contains(r#""arcStarts":[1]"#));
+    assert!(bad(board_of(vec![graphic().kind("poly").layer("F.Mask").points(pts).width(0).arcs([3])]).width(10).height(10)).contains("arcs is, on a poly"));
+}
+
+#[test]
 fn a_board_says_what_a_kicad_board_holds() {
     let layers = r#"[{"ordinal": 0, "name": "F.Cu", "type": "signal"}, {"ordinal": 4, "name": "In1.Cu", "type": "signal"}, {"ordinal": 2, "name": "B.Cu", "type": "signal"}, {"ordinal": 25, "name": "Edge.Cuts", "type": "user"}]"#;
     let g = graph(
