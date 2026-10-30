@@ -9,7 +9,7 @@
 //! fn corporation(cik: &str, ticker: &str, name: &str) -> El {
 //!     monitor([
 //!         source().id("filings").adapter("sec-filings").params(json(&format!(r#"{{"cik": "{cik}"}}"#))).every("15m"),
-//!         follows().monitor("../../central-banks/fed").match_("fomc.*"),
+//!         follows().monitor("../../central-banks/fed").when(json(r#"{"class": "fomc.*"}"#)),
 //!     ])
 //!     .title(format!("{name} ({ticker})"))
 //!     .class("corporation")
@@ -18,9 +18,9 @@
 //! # commandagi::design::declare(corporation("0001045810", "NVDA", "NVIDIA")).unwrap();
 //! ```
 //!
-//! A follow names the followed monitor's folder, relative to this monitor's folder. A follow's `match` is written
-//! `match_` (a Rust keyword), and a discover's `into` is written `into_` (`Into::into` has the name). Nothing adds a
-//! default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes` and `discovers` are always lists.
+//! A follow names the followed monitor's folder, relative to this monitor's folder, and takes the records its `when`
+//! (a record predicate, like a discover's) holds for. A wake's `match` is written `match_` (a Rust keyword), and a
+//! discover's `into` is written `into_` (`Into::into` has the name). Nothing adds a default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes` and `discovers` are always lists.
 //!
 //! A `derive` folds other monitors' records into this one's, each port named to a folder; a `discover` gives each thing
 //! its records name a folder and a thread of its own, an instance of a class (`<file>#<Component>`):
@@ -51,7 +51,7 @@ elements! {
     monitor: children;
     /// A source: an adapter of the sources catalog, its params, and how often it reads.
     source: leaf;
-    /// A follow: copy matching records of another monitor into this one.
+    /// A follow: copy the records of another monitor that its `when` takes into this one.
     follows: leaf;
     /// A wake: wake the thread's agent when a matching record arrives.
     wake: leaf;
@@ -82,7 +82,7 @@ pub const SOURCE_FIELDS: &[&str] = &[
     "id", "adapter", "params", "every", "via", "exit", "host", "mode", "retain", "since", "session", "snapshot", "profile",
     "keep", "maxCostPerDay", "unit", "vantage", "connection",
 ];
-pub const FOLLOW_FIELDS: &[&str] = &["monitor", "match", "when"];
+pub const FOLLOW_FIELDS: &[&str] = &["monitor", "when"];
 pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
 pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
@@ -500,9 +500,7 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
         match c.tag {
             "source" => sources.push(source_of(c)?),
             "follows" => {
-                for k in ["monitor", "match"] {
-                    word(c, k, "monitor")?;
-                }
+                word(c, "monitor", "monitor")?;
                 if let Some(bad) = c.attr_of("when").filter(|v| !matches!(v, Json::Null)).and_then(when_shape) {
                     return Err(format!("{} when: {bad}", call(c, "monitor")));
                 }
@@ -559,7 +557,7 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
         .collect();
     let follows = list("follows")
         .iter()
-        .map(|f| Json::obj().with("monitor", or_null(f, "monitor")).with("match", or_null(f, "match")).with("when", or_null(f, "when")))
+        .map(|f| Json::obj().with("monitor", or_null(f, "monitor")).with("when", or_null(f, "when")))
         .collect();
     let derives = list("derives")
         .iter()
