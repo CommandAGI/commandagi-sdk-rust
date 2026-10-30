@@ -147,6 +147,20 @@ fn a_song_holds_audio_clips_a_sampler_and_a_cycle() {
 }
 
 #[test]
+fn a_video_file_on_an_audio_track_is_its_sound_and_a_link_pairs_picture_and_sound() {
+    let take = || clip([]).src("media/take.mp4").link("L1").start(1).out(4);
+    let g = graph(video([track([take().volume(0)]).name("V1"), track([take()]).name("A1").kind("audio")]));
+    let clip_of = |track: &str| {
+        let wire = input(&g, track, "clips.1");
+        let id = wire.split("\"node\":\"").nth(1).and_then(|r| r.split('"').next()).unwrap().to_string();
+        (input(&g, &id, "kind"), input(&g, &id, "link"), input(&g, &id, "volume"))
+    };
+    assert_eq!(clip_of("track_V1"), ("\"video\"".into(), "\"L1\"".into(), "0".into()));
+    assert_eq!(clip_of("track_A1"), ("\"audio\"".into(), "\"L1\"".into(), "1".into()));
+    assert_eq!(bad(video([track([clip([]).src("a.png").duration(1)]).kind("audio")])), "clip().src(\"a.png\"): a picture goes on a video track (.kind(\"video\"))");
+}
+
+#[test]
 fn refuses_what_the_vocabulary_cannot_say() {
     let video_track = |children: Vec<El>| bad(video([track(children)]));
     assert_eq!(video_track(vec![clip([]).src("data:video/mp4;base64,AAAA").duration(1)]), "clip().src(\"data:video/mp4;base64,AAAA\"): src is a path relative to this file, not data:video/mp4;base64,AAAA");

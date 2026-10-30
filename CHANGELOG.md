@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A video's `clip().link(…)`: two clips of one video file with the same `link` are its picture and its sound, patched
+  to two tracks at once. A video file on an audio track is its sound (a clip of kind `audio`); a still there is refused.
 - A camera unit's calibration takes `camera().channel(…).intrinsics(json(…)).extrinsics(json(…)).residual(json(…))`
   with `.robot(…)`, `.marker(…)`, `.run(…)`, `.reality(…)`: the lens, the camera in the world, the residual and the run
   that measured it with its reality (the TypeScript SDK's `<camera>`).

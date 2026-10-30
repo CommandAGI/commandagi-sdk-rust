@@ -152,6 +152,8 @@ attributes! {
         volume;
         /// A clip's media file, a composition's video or an artboard's drawing, by its path relative to this file.
         src;
+        /// The clips that are one take's picture and sound, edited as a pair: the same name on each.
+        link;
         /// A composition's input values: the parameters of its video by name, `json(r#"{"hue": 30}"#)`.
         inputs;
         /// The page of an artboard's drawing (its id or index; the first when not given).
@@ -1014,7 +1016,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 at_least(c, "duration", 0.0)?.ok_or_else(|| format!("{}: give its duration in seconds", place(c)))
             };
             if c.tag == "clip" {
-                refuse_unknown(c, &[&["src"][..], CLIP_PROPS].concat())?;
+                refuse_unknown(c, &[&["src", "link"][..], CLIP_PROPS].concat())?;
                 let src = txt(c, "src", None)?.filter(|s| !s.is_empty());
                 let Some(src) = src else { return Err("clip() names its media file (.src(\"media/take-1.mp4\"), relative to this file)".into()) };
                 let scheme = src.find(':').is_some_and(|i| i > 0 && src[..i].bytes().all(|b| b.is_ascii_alphabetic()));
@@ -1022,7 +1024,8 @@ fn declare_video(root: &El) -> Result<Json, String> {
                     return Err(format!("{}: src is a path relative to this file, not {src}", place(c)));
                 }
                 let Some(mk) = media_kind(&src) else { return Err(format!("{}: {src} is not a video, audio or image file this editor reads", place(c))) };
-                if (mk == "audio") != (kind == "audio") {
+                // A video file on an audio track is its sound; a sound file has no picture, and a still has no sound.
+                if if mk == "audio" { kind != "audio" } else { mk == "image" && kind == "audio" } {
                     let (what, k) = if mk == "audio" { ("a sound goes on an audio track", "audio") } else { ("a picture goes on a video track", "video") };
                     return Err(format!("{}: {what} (.kind(\"{k}\"))", place(c)));
                 }
@@ -1048,8 +1051,12 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 let speed = at_least(c, "speed", 0.01)?.unwrap_or(1.0);
                 let in_point = at_least(c, "in", 0.0)?.unwrap_or(0.0);
                 let duration = clip_length(c, in_point, speed, mk == "image")?;
+                let link = txt(c, "link", None)?;
+                if link.as_deref() == Some("") {
+                    return Err(format!("{}: link names the clips that are one take's picture and sound, not \"\"", place(c)));
+                }
                 inputs = obj(&[
-                    ("kind", mk.into()),
+                    ("kind", (if kind == "audio" { "audio" } else { mk }).into()),
                     ("assetId", asset_id.as_str().into()),
                     ("name", clip_name.as_str().into()),
                     ("start", start(c)?.into()),
@@ -1058,6 +1065,9 @@ fn declare_video(root: &El) -> Result<Json, String> {
                     ("speed", speed.into()),
                 ]);
                 common(c, &mut inputs)?;
+                if let Some(link) = link {
+                    inputs.set("link", link);
+                }
                 source = wire(&source_id, "media");
             } else if c.tag == "composition" {
                 // Another video, drawn live from its own code: a `video.instance` node (made below, once the clip has its id).
