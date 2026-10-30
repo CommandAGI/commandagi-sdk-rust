@@ -136,6 +136,16 @@ fn a_bracket_is_an_order_with_two_exits_each_outcome_naming_its_leg() {
         ))
         .unwrap()
     );
+    let (_, cancelled, _) = document(market([
+        cancel().t(T).id("x-a1b2c3d4e5f6").venue("alpaca-paper").mode("paper").ref_("alp-1004").order("o-a1b2c3d4e5f6").leg("stop-loss").by("person:ada").grant("g-paper"),
+    ]));
+    assert_eq!(
+        cancelled,
+        Json::parse(&format!(
+            r#"{{"records": [{{"kind": "cancel", "t": "{T}", "id": "x-a1b2c3d4e5f6", "venue": "alpaca-paper", "mode": "paper", "ref": "alp-1004", "order": "o-a1b2c3d4e5f6", "leg": "stop-loss", "by": "person:ada", "grant": "g-paper"}}]}}"#
+        ))
+        .unwrap()
+    );
     assert_eq!(
         bad(market([order().t(T).id("o-1").sym("NRTH").side("buy").qty("1").type_("market").tif("day").venue("sim").mode("sim").by("person:ada").grant("g").stop_loss(180.5)])),
         r#"order(): stop_loss is decimal text ("185.09"), not a number"#

@@ -123,7 +123,7 @@ const MARKET: Vocabulary = Vocabulary {
             .attrs(&["t", "order", "state", "mode", "leg", "ref", "filled", "avg", "error", "src"]),
         TagRule::new("cancel", R)
             .required(&["t", "id", "venue", "mode", "ref", "by", "grant"])
-            .attrs(&["t", "id", "venue", "mode", "ref", "by", "grant", "order", "connection", "account"]),
+            .attrs(&["t", "id", "venue", "mode", "ref", "by", "grant", "order", "leg", "connection", "account"]),
         TagRule::new("cancel-update", R).required(&["t", "cancel", "state", "mode"]).attrs(&["t", "cancel", "state", "mode", "error"]),
         TagRule::new("amend", R)
             .required(&["t", "id", "order", "sym", "side", "qty", "type", "tif", "venue", "mode", "ref", "by", "grant"])
