@@ -103,6 +103,13 @@ impl Scope {
         Ok(nid)
     }
 
+    /// Disable a node already declared: the graph does not run it (a suppressed code part).
+    pub fn disable(&mut self, id: &str) {
+        if let Some((_, node)) = self.nodes.iter_mut().find(|(nid, _)| nid == id) {
+            node.set("disabled", true);
+        }
+    }
+
     /// Set one input of a node already declared (a mask names a layer that may be declared after it).
     pub fn set_input(&mut self, id: &str, port: &str, value: Json) {
         if let Some((_, node)) = self.nodes.iter_mut().find(|(nid, _)| nid == id) {

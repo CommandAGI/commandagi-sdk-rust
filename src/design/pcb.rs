@@ -54,8 +54,10 @@
 //!                                   the `.pretty` folder `library` names. `ref_at` and `value_at` [x, y] are where
 //!                                   its reference and value texts sit (mm, in the footprint's own frame), and
 //!                                   `ref_rot` how far its reference text is turned there (degrees).
-//! trace().name().layer().width().points().from().to().net().surface().uuid().segment_uuids().kicad()
+//! trace().name().layer().width().points().rule().from().to().net().surface().uuid().segment_uuids().kicad()
 //!                                   a copper run: its points ([[x, y], …]) on one copper layer, a finished width.
+//!                                   `rule` is its routing rule, "45", "90" or "any" (the default): the angles its
+//!                                   legs take between its points, so a moved point re-routes the legs.
 //! arc().name().layer().width().points().from().to().net().uuid().kicad()
 //!                                   a circular copper arc: start, a point on it, end.
 //! via().name().pcb_x().pcb_y().drill().diameter().layers().pads().net().uuid().kicad()
@@ -379,7 +381,8 @@ attributes! {
         shipping;
         /// The id of the check whose findings an accept accepts.
         check;
-        /// The rule of the findings an accept accepts: "clearance", "pin_conflict".
+        /// The rule of the findings an accept accepts: "clearance", "pin_conflict"; a trace's routing rule: "45", "90"
+        /// or "any".
         rule;
         /// The parts an accepted finding is about, each of them: `["U1", "U3"]`.
         refs;
@@ -401,6 +404,8 @@ pub const BOARD_LAYERS: &[(u32, &str, &str)] = &[(0, "F.Cu", "signal"), (31, "B.
 /// The drawings, by kind: how many points each has (none: a polygon, two or more).
 const GRAPHICS: &[(&str, Option<usize>)] = &[("line", Some(2)), ("arc", Some(3)), ("circle", Some(2)), ("rect", Some(2)), ("poly", None)];
 const CONDUCTORS: &[&str] = &["trace", "arc", "via", "pour"];
+/// A run's routing rules: the angles its legs take between its points (45° steps, 90° steps, or any angle).
+const TRACE_RULES: &[&str] = &["45", "90", "any"];
 const FACTS: &[&str] = &["graphic", "text", "dimension", "kicad", "net", "netclass", "diffpair", "group", "keepout", "thermal", "bus", "objective", "fab"];
 /// The layout's constraints, each a board fact (`fact` is its tag), as the TypeScript SDK's.
 const CONSTRAINTS: &[&str] = &["netclass", "diffpair", "group", "keepout", "thermal", "bus", "objective"];
@@ -1305,9 +1310,14 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 let is_trace = el.tag == "trace";
                 let mut allowed = vec!["name", "layer", "width", "points", "from", "to", "net", "uuid", "kicad"];
                 if is_trace {
-                    allowed.extend(["segmentUuids", "surface"]);
+                    allowed.extend(["segmentUuids", "surface", "rule"]);
                 }
                 refuse_unknown(el, &allowed)?;
+                let rule = match el.attr_of("rule") {
+                    None => "any".to_string(),
+                    Some(Json::Str(r)) if TRACE_RULES.contains(&r.as_str()) => r.clone(),
+                    Some(other) => return Err(format!("{}: rule is \"45\", \"90\" or \"any\", not {}", at(el), other.text())),
+                };
                 let on_surface = match el.attr_of("surface") {
                     None => false,
                     Some(Json::Bool(true)) => true,
@@ -1337,9 +1347,9 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     ("widthMm".into(), positive(el, "width", true)?.unwrap_or_default().into()),
                     ("layer".into(), layer.into()),
                 ];
-                // The board view routes and re-routes a run under any angle; a KiCad segment says no rule.
+                // A run is routed under its rule; an arc has none.
                 if is_trace {
-                    inputs.push(("rule".into(), "any".into()));
+                    inputs.push(("rule".into(), rule.into()));
                 }
                 if !terminals.is_empty() {
                     inputs.push(("terminals".into(), terminals.into()));

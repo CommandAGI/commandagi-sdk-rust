@@ -30,6 +30,20 @@ fn compact(text: &str) -> String {
 }
 
 #[test]
+fn a_trace_names_its_routing_rule_and_an_arc_has_none() {
+    let g = graph(board_of(vec![
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [5, 5]]).rule("45"),
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [5, 0]]).rule("90"),
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [3, 1]]),
+        arc().layer("F.Cu").width(0.2).points([[0, 0], [1, 1], [2, 0]]),
+    ]));
+    let rules: Vec<Option<String>> = (1..=4).map(|i| node(&g, &format!("cu_{i}")).get("inputs").and_then(|x| x.get("rule")).and_then(Json::as_str).map(String::from)).collect();
+    assert_eq!(rules, [Some("45".into()), Some("90".into()), Some("any".into()), None]);
+    assert!(bad(board_of(vec![trace().layer("F.Cu").width(0.2).points([[0, 0], [1, 0]]).rule(45)])).contains(r#"rule is "45", "90" or "any", not 45"#));
+    assert!(bad(board_of(vec![arc().layer("F.Cu").width(0.2).points([[0, 0], [1, 1], [2, 0]]).rule("45")])).contains("rule"));
+}
+
+#[test]
 fn a_board_declares_its_outline_stack_footprints_and_copper() {
     let l0 = line!() + 1;
     let root = board_of(vec![

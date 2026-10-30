@@ -145,6 +145,16 @@ fn refuses_what_a_library_part_unit_or_code_part_cannot_say() {
 }
 
 #[test]
+fn a_suppressed_code_part_is_a_disabled_node_that_declares_nothing() {
+    let code_node = |root: El| graph(root).get("nodes").and_then(|n| n.get("c")).cloned().expect("the code node");
+    let off = code_node(group("S", [code("c").source("c.ts").suppressed(true)]));
+    assert_eq!(off.get("disabled"), Some(&Json::Bool(true)));
+    assert_eq!(off.get("inputs").unwrap().text(), r#"{"source":"c.ts"}"#);
+    assert_eq!(code_node(group("S", [code("c").source("c.ts").suppressed(false)])).get("disabled"), None, "false is the default");
+    assert!(bad(group("S", [code("c").source("c.ts").suppressed("yes")])).contains("suppressed is true or false"));
+}
+
+#[test]
 fn a_netlist_circuit_lists_its_parts_pins_and_nets_and_carries_its_kicad_files() {
     let circuit = group("Board", [
         part("U1").value("LM358").symbol("Amplifier_Operational:LM358").pins(json(r#"[{"number": "1", "name": "OUT"}, {"number": "8", "name": "V+"}]"#)),

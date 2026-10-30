@@ -39,8 +39,10 @@
 //!                                                                           library ref in a .kicad_sym, by path
 //! unit(part, n).sch_x(…).sch_y(…).sch_style(…)                              where unit n (2 or more) of a part sits;
 //!                                                                           the part's own sch_x, sch_y place unit 1
-//! code(name).source(path).inputs(json(…))                                   a code part: the parts another file
-//!                                                                           declares, run with these inputs
+//! code(name).source(path).inputs(json(…)).suppressed(…)                    a code part: the parts another file
+//!                                                                           declares, run with these inputs; a
+//!                                                                           suppressed one (true) is not run and
+//!                                                                           declares nothing
 //! part(name).pins(["1", "2"]).value(…).symbol(…)                            a part of a netlist circuit (no sheet):
 //!                                                                           its pins by number, or
 //!                                                                           json(r#"[{"number": "1", "name": "VBAT"}]"#)
@@ -164,6 +166,8 @@ attributes! {
         source;
         /// A code part's inputs (its file's parameters): `.inputs(json(r#"{"resistor": "330"}"#))`.
         inputs;
+        /// A code part that is not run (true): it declares nothing. False is the default.
+        suppressed;
         /// A netlist part's pins (`["1", "2"]`), or a net's (`[".C1 > .pin1"]`).
         pins;
         /// The SPICE packages a part binds: `json(r#"[{"id": "q", "model": "2N3904", "terminals": {"C": "1"}}]"#)`.
@@ -563,8 +567,13 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 parts.insert(reference, placed);
             }
             "code" => {
-                refuse_unknown(el, &["name", "source", "inputs"])?;
+                refuse_unknown(el, &["name", "source", "inputs", "suppressed"])?;
                 let name = text(el, "name", "the code part's id")?;
+                let suppressed = match el.attr_of("suppressed") {
+                    None | Some(Json::Bool(false)) => false,
+                    Some(Json::Bool(true)) => true,
+                    Some(_) => return Err(format!("{}: suppressed is true or false", el.call_text())),
+                };
                 let source = text(el, "source", "the path of the file it runs, relative to this one")?;
                 let mut inputs = vec![("source".to_string(), Json::from(source.as_str()))];
                 match el.attr_of("inputs") {
@@ -581,7 +590,11 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                     return Err(format!("two nodes are called {name}"));
                 }
                 let label = source.rsplit('/').next().unwrap_or(&source).to_string();
-                s.add(CODE_OP, inputs, Some(&name), Some(&label), meta(el))?;
+                let code = s.add(CODE_OP, inputs, Some(&name), Some(&label), meta(el))?;
+                // The graph's own suppression: a disabled code node is not run.
+                if suppressed {
+                    s.disable(&code);
+                }
             }
             "junction" => {
                 refuse_unknown(el, &["name", "schX", "schY"])?;
