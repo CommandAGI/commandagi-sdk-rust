@@ -58,7 +58,10 @@
 //! `video.instance` node whose frames are its clip's source; `.inputs(json(…))` are the values it gives that video's
 //! parameters) and an artboard (`artboard([]).src("Poster.draw.tsx")`: a drawing's page, drawn live; `.view(…)` names
 //! the page, else the first; `.crop(json(…))` the part of it to show; `.inputs(json(…))` the values it gives the
-//! drawing's parameters, so two artboards of one drawing can say two things). Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
+//! drawing's parameters, so two artboards of one drawing can say two things). A video's own artboards are other frames of
+//! it at other sizes (`artboard([]).name("Vertical").width(1080).height(1920)` in the `video`, with no `src`; the video
+//! itself is the first); an `override_().artboard("Vertical")…` in a clip, title or effect sets what it is on that
+//! artboard only. Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
 //! file, is seconds, as on a video). Each node carries the call that declared
 //! it in `meta.source`; what a node holds that is not a node (a clip's effects, transition, intro, outro and
 //! keyframes; a midi clip's notes; a video's markers) carries its call in `meta.sources`, by key. Anything the
@@ -92,8 +95,10 @@ elements! {
     adjustment: children;
     /// A midi clip on a video's midi track: its notes.
     midi: children;
-    /// A clip's effect: its keyframes.
+    /// A clip's effect: its keyframes and overrides.
     effect: children;
+    /// What a clip, title or effect is on one of the video's own artboards: `override_().artboard("Vertical").y(700)`.
+    override_: leaf;
     /// A video's marker.
     marker: leaf;
     /// A clip's transition into it.
@@ -166,6 +171,8 @@ attributes! {
         representation;
         /// The rectangle of an artboard's page to show, `json(r#"{"x": 0, "y": 0, "width": 400, "height": 300}"#)`.
         crop;
+        /// The video's own artboard an override sets the clip on.
+        artboard;
         /// Where a clip or a note starts.
         start;
         /// How long a clip, a note, a transition or an animation lasts.
@@ -647,6 +654,88 @@ pub const ARTBOARD_FIT: &str = "contain";
 pub const ARTBOARD_REPRESENTATION: &str = "auto";
 /// The `video.instance` port that holds a nested composition's ref.
 pub const INSTANCE_REF: &str = "__instance";
+/// What an `override_()` in a clip may set on one artboard besides its transform, colour and crop: its look (not its sound).
+pub const OVERRIDE_LOOK: &[&str] = &["opacity", "blendMode", "fitMode"];
+
+/// The artboard an `override_()` names: one the video declares.
+fn override_artboard(el: &El, artboards: &[String]) -> Result<String, String> {
+    let Some(a) = txt(el, "artboard", None)?.filter(|a| !a.is_empty()) else {
+        return Err("override_() names its artboard (.artboard(\"…\"), one the video() declares)".into());
+    };
+    if !artboards.contains(&a) {
+        let declared = if artboards.is_empty() { String::new() } else { format!(" (it declares {})", artboards.iter().map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join(", ")) };
+        return Err(format!("override_().artboard(\"{a}\"): the video() declares no artboard().name(\"{a}\"){declared}"));
+    }
+    Ok(a)
+}
+
+/// One `override_()` in a clip: the artboard, what the clip is on it, and another media file (a `clip()`'s `src`).
+fn clip_override(el: &El, clip: &El, artboards: &[String]) -> Result<(String, Json, Option<String>), String> {
+    let own: &[&str] = if clip.tag == "title" { TITLE_FIELDS } else if clip.tag == "clip" { &["src"] } else { &[] };
+    let transform: Vec<&str> = CLIP_TRANSFORM.iter().map(|(k, _)| *k).collect();
+    let crop: Vec<&str> = CLIP_CROP.iter().map(|(k, _)| *k).collect();
+    refuse_unknown(el, &[&["artboard"][..], OVERRIDE_LOOK, transform.as_slice(), CLIP_COLOR, crop.as_slice(), own].concat())?;
+    let a = override_artboard(el, artboards)?;
+    let mut o = Json::obj();
+    if let Some(v) = num(el, "opacity", Some(0.0), Some(1.0))? {
+        o.set("opacity", v);
+    }
+    if let Some(v) = txt(el, "blendMode", None)? {
+        o.set("blendMode", v);
+    }
+    if let Some(v) = txt(el, "fitMode", Some(&["fit", "fill", "stretch"]))? {
+        o.set("fitMode", v);
+    }
+    let mut t = Json::obj();
+    for (k, _) in CLIP_TRANSFORM {
+        if let Some(v) = any(el, k)? {
+            t.set(k, v);
+        }
+    }
+    if !matches!(&t, Json::Obj(e) if e.is_empty()) {
+        o.set("transform", t);
+    }
+    let mut c = Json::obj();
+    for k in CLIP_COLOR {
+        let bound = if *k == "hue" { 180.0 } else { 1.0 };
+        if let Some(v) = num(el, k, Some(-bound), Some(bound))? {
+            c.set(k, v);
+        }
+    }
+    if !matches!(&c, Json::Obj(e) if e.is_empty()) {
+        o.set("color", c);
+    }
+    let mut cr = Json::obj();
+    for (k, edge) in CLIP_CROP {
+        if let Some(v) = num(el, k, Some(0.0), Some(0.49))? {
+            cr.set(edge, v);
+        }
+    }
+    if !matches!(&cr, Json::Obj(e) if e.is_empty()) {
+        o.set("crop", cr);
+    }
+    if clip.tag == "title" {
+        let mut text = Json::obj();
+        for (k, d) in title_text() {
+            let v = match d {
+                Json::Num(_) => at_least(el, k, 0.0)?.map(Json::Num),
+                Json::Bool(_) => flag(el, k)?.map(Json::Bool),
+                _ => txt(el, k, (k == "align").then_some(&["left", "center", "right"][..]))?.map(Json::from),
+            };
+            if let Some(v) = v {
+                text.set(k, v);
+            }
+        }
+        if !matches!(&text, Json::Obj(e) if e.is_empty()) {
+            o.set("text", text);
+        }
+    }
+    let src = if clip.tag == "clip" { txt(el, "src", None)? } else { None };
+    if matches!(&o, Json::Obj(e) if e.is_empty()) && src.is_none() {
+        return Err(format!("{} in {}: an override names what it sets on artboard \"{a}\"", place(el), place(clip)));
+    }
+    Ok((a, o, src))
+}
 
 /// A `composition`'s or an `artboard`'s file: a path relative to this file, of the kind it names.
 fn document_src(el: &El, is_kind: fn(&str) -> bool, what: &str) -> Result<String, String> {
@@ -769,10 +858,12 @@ struct ClipKids {
     /// Keyframe tracks: the property, and its keys `(time, key)` in time order.
     keyframes: Vec<(String, Vec<(f64, Json)>)>,
     notes: Vec<Json>,
+    /// What the clip is on each of the video's artboards that an `override_()` names, and another media file there.
+    overrides: Vec<(String, Json, Option<String>)>,
 }
 
 /// A clip's children: its transition, its intro and outro, its effects (each with its keyframes) and its keyframes.
-fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<ClipKids, String> {
+fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources, artboards: &[String]) -> Result<ClipKids, String> {
     let mut k = ClipKids {
         transition_in: obj(&[("kind", "none".into()), ("duration", Json::Num(0.0))]),
         anim_in: None,
@@ -781,6 +872,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
         audio: Vec::new(),
         keyframes: Vec::new(),
         notes: Vec::new(),
+        overrides: Vec::new(),
     };
     let (mut note_ids, mut fx_ids, mut kf_ids, mut afx_ids) = (Ids::default(), Ids::default(), Ids::default(), Ids::default());
     let mut add_key = |k: &mut ClipKids, el: &El, property: String, sources: &mut Sources| -> Result<(), String> {
@@ -918,17 +1010,58 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
                 if let Some(src) = src {
                     fx.set("src", src);
                 }
-                k.effects.push(fx);
                 sources.put(format!("effect:{id}"), el);
+                let mut fx_overrides = Json::obj();
                 for kf in el.child_elements() {
+                    if kf.tag == "override" {
+                        let a = override_artboard(kf, artboards)?;
+                        if fx_overrides.get(&a).is_some() {
+                            return Err(format!("effect().type_(\"{kind}\"): one override_() for artboard \"{a}\""));
+                        }
+                        let mut o = Json::obj();
+                        if let Some(on) = flag(kf, "enabled")? {
+                            o.set("enabled", on);
+                        }
+                        let mut params = Json::obj();
+                        for (p, v) in &kf.attrs {
+                            if ["artboard", "enabled"].contains(&p.as_str()) {
+                                continue;
+                            }
+                            match v {
+                                Json::Num(n) if n.is_finite() => params.set(p, v.clone()),
+                                _ => return Err(format!("override_().artboard(\"{a}\") in effect().type_(\"{kind}\"): {} is a number, not {}", rust_name(p), v.text())),
+                            };
+                        }
+                        if !matches!(&params, Json::Obj(e) if e.is_empty()) {
+                            o.set("params", params);
+                        }
+                        if matches!(&o, Json::Obj(e) if e.is_empty()) {
+                            return Err(format!("override_().artboard(\"{a}\") in effect().type_(\"{kind}\") names what it sets"));
+                        }
+                        fx_overrides.set(&a, o);
+                        sources.put(format!("effectOverride:{id}:{a}"), kf);
+                        continue;
+                    }
                     if kf.tag != "keyframe" {
-                        return Err(format!("{} is not read in an effect() (its keyframes are keyframe().param(…).time(…).value(…))", tag(kf.tag)));
+                        return Err(format!("{} is not read in an effect() (its keyframes are keyframe().param(…).time(…).value(…), its overrides override_().artboard(…))", tag(kf.tag)));
                     }
                     refuse_unknown(kf, &["param", "time", "value", "easing", "bezier"])?;
                     let param = txt(kf, "param", None)?.filter(|p| !p.is_empty());
                     let Some(param) = param else { return Err(format!("{}: an effect's keyframe names its param", place(kf))) };
                     add_key(&mut k, kf, format!("effect.{id}.{param}"), sources)?;
                 }
+                if !matches!(&fx_overrides, Json::Obj(e) if e.is_empty()) {
+                    fx.set("overrides", fx_overrides);
+                }
+                k.effects.push(fx);
+            }
+            "override" => {
+                let (a, o, src) = clip_override(el, clip, artboards)?;
+                if k.overrides.iter().any(|(x, _, _)| *x == a) {
+                    return Err(format!("{}: one override_() for artboard \"{a}\"", place(clip)));
+                }
+                sources.put(format!("override:{a}"), el);
+                k.overrides.push((a, o, src));
             }
             "keyframe" => {
                 refuse_unknown(el, &["property", "time", "value", "easing", "bezier"])?;
@@ -950,7 +1083,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources) -> Result<Clip
             }
             _ => {
                 return Err(format!(
-                    "{} is not read in a {} (a clip holds transition(), intro(), outro(), effect(), keyframe() and audio effects; a midi() clip its note()s)",
+                    "{} is not read in a {} (a clip holds transition(), intro(), outro(), effect(), keyframe(), override_() and audio effects; a midi() clip its note()s)",
                     tag(el.tag),
                     tag(clip.tag)
                 ))
@@ -979,7 +1112,34 @@ fn declare_video(root: &El) -> Result<Json, String> {
     let mut composite_sources = Sources::new();
     let mut master = Vec::new();
     let mut master_ids = Ids::default();
+    // The video's own artboards first: an override_() anywhere names one of them.
+    let mut artboards = Vec::new();
+    let mut artboard_names: Vec<String> = Vec::new();
+    for a in root.child_elements() {
+        if a.tag != "artboard" {
+            continue;
+        }
+        if a.attr_of("src").is_some() {
+            return Err(format!("{}: an artboard of a drawing goes on a track(); an artboard() in the video() is another frame of it (name, width, height)", place(a)));
+        }
+        refuse_unknown(a, &["name", "width", "height"])?;
+        let Some(an) = txt(a, "name", None)?.filter(|n| !n.is_empty()) else {
+            return Err("artboard() in a video() has a name (the override_()s name it)".into());
+        };
+        if artboard_names.contains(&an) {
+            return Err(format!("{}: two artboards are named \"{an}\"", place(a)));
+        }
+        let (Some(w), Some(h)) = (at_least(a, "width", 1.0)?, at_least(a, "height", 1.0)?) else {
+            return Err(format!("{}: give its width and height in pixels", place(a)));
+        };
+        artboards.push(obj(&[("name", an.as_str().into()), ("width", w.into()), ("height", h.into())]));
+        composite_sources.put(format!("artboard:{an}"), a);
+        artboard_names.push(an);
+    }
     for tr in root.child_elements() {
+        if tr.tag == "artboard" {
+            continue;
+        }
         if video_audio_effect(tr.tag).is_some() {
             let fx = audio_effect(tr, &mut master_ids)?;
             let id = fx.get("id").and_then(Json::as_str).unwrap_or_default().to_string();
@@ -998,7 +1158,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
             continue;
         }
         if tr.tag != "track" {
-            return Err(format!("{} is not read in a video() (it holds track(), marker() and the master's audio effects)", tag(tr.tag)));
+            return Err(format!("{} is not read in a video() (it holds track(), artboard(), marker() and the master's audio effects)", tag(tr.tag)));
         }
         refuse_unknown(tr, &["name", "kind", "muted", "hidden", "locked", "volume", "height"])?;
         let kind = txt(tr, "kind", Some(VIDEO_TRACK_KINDS))?.unwrap_or_else(|| "video".into());
@@ -1240,7 +1400,7 @@ fn declare_video(root: &El) -> Result<Json, String> {
                 nodes.put(&comp_id, node(&comp_id, "video.instance", inst, Some(&clip_name), None));
                 source = wire(&comp_id, "frames");
             }
-            let kids = clip_children(c, &clip_id, &mut sources)?;
+            let kids = clip_children(c, &clip_id, &mut sources, &artboard_names)?;
             inputs.set("transitionIn", kids.transition_in);
             if let Some(a) = kids.anim_in {
                 inputs.set("animIn", a);
@@ -1258,6 +1418,45 @@ fn declare_video(root: &El) -> Result<Json, String> {
                     obj(&[("property", property.into()), ("keys", Json::Arr(keys.into_iter().map(|(_, k)| k).collect()))])
                 });
                 inputs.set("keyframes", Json::Arr(tracks.collect()));
+            }
+            if !kids.overrides.is_empty() {
+                let mut overrides = Json::obj();
+                for (an, mut o, src) in kids.overrides {
+                    // Another media file on one artboard is a source of its own, of the clip's kind.
+                    if let Some(src) = src {
+                        let own = c.attr_of("src").and_then(Json::as_str).and_then(media_kind);
+                        let scheme = src.find(':').is_some_and(|i| i > 0 && src[..i].bytes().all(|b| b.is_ascii_alphabetic()));
+                        if scheme || src.starts_with('/') {
+                            return Err(format!("override_().artboard(\"{an}\") in {}: src is a path relative to this file, not {src}", place(c)));
+                        }
+                        let mk = media_kind(&src);
+                        if mk.is_none() || mk != own {
+                            return Err(format!("override_().artboard(\"{an}\") in {}: {src} is not a {} file (the clip's own kind)", place(c), own.unwrap_or("media")));
+                        }
+                        let mk = mk.unwrap_or("video");
+                        let asset_id = slug(&src);
+                        let source_id = format!("src_{asset_id}");
+                        let file_name = src.rsplit('/').next().unwrap_or(&src).to_string();
+                        if !nodes.has(&source_id) {
+                            let asset = obj(&[
+                                ("id", asset_id.as_str().into()),
+                                ("kind", mk.into()),
+                                ("name", file_name.as_str().into()),
+                                ("url", "".into()),
+                                ("path", src.as_str().into()),
+                                ("duration", Json::Num(0.0)),
+                                ("width", Json::Num(0.0)),
+                                ("height", Json::Num(0.0)),
+                                ("hasAudio", (mk != "image").into()),
+                            ]);
+                            let si = obj(&[("asset", asset), ("__asset", obj(&[("kind", "file".into()), ("$file", src.as_str().into())]))]);
+                            nodes.put(&source_id, node(&source_id, "video.source", si, Some(&file_name), None));
+                        }
+                        o.set("assetId", asset_id);
+                    }
+                    overrides.set(&an, o);
+                }
+                inputs.set("overrides", overrides);
             }
             if c.tag == "midi" {
                 let instrument = txt(c, "instrument", Some(MIDI_INSTRUMENTS))?.unwrap_or_else(|| "grandPiano".into());
@@ -1293,6 +1492,9 @@ fn declare_video(root: &El) -> Result<Json, String> {
     }
     let project_id = slug(&format!("proj_{name}"));
     let mut composite = obj(&[("id", project_id.as_str().into()), ("name", name.as_str().into()), ("settings", settings)]);
+    if !artboards.is_empty() {
+        composite.set("artboards", Json::Arr(artboards));
+    }
     if !markers.is_empty() {
         composite.set("markers", Json::Arr(markers));
     }

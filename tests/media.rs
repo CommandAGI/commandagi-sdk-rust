@@ -277,3 +277,38 @@ fn a_composition_is_another_video_by_path_and_an_artboard_a_drawings_page() {
     assert!(on_track(artboard([]).src("Poster.draw.tsx").duration(1).fit("stretch")).contains("fit is one of fill, contain, cover, none"));
     assert!(bad(video([track([artboard([]).src("P.draw.tsx").duration(1)]).kind("audio")])).contains("an artboard goes on a video track"));
 }
+
+#[test]
+fn a_videos_own_artboards_and_the_overrides_a_clip_title_or_effect_sets_on_one() {
+    let g = graph(
+        video([
+            track([
+                clip([override_().artboard("Vertical").src("media/tall.mp4"), effect([override_().artboard("Vertical").amount(0.6)]).type_("vignette").amount(0.3)])
+                    .src("media/wide.mp4")
+                    .out(4),
+                title([override_().artboard("Vertical").y(700).scale_x(0.8).font_size(64).crop_left(0.1)]).text("Hello").start(4).duration(2).y(300),
+            ])
+            .name("V1"),
+            artboard([]).name("Vertical").width(1080).height(1920),
+        ])
+        .width(1920)
+        .height(1080),
+    );
+    assert_eq!(input(&g, "composite", "artboards"), golden(r#"[{"name":"Vertical","width":1080,"height":1920}]"#));
+    assert_eq!(input(&g, "clip_wide.mp4", "overrides"), golden(r#"{"Vertical":{"assetId":"media_tall.mp4"}}"#));
+    assert_eq!(input(&g, "src_media_tall.mp4", "__asset"), golden(r#"{"kind":"file","$file":"media/tall.mp4"}"#));
+    let fx = node(&g, "clip_wide.mp4").get("inputs").and_then(|i| i.get("effects")).unwrap().text();
+    assert!(fx.contains(r#""overrides":{"Vertical":{"params":{"amount":0.6}}}"#), "{fx}");
+    assert_eq!(
+        input(&g, "clip_Title", "overrides"),
+        golden(r#"{"Vertical":{"transform":{"y":700,"scaleX":0.8},"crop":{"left":0.1},"text":{"fontSize":64}}}"#)
+    );
+    let vertical = || artboard([]).name("Vertical").width(1080).height(1920);
+    let with = |o: El| bad(video([track([title([o]).text("T").duration(1)]), vertical()]));
+    assert!(with(override_().artboard("Square").x(1)).contains("declares no artboard().name(\"Square\") (it declares \"Vertical\")"));
+    assert!(with(override_().artboard("Vertical")).contains("names what it sets"));
+    assert!(with(override_().artboard("Vertical").volume(0.5)).contains("volume is not read on a override_()"));
+    assert!(bad(video([artboard([]).src("Poster.draw.tsx").duration(1)])).contains("an artboard of a drawing goes on a track()"));
+    assert!(bad(video([track([clip([override_().artboard("V").src("b.png")]).src("a.mp4").out(1)]), artboard([]).name("V").width(1).height(1)]))
+        .contains("b.png is not a video file"));
+}
