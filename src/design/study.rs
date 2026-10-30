@@ -79,6 +79,9 @@ elements! {
     step: leaf;
     /// The gains to try on a joint, in place of the definition's or the calibration's: `gains().joint(…).kp(12).kv(0.6)`.
     gains: leaf;
+    /// The bounds the validation planner may search a joint's gains in when the study fails:
+    /// `tune().joint("shoulder_lift").kp([4.0, 40.0]).kv([0.1, 2.0])` (each `[low, high]`).
+    tune: leaf;
     /// A step-response study's window: `response().duration(1).dt(0.001).band(0.02)` (s, s, a fraction of the step).
     response: leaf;
 }
@@ -153,7 +156,7 @@ attributes! {
         /// Where a step starts and ends (rad, the chain's own angle).
         from;
         to;
-        /// A position servo's stiffness (N·m/rad) and damping (N·m·s/rad).
+        /// A position servo's stiffness (N·m/rad) and damping (N·m·s/rad); on `tune()`, their bounds `[low, high]`.
         kp;
         kv;
         /// A step-response window (s), its sample period (s) and its settling band (a fraction of the step).
@@ -208,6 +211,7 @@ pub const STUDY_TAGS: &[StudyTag] = &[
     tag("flowMesh", "flowMesh", false, false, F),
     tag("step", "steps", true, false, R),
     tag("gains", "gains", true, false, R),
+    tag("tune", "tune", true, false, R),
     tag("response", "response", false, false, R),
 ];
 
@@ -239,6 +243,7 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("flowMesh", IN_STUDY).single().required(&["cells"]).attrs(&["cells", "levels", "iterations", "wallModel"]),
         TagRule::new("step", IN_STUDY).key("id").required(STEP).attrs(STEP),
         TagRule::new("gains", IN_STUDY).key("joint").required(&["joint"]).attrs(&["joint", "kp", "kv"]),
+        TagRule::new("tune", IN_STUDY).key("joint").required(&["joint"]).attrs(&["joint", "kp", "kv"]),
         TagRule::new("response", IN_STUDY).single().required(&["duration"]).attrs(&["duration", "dt", "band"]),
     ],
     from_tree: study_from_tree,

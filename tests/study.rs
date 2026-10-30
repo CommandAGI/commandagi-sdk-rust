@@ -113,6 +113,7 @@ fn a_step_response_study_names_its_steps_gains_and_window() {
         study([
             step().id("lift").joint("shoulder_lift").from(0.54).to(0.84),
             gains().joint("shoulder_lift").kp(12).kv(0.6),
+            tune().joint("shoulder_lift").kp([4.0, 40.0]).kv([0.1, 2.0]),
             response().duration(1).dt(0.001).band(0.02),
             criterion().id("settle").quantity("settlingTime").limit(0.3).step("lift"),
         ])
@@ -125,6 +126,7 @@ fn a_step_response_study_names_its_steps_gains_and_window() {
         r#"{"kind": "step-response", "part": "../worlds/arm-cell/world.tsx#arm", "units": "rad-s",
             "steps": [{"id": "lift", "joint": "shoulder_lift", "from": 0.54, "to": 0.84}],
             "gains": [{"joint": "shoulder_lift", "kp": 12, "kv": 0.6}],
+            "tune": [{"joint": "shoulder_lift", "kp": [4.0, 40.0], "kv": [0.1, 2.0]}],
             "response": {"duration": 1, "dt": 0.001, "band": 0.02},
             "criteria": [{"id": "settle", "quantity": "settlingTime", "limit": 0.3, "step": "lift"}]}"#,
     )
