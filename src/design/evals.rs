@@ -261,7 +261,7 @@ fn eval_of(t: &DocTree) -> Result<Json, String> {
 /// A probe names a task or another metric by ref from the metric file (`task`, `reference.task`, an input's
 /// `metric`), never by node id.
 fn probe_refs(t: &DocTree) -> Result<(), String> {
-    let probe = match t.attr("probe") {
+    let probe = match t.attr_of("probe") {
         Some(probe) => probe,
         None => return Ok(()),
     };
