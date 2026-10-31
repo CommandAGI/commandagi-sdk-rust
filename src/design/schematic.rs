@@ -262,9 +262,24 @@ pub fn sch_symbol_type_for(sockets: &[&str]) -> String {
     format!("sch.symbol.{}", fnv1a(&sockets.join("\u{0}")))
 }
 
-/// A part's node type: `eda.part.` + FNV-1a over each pin's `id\0number`, pins joined by `\x01` (the engine's rule).
-pub fn part_type_for(pins: &[(String, String)]) -> String {
-    let signature: Vec<String> = pins.iter().map(|(id, number)| format!("{id}\u{0}{number}")).collect();
+/// What JavaScript's `trim` takes off: the format's rule. Rust's own `trim` keeps U+FEFF and takes U+0085.
+fn is_js_space(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+}
+
+fn pin_label(number: &str, name: Option<&str>) -> String {
+    let t = name.unwrap_or("").trim_matches(is_js_space);
+    if t.is_empty() || t == number || t == "~" {
+        number.to_string()
+    } else {
+        format!("{number} {t}")
+    }
+}
+
+/// A part's node type: `eda.part.` + FNV-1a over each pin's `id\0label`, pins joined by `\x01` (the engine's rule).
+/// A pin is its id, its number and its name.
+pub fn part_type_for(pins: &[(String, String, Option<String>)]) -> String {
+    let signature: Vec<String> = pins.iter().map(|(id, number, name)| format!("{id}\u{0}{}", pin_label(number, name.as_deref()))).collect();
     format!("eda.part.{}", fnv1a(&signature.join("\u{1}")))
 }
 
@@ -501,7 +516,8 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 inputs.push(("value".into(), value.into()));
             }
             inputs.push(("symbol".into(), ideal.symbol.into()));
-            inputs.push(("pins".into(), pins_json(&pins.iter().map(|(i, n)| (i.clone(), n.clone(), None)).collect::<Vec<_>>())));
+            let listed: Vec<(String, String, Option<String>)> = pins.iter().map(|(i, n)| (i.clone(), n.clone(), None)).collect();
+            inputs.push(("pins".into(), pins_json(&listed)));
             inputs.push(("units".into(), Json::Num(1.0)));
             if ideal.power.is_some() {
                 inputs.push(("powerSymbol".into(), true.into()));
@@ -518,7 +534,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             if let Some(fields) = fields_of(el)? {
                 inputs.push(("foreign".into(), fields));
             }
-            let part = s.add(&part_type_for(&pins), inputs, Some(&reference), Some(&reference), meta(el))?;
+            let part = s.add(&part_type_for(&listed), inputs, Some(&reference), Some(&reference), meta(el))?;
             let mut placed = Placed { reference: reference.clone(), id: part, units: Vec::new(), ideal: Some((ideal.pins, ideal.aliases)), pins: None };
             let sockets: Vec<&str> = pins.iter().map(|(id, _)| id.as_str()).collect();
             place(s, &mut placed, 1, el, &sockets)?;
@@ -816,9 +832,9 @@ fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, Strin
     if let Some(fields) = fields_of(el)? {
         inputs.push(("foreign".into(), fields));
     }
-    let typed: Vec<(String, String)> = pins.iter().map(|(id, n, _)| (id.clone(), n.clone())).collect();
-    let id = s.add(&part_type_for(&typed), inputs, Some(reference), Some(reference), meta(el))?;
-    Ok(Placed { reference: reference.to_string(), id, units: Vec::new(), ideal: None, pins: Some(typed) })
+    let id = s.add(&part_type_for(&pins), inputs, Some(reference), Some(reference), meta(el))?;
+    let numbered = pins.into_iter().map(|(id, number, _)| (id, number)).collect();
+    Ok(Placed { reference: reference.to_string(), id, units: Vec::new(), ideal: None, pins: Some(numbered) })
 }
 
 enum End {

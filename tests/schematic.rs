@@ -165,7 +165,7 @@ fn a_netlist_circuit_lists_its_parts_pins_and_nets_and_carries_its_kicad_files()
     let g = graph(circuit);
     let u1 = node(&g, "U1");
     assert_eq!(u1.get("inputs").unwrap().text(), r#"{"ref":"U1","value":"LM358","symbol":"Amplifier_Operational:LM358","pins":[{"id":"p1","number":"1","name":"OUT"},{"id":"p2","number":"8","name":"V+"}]}"#);
-    assert_eq!(u1.get("type").and_then(Json::as_str), Some(part_type_for(&[("p1".into(), "1".into()), ("p2".into(), "8".into())]).as_str()));
+    assert_eq!(u1.get("type").and_then(Json::as_str), Some(part_type_for(&[("p1".into(), "1".into(), Some("OUT".into())), ("p2".into(), "8".into(), Some("V+".into()))]).as_str()));
     assert!(node(&g, "C1").get("inputs").unwrap().text().contains(r#""spice":[{"id":"c","model":"C100N","terminals":{"a":"1","b":"2"}}]"#));
     assert_eq!(node(&g, "net_VCC").text(), r#"{"id":"net_VCC","type":"eda.net","inputs":{"pins.1":{"wire":{"node":"U1","port":"p2"}},"pins.2":{"wire":{"node":"C1","port":"p1"}}},"label":"VCC"}"#);
     assert_eq!(node(&g, "source_Board.kicad_sch").text(), r#"{"id":"source_Board.kicad_sch","type":"eda.source","inputs":{"name":"Board.kicad_sch","role":"schematic","file":"Board.kicad_sch"},"label":"Board.kicad_sch"}"#);
@@ -308,4 +308,42 @@ fn a_wrong_check_or_accept_is_refused_by_name() {
     assert!(bad(group("S", [r1(), accept().id("a").check("erc").rule("x")])).contains(r#"accept().id("a"): reason is why the finding is right on purpose"#));
     assert!(bad(group("S", [r1(), accept().id("a").check("erc").rule("x").refs(Vec::<&str>::new()).reason("y")])).contains("refs is a list of part references"));
     assert!(bad(group("S", [r1(), accept().id("a").check("erc").rule("x").region(json(r#"{"min": [0]}"#)).reason("y")])).contains("region is"));
+}
+
+/// Each pin list and the type the TypeScript SDK gives it (the format's rule). The same list is in the Python and
+/// TypeScript SDKs' tests: a pin's name is free text, so the trim and the hash are held at their edges.
+const PIN_TYPES: &[(&[(&str, Option<&str>)], &str)] = &[
+    (&[("1", Some("A"))], "eda.part.11d4e202"),
+    (&[("1", None)], "eda.part.4c80692d"),
+    (&[("1", Some("1"))], "eda.part.4c80692d"),
+    (&[("1", Some("~"))], "eda.part.4c80692d"),
+    (&[("1", Some(" 1 "))], "eda.part.4c80692d"),
+    (&[("1", Some("  "))], "eda.part.4c80692d"),
+    (&[("1", Some(" VCC\t")), ("2", Some("GND"))], "eda.part.958542b7"),
+    (&[("1", Some("\u{feff}A"))], "eda.part.11d4e202"),
+    (&[("1", Some("A\u{85}"))], "eda.part.99209a85"),
+    (&[("1", Some("\u{1f}A"))], "eda.part.c19c17fb"),
+    (&[("1", Some("\u{3000}A\u{a0}"))], "eda.part.11d4e202"),
+    (&[("1", Some("\u{1f600}"))], "eda.part.6e272b5a"),
+    (&[("1", Some("\u{e9}")), ("2", Some("\u{1d4b1}\u{1d49e}\u{1d49e}"))], "eda.part.86adcdfd"),
+];
+
+#[test]
+fn a_part_has_the_type_the_other_sdks_give_its_pins() {
+    for (pins, expected) in PIN_TYPES {
+        let listed = Json::Arr(
+            pins.iter()
+                .map(|(number, name)| {
+                    let pin = Json::obj().with("number", *number);
+                    match name {
+                        Some(name) => pin.with("name", *name),
+                        None => pin,
+                    }
+                })
+                .collect(),
+        );
+        let g = graph(group("Board", [part("U1").pins(listed)]));
+        assert_eq!(node(&g, "U1").get("type").and_then(Json::as_str), Some(*expected), "{pins:?}");
+    }
+    assert_eq!(sch_symbol_type_for(&["p1", "\u{1f600}"]), "sch.symbol.701cf2eb");
 }
