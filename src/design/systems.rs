@@ -19,9 +19,13 @@
 //! is `verifiedBy`; `ref_` is `ref`). A requirement is named by a ref, never by an id alone (`Rover.req.rs#mass`). A
 //! side's maps are JSON: `.defines(json(r#"{"BOARD": 1}"#))`. Nothing adds a default. A `bom()` gives masses; a cost
 //! budget reads the logistics roll-up of the design it names (`.design("cad/Assembly.3d.rs")`: a 3D document, a
-//! schematic or a board with a cost check), the one source of cost, so no contribution is a cost. A `param()` states a
-//! number with its unit, or a text a channel states (`.param().id("framing").value("8N1")`: a format, a dialect, a
-//! transport) and then no unit. A side's `origin`, `rotation` (degrees counter-clockwise) and `face` (`front`, or `back`
+//! schematic or a board with a cost check), the one source of cost, so no contribution is a cost. A link budget
+//! (`.quantity("rf-link")`) keeps a margin of at least its limit, in dB: the transmitter's power (`.end("tx")`, dBm), the
+//! gains (+) and losses (-) between in dB, the free-space path loss at its `range` (m) and `frequency` (Hz), less the
+//! receiver's sensitivity (`.end("rx")`, dBm). A load that states no current or power names a circuit part
+//! (`.part("ee/main.circuit.rs#U1")`), and the check reads the part's own `draw`. A `param()` states a number with its
+//! unit, or a text (`.param().id("framing").value("8N1")`) and then no unit; an interface's `channel()` states what a
+//! device definition's channel must be (`format`, `dir`, `medium`, `dialect`, `transport`). A side's `origin`, `rotation` (degrees counter-clockwise) and `face` (`front`, or `back`
 //! for the side read from the mating part, whose frame is mirrored) put the interface's frame in the side's. The checks
 //! are the host's (`commandagi check`, `commandagi trace`).
 
@@ -65,6 +69,8 @@ elements! {
     message: leaf;
     /// A constant of the interface with its unit: `.id("baud").value(115200).unit("Bd")`.
     param: leaf;
+    /// The channel a definition side's channel must be: `.dir("duplex").format("state").transport("serial")`.
+    channel: leaf;
     /// A side that implements the interface: `.id(…).ref_("ee/base.circuit.ts").parts(["J1", "J2"])`.
     side: leaf;
 }
@@ -77,13 +83,16 @@ attributes! {
         quantity; value; unit; qty; currency; per; ref_; limit; resistance; margin; kind; of;
         number; signal; dir; gpio; at; required; diameter; code; define;
         parts; channel; origin; rotation; face; defines; pins; params; files;
+        end; frequency; range; format; medium; dialect; transport;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "systems", roots: &["requirements", "system", "interface"], declare };
 
 pub const VERIFICATION_METHODS: &[&str] = &["test", "analysis", "inspection", "demonstration"];
-pub const BUDGET_QUANTITIES: &[&str] = &["mass", "power", "cost", "thermal"];
+pub const BUDGET_QUANTITIES: &[&str] = &["mass", "power", "cost", "thermal", "rf-link"];
+/// The two ends of a link: a level in dBm is the power one end sends, or the least power the other end hears.
+pub const LINK_ENDS: &[&str] = &["tx", "rx"];
 pub const SYSTEM_CHECK_KINDS: &[&str] = &["interface", "trace"];
 pub const SIDE_KINDS: &[&str] = &["circuit", "3d", "firmware", "definition"];
 
@@ -92,8 +101,8 @@ pub const MODE_FIELDS: &[&str] = &["id", "description"];
 pub const RAIL_FIELDS: &[&str] = &["id", "voltage", "description", "source"];
 pub const CONVERTER_FIELDS: &[&str] = &["id", "input", "output", "efficiency", "source"];
 pub const LOAD_FIELDS: &[&str] = &["id", "part", "rail", "mode", "current", "power", "voltage", "peakCurrent", "peakPower", "inrushCurrent", "duty", "source"];
-pub const CONTRIBUTION_FIELDS: &[&str] = &["id", "quantity", "part", "value", "unit", "qty", "mode", "rail", "source"];
-pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "peak", "per", "currency", "design", "resistance", "margin", "source", "description"];
+pub const CONTRIBUTION_FIELDS: &[&str] = &["id", "quantity", "part", "value", "unit", "qty", "mode", "rail", "end", "source"];
+pub const BUDGET_FIELDS: &[&str] = &["id", "quantity", "limit", "unit", "mode", "rail", "peak", "per", "currency", "design", "resistance", "margin", "frequency", "range", "source", "description"];
 pub const PIN_FIELDS: &[&str] = &["number", "signal", "dir", "voltage", "gpio", "at", "required", "description"];
 pub const HOLE_FIELDS: &[&str] = &["id", "at", "diameter", "description"];
 pub const MESSAGE_FIELDS: &[&str] = &["id", "text", "code", "define", "dir", "description"];
@@ -101,6 +110,10 @@ pub const PARAM_FIELDS: &[&str] = &["id", "value", "unit", "description"];
 pub const SIDE_FIELDS: &[&str] = &["id", "ref", "kind", "part", "parts", "channel", "origin", "rotation", "face", "defines", "pins", "params", "files", "description"];
 /// The faces a side states: `front` (as drawn), or `back` (read from the mating part: the frame mirrored through its y axis).
 pub const SIDE_FACES: &[&str] = &["front", "back"];
+pub const CHANNEL_FIELDS: &[&str] = &["format", "dir", "medium", "dialect", "transport", "description"];
+/// A channel's direction, and what it carries: the channel vocabulary of a device definition (docs/devices.md).
+pub const CHANNEL_DIRS: &[&str] = &["in", "out", "duplex"];
+pub const CHANNEL_MEDIA: &[&str] = &["records", "video", "audio", "bytes"];
 const ROOT_FIELDS: &[&str] = &["name", "description"];
 
 const REQUIREMENTS: Vocabulary = Vocabulary {
@@ -143,6 +156,7 @@ const INTERFACE: Vocabulary = Vocabulary {
         TagRule::new("hole", &["interface"]).key("id").required(&["id", "at"]).attrs(HOLE_FIELDS),
         TagRule::new("message", &["interface"]).key("id").required(&["id"]).attrs(MESSAGE_FIELDS),
         TagRule::new("param", &["interface"]).key("id").required(&["id", "value"]).attrs(PARAM_FIELDS),
+        TagRule::new("channel", &["interface"]).single().attrs(CHANNEL_FIELDS),
         TagRule::new("side", &["interface"]).key("id").required(&["id", "ref"]).attrs(SIDE_FIELDS),
     ],
     from_tree: interface_of,
@@ -249,7 +263,10 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
             "rail" => need(num(c.attr_of("voltage")), || format!("{w}: voltage is a number of volts"))?,
             "converter" => need(matches!(c.attr_of("efficiency"), Some(Json::Num(e)) if *e > 0.0 && *e <= 1.0), || format!("{w}: efficiency is a number in (0, 1] (0.88 for 88 %)"))?,
             "load" => {
-                need(c.attr_of("current").is_some() || c.attr_of("power").is_some(), || format!("{w}: a load states its current (A) or its power (W)"))?;
+                need(
+                    c.attr_of("current").is_some() || c.attr_of("power").is_some() || matches!(c.attr_of("part"), Some(Json::Str(p)) if p.contains('#')),
+                    || format!(r#"{w}: a load states its current (A) or its power (W), or names a circuit part whose draw it reads (part="ee/main.circuit.rs#U1")"#),
+                )?;
                 for k in ["current", "power", "voltage", "peakCurrent", "peakPower", "inrushCurrent"] {
                     need(c.attr_of(k).is_none() || num(c.attr_of(k)), || format!("{w}: {k} is a number"))?;
                 }
@@ -262,6 +279,15 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
                 })?;
                 need(num(c.attr_of("value")), || format!("{w}: value is a number"))?;
                 need(matches!(c.attr_of("source"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!(r#"{w}: source says where the number was read (a datasheet, a measurement, "estimate: …")"#))?;
+                let link = c.attr_of("quantity").and_then(Json::as_str) == Some("rf-link");
+                let unit = c.attr_of("unit").and_then(Json::as_str);
+                if link {
+                    need(matches!(unit, Some("dBm" | "dB")), || {
+                        format!("{w}: an rf-link contribution is a level in dBm (a transmitter's power, a receiver's sensitivity) or a gain (+) or a loss (-) in dB (got {})", said(c.attr_of("unit")))
+                    })?;
+                    need(unit != Some("dBm") || one_of(c.attr_of("end"), LINK_ENDS), || format!(r#"{w}: a level in dBm names its end of the link: end="tx" (the power sent) or end="rx" (the receiver's sensitivity)"#))?;
+                }
+                need(c.attr_of("end").is_none() || (link && one_of(c.attr_of("end"), LINK_ENDS)), || format!("{w}: end is tx or rx, on an rf-link contribution"))?;
             }
             "budget" => {
                 quantity_of(c, &w)?;
@@ -279,6 +305,14 @@ fn system_of(t: &DocTree) -> Result<Json, String> {
                 }
                 if q == Some("thermal") {
                     need(string(c.attr_of("mode")) && num(c.attr_of("resistance")), || format!("{w}: a thermal budget names its mode and the thermal resistance to the ambient (resistance, K/W)"))?;
+                }
+                if q == Some("rf-link") {
+                    need(c.attr_of("unit").is_none() || c.attr_of("unit") == Some(&Json::from("dB")), || format!(r#"{w}: an rf-link budget's limit is the least margin the link keeps, in dB (unit="dB")"#))?;
+                    need(c.attr_of("margin").is_none(), || format!("{w}: an rf-link budget's limit is already its margin in dB; it takes no margin fraction"))?;
+                    need(c.attr_of("frequency").is_some() == c.attr_of("range").is_some(), || format!("{w}: frequency (Hz) and range (m) come together: the free-space path loss at that range"))?;
+                }
+                for (k, u) in [("frequency", "Hz"), ("range", "m")] {
+                    need(c.attr_of(k).is_none() || (q == Some("rf-link") && matches!(c.attr_of(k), Some(Json::Num(n)) if n.is_finite() && *n > 0.0)), || format!("{w}: {k} is a number over 0 ({u}), on an rf-link budget"))?;
                 }
             }
             "check" => need(one_of(c.attr_of("kind"), SYSTEM_CHECK_KINDS), || format!("{w}: kind must be one of {} (got {})", SYSTEM_CHECK_KINDS.join(", "), said(c.attr_of("kind"))))?,
@@ -321,15 +355,25 @@ fn interface_of(t: &DocTree) -> Result<Json, String> {
                 need(c.attr_of("parts").map_or(true, |v| matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(_))))), || format!("{w}: parts is a list of part references, whose pins are the interface's in turn"))?;
                 need(c.attr_of("channel").is_none() || string(c.attr_of("channel")), || format!("{w}: channel is the id of a channel of the device definition"))?;
             }
+            "channel" => {
+                need(CHANNEL_FIELDS.iter().any(|k| *k != "description" && c.attr_of(k).is_some()), || format!("{w}: a channel states what a definition's channel must be: format, dir, medium, dialect or transport"))?;
+                need(c.attr_of("dir").is_none() || one_of(c.attr_of("dir"), CHANNEL_DIRS), || format!("{w}: dir must be one of {} (got {})", CHANNEL_DIRS.join(", "), said(c.attr_of("dir"))))?;
+                need(c.attr_of("medium").is_none() || one_of(c.attr_of("medium"), CHANNEL_MEDIA), || format!("{w}: medium must be one of {} (got {})", CHANNEL_MEDIA.join(", "), said(c.attr_of("medium"))))?;
+                for k in ["format", "dialect", "transport"] {
+                    need(c.attr_of(k).map_or(true, |v| v.as_str().is_some_and(|x| !x.trim().is_empty())), || format!(r#"{w}: {k} is a name ({k}="serial")"#))?;
+                }
+            }
             _ => {}
         }
     }
     let mut out = grouped(t, &[("pin", "pins"), ("hole", "holes"), ("message", "messages"), ("param", "params"), ("side", "sides")]);
-    if let Some(frame) = t.single("frame") {
-        // The frame comes after the root's fields, before the lists, as the TypeScript document has it.
-        let Json::Obj(entries) = &mut out else { unreachable!() };
-        let at = entries.iter().position(|(k, _)| !ROOT_FIELDS.contains(&k.as_str())).unwrap_or(entries.len());
-        entries.insert(at, ("frame".into(), frame.record()));
+    // The frame and the channel come after the root's fields, before the lists, as the TypeScript document has them.
+    let Json::Obj(entries) = &mut out else { unreachable!() };
+    for tag in ["channel", "frame"] {
+        if let Some(one) = t.single(tag) {
+            let at = entries.iter().position(|(k, _)| !ROOT_FIELDS.contains(&k.as_str())).unwrap_or(entries.len());
+            entries.insert(at, (tag.into(), one.record()));
+        }
     }
     Ok(out)
 }

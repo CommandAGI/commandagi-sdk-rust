@@ -67,11 +67,30 @@ fn a_system_is_its_records_as_written() {
     assert_eq!(doc.get("rails"), Some(&j(r#"[{"id": "+5V", "voltage": 5, "source": "USB"}, {"id": "VBAT", "voltage": 3.8}]"#)));
     assert_eq!(doc.get("boms"), Some(&j(r#"[{"ref": "bom.csv"}]"#)));
     assert_eq!(doc.get("loads"), Some(&j(r#"[{"id": "modem", "part": "U4", "rail": "VBAT", "mode": "lte", "current": 0.67, "peakCurrent": 0.9, "source": "datasheet table 35"}]"#)));
+    // A link budget keeps a margin in dB: the power sent and the receiver's sensitivity in dBm, gains and losses in dB.
+    let (_, link) = document(system([
+        contribution().id("tx").quantity("rf-link").part("U4").end("tx").value(23).unit("dBm").source("datasheet"),
+        contribution().id("antenna").quantity("rf-link").part("A1").value(2.8).unit("dB").source("datasheet"),
+        contribution().id("rx").quantity("rf-link").part("the cell").end("rx").value(-101.5).unit("dBm").source("3GPP TS 36.104"),
+        budget().id("lte").quantity("rf-link").limit(30).unit("dB").frequency(1.7475e9).range(2000),
+    ]));
+    assert_eq!(link.get("budgets"), Some(&j(r#"[{"id": "lte", "quantity": "rf-link", "limit": 30, "unit": "dB", "frequency": 1747500000, "range": 2000}]"#)));
+    // A load that names a circuit part states no current or power: the check reads the draw the part states.
+    let (_, drawn) = document(system([mode().id("m"), rail().id("r").voltage(3.3), load().id("l").part("ee/main.circuit.rs#U1").rail("r").mode("m")]));
+    assert_eq!(drawn.get("loads"), Some(&j(r#"[{"id": "l", "part": "ee/main.circuit.rs#U1", "rail": "r", "mode": "m"}]"#)));
     let cases: Vec<(El, &str)> = vec![
         (budget().id("b").quantity("mass").limit(1).peak(true), "peak is true or false, on a power budget"),
         (load().id("l").part("U1").rail("r").mode("m").current(1).peak_current("2 A"), "peakCurrent is a number"),
         (load().id("l").part("U1").rail("r").mode("m").power(1).duty(1.5), "duty is the share of time the load draws"),
-        (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, or a quantity's name"#),
+        (budget().id("b").quantity("Exhaust flow").limit(1).unit("m3/h"), r#"budget().id("b"): quantity must be one of mass, power, cost, thermal, rf-link, or a quantity's name"#),
+        (contribution().id("c").quantity("rf-link").part("U4").value(23).unit("W").source("x"), r#"contribution().id("c"): an rf-link contribution is a level in dBm (a transmitter's power, a receiver's sensitivity) or a gain (+) or a loss (-) in dB (got "W")"#),
+        (contribution().id("c").quantity("rf-link").part("U4").value(23).unit("dBm").source("x"), r#"a level in dBm names its end of the link: end="tx" (the power sent) or end="rx""#),
+        (contribution().id("c").quantity("mass").part("U4").value(2).unit("g").end("tx").source("x"), "end is tx or rx, on an rf-link contribution"),
+        (budget().id("l").quantity("rf-link").limit(6).unit("dB").frequency(2.4e9), r#"budget().id("l"): frequency (Hz) and range (m) come together"#),
+        (budget().id("l").quantity("rf-link").limit(6).unit("dB").margin(0.2), "an rf-link budget's limit is already its margin in dB"),
+        (budget().id("l").quantity("rf-link").limit(6).unit("dBm"), "an rf-link budget's limit is the least margin the link keeps, in dB"),
+        (budget().id("l").quantity("mass").limit(6).range(10), "range is a number over 0 (m), on an rf-link budget"),
+        (budget().id("l").quantity("rf-link").limit(6).frequency(-1).range(10), "frequency is a number over 0 (Hz)"),
         (budget().id("b").quantity("exhaust-flow").limit(600), r#"budget().id("b"): a quantity of exhaust-flow states its unit"#),
         (contribution().id("c").quantity("exhaust-flow").part("P").value(35).source("datasheet"), r#"contribution().id("c"): a quantity of exhaust-flow states its unit"#),
         (budget().id("b").quantity("power").limit(1), "a power budget names its rail and its mode"),
@@ -80,7 +99,7 @@ fn a_system_is_its_records_as_written() {
         (budget().id("b").quantity("cost").per(100).limit(30), "a cost budget names the design whose logistics roll-up it reads"),
         (contribution().id("c").quantity("cost").part("P").value(1).source("a quote"), "a cost is stated in the design's logistics"),
         (converter().id("c").input("a").output("b").efficiency(88), "efficiency is a number in (0, 1]"),
-        (load().id("l").part("U1").rail("r").mode("m"), "a load states its current (A) or its power (W)"),
+        (load().id("l").part("U1").rail("r").mode("m"), "a load states its current (A) or its power (W), or names a circuit part whose draw it reads"),
         (contribution().id("c").quantity("mass").part("P").value(1), "source says where the number was read"),
         (check().id("k").kind("erc").of("x"), "kind must be one of interface, trace"),
         (mode().id("m").with_attr("watts", 3), "watts is not read"),
@@ -102,6 +121,7 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
             message().id("lte-only").text("AT+CNMP=38"),
             param().id("baud").value(115200).unit("Bd"),
             param().id("framing").value("8N1"),
+            channel().dir("duplex").medium("records").format("lines").dialect("at").transport("serial"),
             side().id("base").ref_("ee/base.circuit.ts").parts(["J1", "J2"]).origin([0.0, 1.4]).rotation(90.0).face("back"),
             side().id("firmware").ref_("fw/config.h").defines(json(r#"{"BOARD": 1}"#)).pins(json(r#"{"RX_PIN": 4}"#)).params(json(r#"{"BAUD": "baud"}"#)),
             side().id("host").ref_("devices/cam/definition.tsx").channel("modem").params(json(r#"{"baud": "baud"}"#)),
@@ -114,7 +134,8 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         Json::Obj(entries) => entries.iter().map(|(k, _)| k.clone()).collect(),
         _ => panic!(),
     };
-    assert_eq!(keys, ["name", "frame", "pins", "holes", "messages", "params", "sides"]);
+    assert_eq!(keys, ["name", "frame", "channel", "pins", "holes", "messages", "params", "sides"]);
+    assert_eq!(doc.get("channel"), Some(&j(r#"{"dir": "duplex", "medium": "records", "format": "lines", "dialect": "at", "transport": "serial"}"#)), "the link's own channel, one element");
     assert_eq!(
         doc.get("params").and_then(|s| if let Json::Arr(a) = s { a.get(1).cloned() } else { None }),
         Some(j(r#"{"id": "framing", "value": "8N1"}"#)),
@@ -144,9 +165,15 @@ fn an_interface_is_its_frame_pins_holes_messages_params_and_sides() {
         (param().id("p").value(true), "value is a number with its unit in unit (115200), or a text a channel states"),
         (param().id("p").value("8N1").unit("Bd"), "a parameter stated as a text has no unit"),
         (frame().unit("in"), "positions are in mm"),
+        (channel().description("x"), "a channel states what a definition's channel must be: format, dir, medium, dialect or transport"),
+        (channel().format("lines").dir("sideways"), r#"dir must be one of in, out, duplex (got "sideways")"#),
+        (channel().format("lines").medium("light"), "medium must be one of records, video, audio, bytes"),
+        (channel().format("lines").transport(3), "transport is a name"),
     ];
     for (el, message) in cases {
         let said = bad(interface([el]));
         assert!(said.contains(message), "{said}");
     }
+    let twice = bad(interface([channel().format("lines"), channel().format("state")]));
+    assert!(twice.contains("has one channel") || twice.contains("has one <channel>"), "{twice}");
 }

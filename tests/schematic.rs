@@ -221,18 +221,21 @@ fn field_form(name: &str, value: &str) -> String {
 #[test]
 fn a_part_states_its_engineering_data_as_kicad_property_forms() {
     let g = graph(group("Fields", [
-        resistor("R1").resistance("3k").sch_x(0).sch_y(0).part_number("MF-R-3K").manufacturer("Yageo").mpn("RC0805FR-073KL").rating("0.125 W"),
+        resistor("R1").resistance("3k").sch_x(0).sch_y(0).part_number("MF-R-3K").manufacturer("Yageo").mpn("RC0805FR-073KL").rating("0.125 W").draw("120 mA"),
         part("K2").symbol("station:SSR").library("station.kicad_sym").sch_x(50.8).sch_y(0).mpn("G3NA-225B").attrs(json(r#"{"Tolerance": "1%"}"#)),
         part("J1").pins(["1", "2"]).part_number("MF-J-2"),
     ]));
     let foreign = |id: &str| node(&g, id).get("inputs").unwrap().get("foreign").unwrap().text();
-    let r1 = [field_form("CommandAGI IPN", "MF-R-3K"), field_form("Manufacturer", "Yageo"), field_form("MPN", "RC0805FR-073KL"), field_form("Rating", "0.125 W")];
+    let r1 = [field_form("CommandAGI IPN", "MF-R-3K"), field_form("Manufacturer", "Yageo"), field_form("MPN", "RC0805FR-073KL"), field_form("Rating", "0.125 W"), field_form("Draw", "120 mA")];
     assert_eq!(foreign("R1"), format!("[{}]", r1.join(",")));
     assert_eq!(foreign("K2"), format!("[{},{}]", field_form("MPN", "G3NA-225B"), field_form("Tolerance", "1%")));
     assert_eq!(foreign("J1"), format!("[{}]", field_form("CommandAGI IPN", "MF-J-2")));
     let k2 = || part("K2").symbol("a:B").library("a.kicad_sym");
     assert!(bad(group("S", [k2().mpn("")])).contains(r#"mpn is text ("RC0805FR-073KL")"#));
     assert!(bad(group("S", [k2().mpn(3)])).contains(r#"mpn is text ("RC0805FR-073KL")"#));
+    // A part's draw is a number with the unit it measures: a bare number is not a draw.
+    assert!(bad(group("S", [k2().draw("120")])).contains(r#"draw is text ("120 mA")"#));
+    assert!(bad(group("S", [k2().draw("120 V")])).contains(r#"draw is text ("120 mA")"#));
     assert!(bad(group("S", [k2().attrs(json(r#"{"Tolerance": 1}"#))])).contains(r#"attrs is an object of text ({ Tolerance: "1%" })"#));
     // One field, one way to say it: a field the part has an argument for, or its own name, value or footprint.
     assert!(bad(group("S", [k2().attrs(json(r#"{"MPN": "X"}"#))])).contains("attrs names MPN: say it with mpn"));

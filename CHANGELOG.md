@@ -8,6 +8,13 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A part states its steady `draw` (`draw="120 mA"` or `"1.2 W"`, a KiCad property `Draw`). A system's load that states
+  no current or power names a circuit part (`part="ee/main.circuit.ts#U1"`), and `commandagi check` reads the part's draw.
+- A link budget: `quantity="rf-link"` with `frequency` (Hz) and `range` (m) on the budget, and contributions in `dBm`
+  (with `end="tx"`, the power sent, or `end="rx"`, the receiver's sensitivity) and in `dB` (gains +, losses -). The
+  check adds the free-space path loss and passes when the margin is at least the limit (dB).
+- An interface states its `<channel format dir medium dialect transport>`; `commandagi check` holds a definition or a
+  unit side's channel to each field it states.
 - A data sheet: `sheet([]).name(…).source(…).query(…).format(…)` reads a file beside the workbook, an http(s) URL or
   `surface:<id>`, as the TypeScript SDK's `<sheet source>` does; it holds no cells, columns or rows.
 
