@@ -44,6 +44,8 @@
 //!                                                `{"kind", "select": {…}}`: normal, parallel, perpendicular, axis,
 //!                                                geometry, length, radius, area, ofFace, createdBy, at, inBox, farthest,
 //!                                                any, not. Every test present must hold
+//! curve().id().name().kind().points() …         a curve in space (spline, polyline, helix), which makes no body; a
+//!                                                sweep follows it: `.path(json(r#"{"curve": "<id>"}"#))`
 //! hole().face(…).positions(…) | .sketch(…)       where the holes are: points in model coordinates, or a sketch of
 //!                                                points; with neither, the face's centre. A face that chooses
 //!                                                several drills each place in the one it lies on
@@ -144,6 +146,9 @@ elements! {
     extrude: leaf;
     revolve: leaf;
     sweep: leaf;
+    /// A curve in space, which makes no body and which a sweep follows: `curve().id("lead").points(json("[[0, 0, 0], [30, 10, 15]]"))`,
+    /// then `sweep().path(json(r#"{"curve": "lead"}"#))`. A `spline` (the default), a `polyline` or a `helix`.
+    curve: leaf;
     loft: leaf;
     fillet: leaf;
     chamfer: leaf;
@@ -237,6 +242,10 @@ attributes! {
         skins; source; source_materials; source_uv; spacing; spacing2; standard_parts; start; step; style;
         subdivision; suppressed; symmetric; target; terminal; thickness; through; title; token; tools; transform; translate;
         travel; turns; type_; u; unit; unit_scale_mm; up_to_face; uv; v; value; views; visible; weight; width; x; x_axis; y;
+        /// A spline curve's end directions, its inner directions by index in `points`, and how hard they hold.
+        start_tangent; end_tangent; tangents; tangent_scale;
+        /// How a sweep's profile turns along its path: its frame, the `up` of that frame, the `guide` curve's id, and its twist.
+        frame; up; guide; twist;
         /// A size's tolerance: `json(r#"{"class": "H7"}"#)`, `{"upper": 0.05, "lower": -0.05}` or `{"basic": true}`.
         tolerance;
         /// A fit check's hole, shaft and intended fit (clearance, transition, interference).

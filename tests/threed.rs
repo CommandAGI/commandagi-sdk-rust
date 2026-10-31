@@ -509,3 +509,66 @@ fn a_splines_inner_tangents_and_a_path_pattern_along_a_curve() {
     let refused = bad(part([each(vec![2.0, 0.0, 0.5]).el()]).name("P"));
     assert!(refused.contains("tangentScale/1: must be greater than 0"), "{refused}");
 }
+
+#[test]
+fn a_curve_in_space_and_a_sweep_along_it_declare_what_the_python_form_declares() {
+    // The expected text is what `commandagi.design.threed` declares for the same elements, keyword by keyword.
+    let g = graph(
+        part([
+            curve()
+                .id("lead")
+                .name("Lead")
+                .points(json("[[0, 0, 0], [30, 10, 15], [60, 0, 40]]"))
+                .start_tangent([1, 0, 0])
+                .end_tangent([1, -1, 0])
+                .tangents(json(r#"[{"at": 1, "direction": [1, 0, 1]}]"#))
+                .tangent_scale([2.0, 1.0, 0.5]),
+            curve().id("rail").kind("helix").radius(8).pitch(4).turns(3).right_handed(false),
+            sketch([point().id("o").x(0).y(0), circle().id("wall").center("o").radius(2)]).id("section").plane(json(r#"{"type": "datum", "plane": "lead"}"#)),
+            sweep()
+                .id("hose")
+                .name("Hose")
+                .profile(json(r#"{"sketch": "section"}"#))
+                .path(json(r#"{"curve": "lead"}"#))
+                .operation("new")
+                .frame("guide")
+                .guide("rail")
+                .up([0, 0, 1])
+                .twist(1),
+        ])
+        .name("Hose"),
+    );
+    assert_eq!(node(&g, "lead").get("type").unwrap().text(), r#""curve""#);
+    assert_eq!(
+        node(&g, "lead").get("inputs").unwrap().text(),
+        r#"{"points":[[0,0,0],[30,10,15],[60,0,40]],"startTangent":[1,0,0],"endTangent":[1,-1,0],"tangents":[{"at":1,"direction":[1,0,1]}],"tangentScale":[2,1,0.5],"kind":"spline"}"#
+    );
+    assert_eq!(node(&g, "rail").get("inputs").unwrap().text(), r#"{"kind":"helix","radius":8,"pitch":4,"turns":3,"rightHanded":false}"#);
+    assert_eq!(
+        node(&g, "hose").get("inputs").unwrap().text(),
+        r#"{"profile":{"sketch":"section"},"path":{"curve":"lead"},"operation":"new","frame":"guide","guide":"rail","up":[0,0,1],"twist":1}"#
+    );
+    assert_eq!(bad(part([curve().id("c").points(json("[[0, 0, 0]]"))]).name("P")), r#"curve().id("c"): points: needs at least 2 items (got 1)"#);
+}
+
+#[test]
+fn every_root_of_the_schema_is_an_element_of_the_module() {
+    // The roots come from the schema and the elements are `pub fn`s the `elements!` block writes, so the check reads
+    // the source: a root with no line in that block has no function, and no document can say it.
+    let schema = Json::parse(include_str!("../src/design/threed_schema.json")).unwrap();
+    let Some(Json::Obj(roots)) = schema.get("roots") else { panic!("the schema has no roots") };
+    let source = include_str!("../src/design/threed.rs");
+    let block = source.split("elements! {").nth(1).unwrap().split("\n}\n").next().unwrap();
+    let tags: Vec<String> = block
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with("///"))
+        .filter_map(|l| l.split(':').next())
+        .map(|head| match head.split_once('"') {
+            Some((_, tag)) => tag.trim_end_matches('"').to_string(),
+            None => head.trim().trim_end_matches('_').to_string(),
+        })
+        .collect();
+    let missing: Vec<&str> = roots.iter().map(|(root, _)| root.as_str()).filter(|root| !tags.iter().any(|t| t == root)).collect();
+    assert!(missing.is_empty(), "schema roots with no element in commandagi::design::threed: {missing:?}");
+}
