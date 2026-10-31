@@ -49,7 +49,8 @@ elements! {
     /// A unit's calibration: its joints and its re-zeros. `.device("../../devices/arm/definition.tsx").serial(…)`.
     calibration: children;
     /// A calibrated joint: `.name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json")`, and its
-    /// measured travel and direction: `.min(830).max(3270).reversed(true)`, and the servo it is on this unit's bus
+    /// measured travel and direction: `.min(830).max(3270).reversed(true)` (a travel through the seam, 4095 -> 0:
+    /// `.min(3887).max(80).wraps(true)`), and the servo it is on this unit's bus
     /// when not the definition's: `.id(2)`.
     joint: leaf;
     /// A re-zero, appended, never edited: `.joint("shoulder_lift").zero(0.015).at(…).by("person:owner").reason(…)`.
@@ -67,7 +68,7 @@ attributes! {
         serial; product_id; model; release;
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
         rev; of; frozen; product; note; previous; path; digest; file; status; accepted; reason; from;
-        device; name; zero; kp; kv; run; joint; min; max; reversed;
+        device; name; zero; kp; kv; run; joint; min; max; wraps; reversed;
         channel; robot; intrinsics; extrinsics; marker; residual; reality;
     }
 }
@@ -97,7 +98,7 @@ pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note", "by", "at"
 /// the run that measured them, the travel measured end to end (`min`, `max`: the bus's raw values, min < max), and
 /// whether the joint counts the other way than its definition says (`reversed`), and the servo id the joint has on this
 /// unit's bus when it is not the definition's (`id`: a servo found by motion in a guided calibration).
-pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "id", "zero", "kp", "kv", "run", "min", "max", "reversed"];
+pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "id", "zero", "kp", "kv", "run", "min", "max", "wraps", "reversed"];
 /// The fields of one re-zero: the joint, its new zero (rad), when (epoch ms), who (person:<id> | agent:<id>), why.
 pub const REZERO_FIELDS: &[&str] = &["joint", "zero", "at", "by", "reason"];
 /// The fields of one calibrated camera: its video channel, the arm it was measured against, its intrinsics (pixels),
@@ -195,7 +196,15 @@ fn calibration_of(t: &DocTree) -> Result<Json, String> {
         if j.get("min").is_some() != j.get("max").is_some() {
             return Err(format!("{at}: a measured travel gives both min and max"));
         }
-        if j.get("min").is_some() && !matches!((finite(j.get("min")), finite(j.get("max"))), (Some(lo), Some(hi)) if lo < hi) {
+        if j.get("wraps").is_some() && !matches!(j.get("wraps"), Some(Json::Bool(true))) {
+            return Err(format!("{at}: wraps is true (the travel crosses the seam where the count turns over) or absent, not {}", said(j.get("wraps"))));
+        }
+        // A travel that wraps goes from min up through the seam (4095 -> 0) to max, so its min is above its max.
+        let wraps = matches!(j.get("wraps"), Some(Json::Bool(true)));
+        if j.get("min").is_some() && !matches!((finite(j.get("min")), finite(j.get("max"))), (Some(lo), Some(hi)) if if wraps { lo > hi } else { lo < hi }) {
+            if wraps {
+                return Err(format!("{at}: a travel that wraps goes from min up through the seam to max, so min > max, not [{}, {}]", said(j.get("min")), said(j.get("max"))));
+            }
             return Err(format!("{at}: min and max are the bus's values with min < max, not [{}, {}]", said(j.get("min")), said(j.get("max"))));
         }
         if j.get("reversed").is_some() && !matches!(j.get("reversed"), Some(Json::Bool(_))) {
