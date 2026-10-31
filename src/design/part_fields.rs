@@ -121,6 +121,9 @@ const CHOICES: &[(&str, &[&str])] = &[
 const COUNTS: &[&str] = &["lifecycle.onHand", "lifecycle.reorderPoint"];
 const DATES: &[&str] = &["lifecycle.lastTimeBuy", "lifecycle.date"];
 const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "stock", "url", "source", "date"];
+/// A price break's keys, in the order its `Terms` list holds them. `unitPriceHigh` makes it an estimate range, with
+/// `unitPrice` its low end (docs/formats.md § logistics).
+const BREAK_KEYS: &[&str] = &["quantity", "unitPrice", "unitPriceHigh"];
 /// The arguments a part's fields take (TypeScript names), in the order their forms are written.
 pub const FIELD_ARGUMENTS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "draw", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs", "suppliers", "alternates", "datasheet", "lifecycle", "compliance", "shipping"];
 /// Fields a part holds otherwise: its reference, its value, its footprint.
@@ -161,6 +164,13 @@ fn entries(v: &Json) -> &[(String, Json)] {
         Json::Obj(e) => e,
         _ => &[],
     }
+}
+
+/// One price break holds only `BREAK_KEYS`, a whole quantity from 1, and a price range that does not run backward.
+fn price_break(b: &Json) -> bool {
+    let Some(Json::Num(low)) = b.get("unitPrice") else { return false };
+    let high = b.get("unitPriceHigh").is_none_or(|h| matches!(h, Json::Num(h) if h >= low));
+    whole(b.get("quantity"), 1.0) && *low >= 0.0 && high && entries(b).iter().all(|(k, _)| BREAK_KEYS.contains(&k.as_str()))
 }
 
 /// The argument that says a KiCad property, or none when `attrs` may hold it.
@@ -231,9 +241,9 @@ pub(crate) fn check_offers(at: &str, v: &Json) -> Result<Json, String> {
             return Err(format!("{at}: leadTimeDays is a number of days"));
         }
         if let Some(b) = s.get("priceBreaks") {
-            let ok = matches!(b, Json::Arr(l) if l.iter().all(|b| entries(b).len() == 2 && whole(b.get("quantity"), 1.0) && matches!(b.get("unitPrice"), Some(Json::Num(p)) if *p >= 0.0)));
+            let ok = matches!(b, Json::Arr(l) if l.iter().all(price_break));
             if !ok {
-                return Err(format!("{at}: priceBreaks is a list of {{ quantity, unitPrice }} (quantity a whole number from 1, unitPrice 0 or more)"));
+                return Err(format!("{at}: priceBreaks is a list of {{ quantity, unitPrice, unitPriceHigh? }} (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it)"));
             }
         }
     }
@@ -297,7 +307,7 @@ fn offer_forms(at: &str, v: &Json) -> Result<Vec<Json>, String> {
                 let Some(t) = s.get(k) else { continue };
                 let t = match (*k, t) {
                     ("priceBreaks", Json::Arr(breaks)) => {
-                        Json::Arr(breaks.iter().map(|b| Json::Arr(vec![b.get("quantity").cloned().unwrap_or(Json::Null), b.get("unitPrice").cloned().unwrap_or(Json::Null)])).collect())
+                        Json::Arr(breaks.iter().map(|b| Json::Arr(BREAK_KEYS.iter().filter_map(|k| b.get(k).cloned()).collect())).collect())
                     }
                     _ => t.clone(),
                 };
@@ -431,7 +441,7 @@ pub fn part_fields(inputs: &Json) -> Json {
                             breaks
                                 .iter()
                                 .map(|b| match b {
-                                    Json::Arr(qp) if qp.len() == 2 => Json::obj().with("quantity", qp[0].clone()).with("unitPrice", qp[1].clone()),
+                                    Json::Arr(qp) if (2..=3).contains(&qp.len()) => BREAK_KEYS.iter().zip(qp).fold(Json::obj(), |o, (k, x)| o.with(k, x.clone())),
                                     other => other.clone(),
                                 })
                                 .collect(),

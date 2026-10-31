@@ -30,7 +30,7 @@ fn props(inputs: &Json) -> Vec<(String, String)> {
         .collect()
 }
 
-const LCSC: &str = r#"{"name": "LCSC", "sku": "C21264512", "currency": "USD", "priceBreaks": [{"quantity": 1, "unitPrice": 9.4}, {"quantity": 10, "unitPrice": 9.15}], "leadTimeDays": 3, "stock": 1, "source": "lcsc.com", "date": "2026-10-15"}"#;
+const LCSC: &str = r#"{"name": "LCSC", "sku": "C21264512", "currency": "USD", "priceBreaks": [{"quantity": 1, "unitPrice": 9.4}, {"quantity": 10, "unitPrice": 9.15, "unitPriceHigh": 9.6}], "leadTimeDays": 3, "stock": 1, "source": "lcsc.com", "date": "2026-10-15"}"#;
 const ALTERNATES: &str = r#"[{"manufacturer": "SIMCom", "mpn": "A7670E-LASE"}]"#;
 const DATASHEET: &str = "https://www.simcom.com/product/A7670X.html";
 const LIFECYCLE: &str = r#"{"status": "active", "onHand": 2, "reorderPoint": 5}"#;
@@ -39,7 +39,7 @@ const SHIPPING: &str = r#"{"hsCode": "8517.62", "origin": "CN", "hazmat": "none"
 const FORMS: &[(&str, &str)] = &[
     ("MPN", "A7670G-LLSE"),
     ("LCSC Part", "C21264512"),
-    ("LCSC Terms", r#"{"currency":"USD","priceBreaks":[[1,9.4],[10,9.15]],"leadTimeDays":3,"stock":1,"source":"lcsc.com","date":"2026-10-15"}"#),
+    ("LCSC Terms", r#"{"currency":"USD","priceBreaks":[[1,9.4],[10,9.15,9.6]],"leadTimeDays":3,"stock":1,"source":"lcsc.com","date":"2026-10-15"}"#),
     ("DigiKey Part", "A7670G-ND"),
     ("Alternates", r#"[{"manufacturer":"SIMCom","mpn":"A7670E-LASE"}]"#),
     ("Datasheet", "https://www.simcom.com/product/A7670X.html"),
@@ -92,9 +92,13 @@ fn a_wrong_logistics_field_is_refused_by_name_and_attrs_cannot_say_what_an_argum
     use commandagi::design::schematic::*;
     let sheet = |p: El| bad(group("L", [p]));
     let u4 = || part("U4").pins(["1"]);
+    const PRICE_BREAKS: &str = "suppliers[0]: priceBreaks is a list of { quantity, unitPrice, unitPriceHigh? } (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it)";
     let refused = [
         (u4().suppliers(json(r#"[{"name": "LCSC", "price": 3}]"#)), "suppliers[0]: price is not a term of an offer"),
-        (u4().suppliers(json(r#"[{"name": "LCSC", "priceBreaks": [{"quantity": 0, "unitPrice": 1}]}]"#)), "priceBreaks is a list of { quantity, unitPrice }"),
+        (u4().suppliers(json(r#"[{"name": "LCSC", "priceBreaks": [{"quantity": 0, "unitPrice": 1}]}]"#)), PRICE_BREAKS),
+        (u4().suppliers(json(r#"[{"name": "LCSC", "priceBreaks": [{"quantity": 1, "unitPrice": 2, "unitPriceHigh": 1}]}]"#)), PRICE_BREAKS),
+        (u4().suppliers(json(r#"[{"name": "LCSC", "priceBreaks": [{"quantity": 1, "unitPrice": 2, "unitPriceHigh": null}]}]"#)), PRICE_BREAKS),
+        (u4().suppliers(json(r#"[{"name": "LCSC", "priceBreaks": [{"quantity": 1, "unitPrice": 2, "unitPriceLow": 1}]}]"#)), PRICE_BREAKS),
         (u4().suppliers(json(r#"[{"name": "LCSC", "currency": "usd"}]"#)), "currency is an ISO 4217 code"),
         (u4().lifecycle(json(r#"{"onHand": 3}"#)), "lifecycle needs its status"),
         (u4().lifecycle(json(r#"{"status": "dead"}"#)), "lifecycle.status is one of active, nrnd, eol, obsolete"),

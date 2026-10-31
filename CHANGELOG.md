@@ -8,6 +8,9 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A supplier's price break takes `unitPriceHigh`, an estimate range with `unitPrice` its low end, as the TypeScript and
+  Python SDKs do: `{"quantity": 10, "unitPrice": 9.15, "unitPriceHigh": 9.6}`. A high end under `unitPrice` is refused,
+  and the refusal says the same words as theirs.
 - An `override_([]).artboard(…)` takes `.no_keys(["opacity"])`: the clip's keys of those properties do not show on
   that artboard. An `override_()` in an `effect()` holds `keyframe().param(…)`s, that artboard's own keys of the param, and
   takes `no_keys` of params.
