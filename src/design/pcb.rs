@@ -61,7 +61,10 @@
 //! arc().name().layer().width().points().from().to().net().uuid().kicad()
 //!                                   a circular copper arc: start, a point on it, end.
 //! via().name().pcb_x().pcb_y().drill().diameter().layers().pads().net().uuid().kicad()
-//!                                   a plated barrel; `layers` defaults to ["F.Cu", "B.Cu"].
+//!                                   a plated barrel; `layers` defaults to ["F.Cu", "B.Cu"], its ends the first and the
+//!                                   last, two layers. A trace, arc, via or pour names copper the board has:
+//!                                   a copper layer of its layer table (BOARD_LAYERS when it gives none) or a conductor
+//!                                   of its cross-section. Any other is refused by name.
 //! pour().name().layers().points().terminals(json(r#"[[0, ".J1 > .pin2"]]"#)).net().uuid().kicad()
 //!                                   a copper pour: its boundary on its layers.
 //! ```
@@ -553,7 +556,7 @@ fn constraint_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
             let points: Vec<Json> = point_list(el, "points", 3, None)?.iter().map(|(x, y)| Json::Arr(vec![(*x).into(), (*y).into()])).collect();
             out.push(("points".into(), Json::Arr(points)));
             if el.attr_of("layers").is_some() {
-                let layers: Vec<Json> = copper_layers(el, None)?.into_iter().map(Json::from).collect();
+                let layers: Vec<Json> = copper_layers(el, None, None)?.into_iter().map(Json::from).collect();
                 out.push(("layers".into(), Json::Arr(layers)));
             }
             let what = format!("a list of {}", KEEPOUT_KINDS.join(", "));
@@ -789,16 +792,31 @@ fn copper(layer: &str) -> bool {
     layer.strip_suffix(".Cu").is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_alphanumeric()))
 }
 
-fn copper_layers(el: &El, fallback: Option<&[&str]>) -> Result<Vec<String>, String> {
+/// Holds a layer to the copper the board has. A keep-out is not held here: a stale one is the DRC's `constraint` finding.
+fn on_board(el: &El, layer: &str, board_copper: &[String]) -> Result<(), String> {
+    if board_copper.iter().any(|l| l == layer) {
+        return Ok(());
+    }
+    let has = if board_copper.is_empty() { "none".to_string() } else { board_copper.join(", ") };
+    Err(format!("{}: the board has no copper layer {layer} (it has {has})", at(el)))
+}
+
+fn copper_layers(el: &El, board_copper: Option<&[String]>, fallback: Option<&[&str]>) -> Result<Vec<String>, String> {
     let layers: Option<Vec<Json>> = match el.attr_of("layers") {
         Some(Json::Arr(l)) => Some(l.clone()),
         Some(_) => None,
         None => fallback.map(|f| f.iter().map(|l| Json::from(*l)).collect()),
     };
-    match layers {
-        Some(l) if !l.is_empty() && l.iter().all(|x| x.as_str().is_some_and(copper)) => Ok(l.iter().map(|x| x.as_str().unwrap_or_default().to_string()).collect()),
-        _ => Err(format!("{}: layers is a list of copper layers (\"F.Cu\", \"In1.Cu\", \"B.Cu\")", at(el))),
+    let layers: Vec<String> = match layers {
+        Some(l) if !l.is_empty() && l.iter().all(|x| x.as_str().is_some_and(copper)) => l.iter().map(|x| x.as_str().unwrap_or_default().to_string()).collect(),
+        _ => return Err(format!("{}: layers is a list of copper layers (\"F.Cu\", \"In1.Cu\", \"B.Cu\")", at(el))),
+    };
+    if let Some(board_copper) = board_copper {
+        for l in &layers {
+            on_board(el, l, board_copper)?;
+        }
     }
+    Ok(layers)
 }
 
 /// Carried KiCad forms, as s-expression text (`.kicad("(stroke (type solid))")`).
@@ -977,8 +995,22 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
         || !stacks.is_empty()
         || children.iter().any(|el| ["graphic", "text", "dimension", "kicad"].contains(&el.tag));
 
+    // The copper the board has: its layer table's and its cross-section's conductors, in that order.
+    let mut board_copper: Vec<String> = Vec::new();
+    fn has_copper(board_copper: &mut Vec<String>, name: &str) {
+        if copper(name) && !board_copper.iter().any(|l| l == name) {
+            board_copper.push(name.to_string());
+        }
+    }
+    match &layers {
+        Some(Json::Arr(table)) => table.iter().filter_map(|l| l.get("name").and_then(|n| n.as_str())).for_each(|n| has_copper(&mut board_copper, n)),
+        _ => BOARD_LAYERS.iter().for_each(|(_, n, _)| has_copper(&mut board_copper, n)),
+    }
+
     let mut stack_thickness = None;
     if let (Some(core), Some(cu)) = (core, copper_mm) {
+        has_copper(&mut board_copper, "F.Cu");
+        has_copper(&mut board_copper, "B.Cu");
         stack_thickness = Some(core + 2.0 * cu);
         let layer = |name: &str, role: &str, t: f64| Json::obj().with("name", name).with("role", role).with("thickness", t);
         let inputs = vec![
@@ -998,6 +1030,15 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
             "the layers, top first: [{ name, role, thickness, … }, …]",
         )?
         .ok_or("stack() needs layers")?;
+        if let Json::Arr(rows) = &stack_layers {
+            for l in rows {
+                if let (Some(Json::Str(name)), Some(Json::Str(role))) = (l.get("name"), l.get("role")) {
+                    if role == "conductor" {
+                        has_copper(&mut board_copper, name);
+                    }
+                }
+            }
+        }
         let domain = text_of(el, "domain", false)?.unwrap_or_else(|| "pcb".into());
         let units = text_of(el, "units", false)?.unwrap_or_else(|| "mm".into());
         if domain != "pcb" && domain != "ic" {
@@ -1343,6 +1384,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     Some(Json::Str(l)) if copper(l) => l.clone(),
                     _ => return Err(format!("{}: layer is a copper layer (\"F.Cu\", \"In1.Cu\", \"B.Cu\")", at(el))),
                 };
+                on_board(el, &layer, &board_copper)?;
                 let count = pts.len();
                 let mut terminals = Vec::new();
                 if let Some(from) = el.attr_of("from") {
@@ -1381,9 +1423,12 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
             }
             "via" => {
                 refuse_unknown(el, &["name", "pcbX", "pcbY", "drill", "diameter", "layers", "pads", "net", "uuid", "kicad"])?;
-                let layers = copper_layers(el, Some(&["F.Cu", "B.Cu"]))?;
+                let layers = copper_layers(el, Some(&board_copper), Some(&["F.Cu", "B.Cu"]))?;
                 if layers.len() < 2 {
                     return Err(format!("{}: layers is two or more copper layers", at(el)));
+                }
+                if layers.first() == layers.last() {
+                    return Err(format!("{}: the ends of a via are two layers, not {} twice", at(el), layers[0]));
                 }
                 let drill = positive(el, "drill", true)?.unwrap_or_default();
                 let diameter = positive(el, "diameter", true)?.unwrap_or_default();
@@ -1444,7 +1489,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 let mut inputs = vec![
                     ("kind".to_string(), Json::from("pour")),
                     ("points".into(), pts.iter().map(|(x, y)| xy(*x, *y)).collect::<Vec<_>>().into()),
-                    ("layers".into(), copper_layers(el, None)?.into_iter().map(Json::from).collect::<Vec<_>>().into()),
+                    ("layers".into(), copper_layers(el, Some(&board_copper), None)?.into_iter().map(Json::from).collect::<Vec<_>>().into()),
                 ];
                 if !terminals.is_empty() {
                     inputs.push(("terminals".into(), terminals.into()));

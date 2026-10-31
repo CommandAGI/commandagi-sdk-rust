@@ -139,6 +139,36 @@ fn a_board_refuses_by_name_what_it_cannot_say() {
 }
 
 #[test]
+fn a_boards_copper_is_the_copper_it_has() {
+    let box_ = [[0, 0], [9, 0], [9, 9]];
+    let run = |layer: &str| trace().layer(layer).width(0.2).points([[0, 0], [9, 0]]);
+    let curve = |layer: &str| arc().layer(layer).width(0.2).points([[0, 0], [4, 4], [9, 0]]);
+    let barrel = || via().pcb_x(5).pcb_y(5).drill(0.3).diameter(0.6);
+    let two = "the board has no copper layer X.Cu (it has F.Cu, B.Cu)";
+    assert_eq!(bad(board_of(vec![run("X.Cu")])), format!("trace(): {two}"));
+    assert_eq!(bad(board_of(vec![curve("X.Cu")])), format!("arc(): {two}"));
+    assert_eq!(bad(board_of(vec![barrel().layers(["X.Cu", "B.Cu"])])), format!("via(): {two}"));
+    assert_eq!(bad(board_of(vec![pour().layers(["X.Cu"]).points(box_)])), format!("pour(): {two}"));
+    // A keep-out on copper the board lacks declares: the DRC reports it, `constraint`, and the board still opens.
+    graph(board_of(vec![keepout().layers(["X.Cu"]).points(box_)]));
+    assert_eq!(bad(board_of(vec![run("In1.Cu")]).width(9).height(9)), "trace(): the board has no copper layer In1.Cu (it has F.Cu, B.Cu)");
+    assert_eq!(bad(board_of(vec![barrel().layers(["F.Cu", "F.Cu"])])), "via(): the ends of a via are two layers, not F.Cu twice");
+    assert!(bad(board_of(vec![barrel().layers(["F.Cu", "In1.Cu", "F.Cu"])])).contains("the board has no copper layer In1.Cu"));
+    assert_eq!(bad(board_of(vec![barrel()]).layers(json(r#"[{"ordinal": 0, "name": "F.Cu", "type": "signal"}]"#))), "via(): the board has no copper layer B.Cu (it has F.Cu)");
+
+    let four = || stack().layers(json(r#"[{"name": "F.Cu", "role": "conductor", "thickness": 0.035}, {"name": "In1.Cu", "role": "conductor", "thickness": 0.035}, {"name": "In2.Cu", "role": "conductor", "thickness": 0.035}, {"name": "B.Cu", "role": "conductor", "thickness": 0.035}]"#));
+    let inner = || vec![run("In1.Cu"), curve("In2.Cu"), barrel().layers(["F.Cu", "In1.Cu"]), pour().layers(["In2.Cu"]).points(box_), keepout().layers(["In1.Cu"]).points(box_)];
+    let mut stacked = vec![four()];
+    stacked.extend(inner());
+    graph(board_of(stacked));
+    graph(board_of(inner()).layers(json(r#"[{"ordinal": 0, "name": "F.Cu"}, {"ordinal": 1, "name": "In1.Cu"}, {"ordinal": 2, "name": "In2.Cu"}, {"ordinal": 31, "name": "B.Cu"}]"#)));
+    assert_eq!(bad(board_of(vec![four(), run("In3.Cu")])), "trace(): the board has no copper layer In3.Cu (it has F.Cu, B.Cu, In1.Cu, In2.Cu)");
+    // A mask or a dielectric named like copper is no copper.
+    assert!(bad(board_of(vec![stack().layers(json(r#"[{"name": "F.Cu", "role": "conductor"}, {"name": "In1.Cu", "role": "dielectric"}]"#)), run("In1.Cu")])).contains("no copper layer In1.Cu"));
+    assert!(bad(board_of(vec![run("Dwgs.User")]).layers(json(r#"[{"ordinal": 0, "name": "F.Cu"}, {"ordinal": 40, "name": "Dwgs.User"}]"#))).contains("layer is a copper layer"));
+}
+
+#[test]
 fn a_polygon_says_its_arcs() {
     let pts = [[0, 0], [1, 0], [2, 1], [3, 0], [3, 3]];
     let g = graph(board_of(vec![graphic().kind("poly").layer("F.Mask").points(pts).width(0).filled(true).arcs([1])]).width(10).height(10));
