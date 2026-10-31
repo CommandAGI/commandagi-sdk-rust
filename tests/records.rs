@@ -135,4 +135,19 @@ fn a_calibration_is_its_joints_and_its_rezeros_oldest_first_each_checked() {
     );
     assert!(bad(cal(vec![cam()])).contains("says its reality"));
     assert!(bad(cal(vec![cam().reality("simulation").intrinsics(json(r#"{"width": 320, "height": 240, "fx": 0, "fy": 1, "cx": 1, "cy": 1}"#))])).contains("intrinsics are"));
+    // A guided calibration: each joint's measured travel and its direction, who measured it and when.
+    let (_, doc, _) = document(
+        calibration([joint().name("pan").zero(0.03).min(712).max(3391), joint().name("lift").zero(-0.1).min(830).max(3270).reversed(true)])
+            .device("d/definition.tsx")
+            .by("person:owner")
+            .at(1793318400000_i64),
+    );
+    assert_eq!(
+        doc,
+        j(r#"{"device": "d/definition.tsx", "by": "person:owner", "at": 1793318400000,
+              "joints": [{"name": "pan", "zero": 0.03, "min": 712, "max": 3391}, {"name": "lift", "zero": -0.1, "min": 830, "max": 3270, "reversed": true}],
+              "rezeros": []}"#)
+    );
+    assert!(bad(cal(vec![joint().name("a").min(900)])).contains("both min and max"));
+    assert!(bad(cal(vec![joint().name("a").min(900).max(800)])).contains("min < max"));
 }

@@ -48,7 +48,8 @@ elements! {
     output: leaf;
     /// A unit's calibration: its joints and its re-zeros. `.device("../../devices/arm/definition.tsx").serial(…)`.
     calibration: children;
-    /// A calibrated joint: `.name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json")`.
+    /// A calibrated joint: `.name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json")`, and its
+    /// measured travel and direction: `.min(830).max(3270).reversed(true)`.
     joint: leaf;
     /// A re-zero, appended, never edited: `.joint("shoulder_lift").zero(0.015).at(…).by("person:owner").reason(…)`.
     rezero: leaf;
@@ -65,7 +66,7 @@ attributes! {
         serial; product_id; model; release;
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
         rev; of; frozen; product; note; previous; path; digest; file; status; accepted; reason; from;
-        device; name; zero; kp; kv; run; joint;
+        device; name; zero; kp; kv; run; joint; min; max; reversed;
         channel; robot; intrinsics; extrinsics; marker; residual; reality;
     }
 }
@@ -88,11 +89,13 @@ pub const RELEASE_OUTPUT_FIELDS: &[&str] = &["path", "digest", "from", "kind"];
 pub const RELEASE_CHECK_STATUSES: &[&str] = &["passed", "failed", "skipped", "accepted"];
 /// The fields of a provenance event (`InstanceEvent`).
 pub const INSTANCE_EVENT_FIELDS: &[&str] = &["seq", "kind", "at", "prev", "by", "to", "contractRef", "attestationRef", "data", "sig"];
-/// The fields of a unit's calibration: the definition it calibrates (a ref), the unit's serial, a note.
-pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note"];
+/// The fields of a unit's calibration: the definition it calibrates (a ref), the unit's serial, a note, and who
+/// measured its joints and when (a guided calibration: `by` person:<id> | agent:<id>, `at` epoch ms).
+pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note", "by", "at"];
 /// The fields of one calibrated joint: its zero (rad, what its encoder reads at the chain's zero), its servo's gains,
-/// the run that measured them.
-pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "zero", "kp", "kv", "run"];
+/// the run that measured them, the travel measured end to end (`min`, `max`: the bus's raw values, min < max), and
+/// whether the joint counts the other way than its definition says (`reversed`).
+pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "zero", "kp", "kv", "run", "min", "max", "reversed"];
 /// The fields of one re-zero: the joint, its new zero (rad), when (epoch ms), who (person:<id> | agent:<id>), why.
 pub const REZERO_FIELDS: &[&str] = &["joint", "zero", "at", "by", "reason"];
 /// The fields of one calibrated camera: its video channel, the arm it was measured against, its intrinsics (pixels),
@@ -186,6 +189,25 @@ fn calibration_of(t: &DocTree) -> Result<Json, String> {
         }
         if j.get("kv").is_some() && !finite(j.get("kv")).is_some_and(|n| n >= 0.0) {
             return Err(format!("{at}: kv is a number of at least 0 (N·m·s/rad), not {}", said(j.get("kv"))));
+        }
+        if j.get("min").is_some() != j.get("max").is_some() {
+            return Err(format!("{at}: a measured travel gives both min and max"));
+        }
+        if j.get("min").is_some() && !matches!((finite(j.get("min")), finite(j.get("max"))), (Some(lo), Some(hi)) if lo < hi) {
+            return Err(format!("{at}: min and max are the bus's values with min < max, not [{}, {}]", said(j.get("min")), said(j.get("max"))));
+        }
+        if j.get("reversed").is_some() && !matches!(j.get("reversed"), Some(Json::Bool(_))) {
+            return Err(format!("{at}: reversed is true or false, not {}", said(j.get("reversed"))));
+        }
+    }
+    if let Some(by) = t.attr_of("by") {
+        if !matches!(by, Json::Str(b) if (b.starts_with("person:") && b.len() > 7) || (b.starts_with("agent:") && b.len() > 6)) {
+            return Err(format!("calibration(): by is person:<id> or agent:<id>, not {}", by.text()));
+        }
+    }
+    if let Some(at) = t.attr_of("at") {
+        if finite(Some(at)).filter(|n| n.fract() == 0.0).is_none() {
+            return Err(format!("calibration(): at is epoch milliseconds, not {}", at.text()));
         }
     }
     let mut last = f64::NEG_INFINITY;
