@@ -8,6 +8,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::infra`: a VPN exit, a logged-in state and a vantage as `exit.rs`, `session.rs` and `vantage.rs`, the same
+  elements and documents as the TypeScript SDK's `exit.tsx`, `session.tsx` and `vantage.tsx`, with the same refusals.
+  `exit_with_defaults`, `session_with_defaults` and `vantage_with_defaults` fill what a file does not say. The
+  CommandAGI platform runs only the TSX files: its monitors read `vantage.tsx` and `session.tsx`, and `make infra-plan`
+  reads `exit.tsx`.
 - A machining setup's `machine` states its own travel: `travelMm` (`travel_mm` in Python and Rust), `[x, y, z]` in mm. A
   stated travel holds a setup that names no unit, and the unit's definition does not replace it.
 - A supplier's price break takes `unitPriceHigh`, an estimate range with `unitPrice` its low end, as the TypeScript and

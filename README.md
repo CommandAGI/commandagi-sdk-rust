@@ -52,6 +52,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::business` | a company, an RFC, a case |
 | `commandagi::design::tasks` | a task, a project |
 | `commandagi::design::mounts` | a thread's mounted tasks (`mounts.rs`, in the thread's run folder) |
+| `commandagi::design::infra` | a VPN exit (`exit.rs`), a logged-in state (`session.rs`), a vantage (`vantage.rs`). The CommandAGI platform does not run these: its monitors read `vantage.tsx` and `session.tsx`, and `make infra-plan` reads `exit.tsx` |
 | `commandagi::design::evals` | an eval (`eval`: its `case`s), a metric (`metric`) |
 | `commandagi::design::monitors` | a monitor |
 | `commandagi::design::scouts` | a scout's comparison, a replacement-cost analysis |
@@ -81,7 +82,6 @@ dependency, and the local host must compile a document against this crate with n
 | | Python | TypeScript | Rust |
 | --- | --- | --- | --- |
 | document vocabularies (the table above) | yes | yes | yes |
-| the agent, harness and infrastructure vocabularies | no | yes | no |
 | code-part primitives (`part`, `circuit`, `graph` …) and the CadQuery, JSCAD, replicad and tscircuit importers | CadQuery | JSCAD, replicad, tscircuit | no |
 | the platform client (threads, memory, integrations, web, phone, postal …) | yes | yes | no |
 | live sessions (frames and typed control of a computer, a robot or a simulated world) | yes | yes | no |
