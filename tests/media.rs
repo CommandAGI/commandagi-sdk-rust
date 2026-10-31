@@ -350,4 +350,24 @@ fn an_override_sets_a_shapes_look_an_artboard_clips_inputs_and_its_own_keyframes
     assert!(with(override_([keyframe().property("volume").time(0).value(1)]).artboard("S")).contains("not \"volume\""));
     assert!(with(override_([note()]).artboard("S")).contains("is not read in an override_()"));
     assert!(with(override_([]).artboard("S").fill("#fff")).contains("fill is not read on a override_()"));
+    assert!(with(override_([]).artboard("S").no_keys(["volume"])).contains("noKeys is a list of opacity"));
+    assert!(with(override_([keyframe().property("opacity").time(0).value(1)]).artboard("S").no_keys(["opacity"])).contains("noKeys names opacity, which this override keys"));
+}
+
+#[test]
+fn an_override_says_no_keys_and_an_effects_override_holds_its_params_keys() {
+    let g = graph(video([
+        track([title([
+            effect([keyframe().param("amount").time(0).value(0.1), override_([keyframe().param("amount").time(0).value(0.5)]).artboard("S")]).type_("vignette").amount(0.2),
+            effect([override_([]).artboard("S").no_keys(["amount"])]).type_("vignette").amount(0.2),
+            override_([]).artboard("S").no_keys(["opacity"]),
+        ])
+        .text("T")
+        .duration(1)]),
+        artboard([]).name("S").width(1).height(1),
+    ]));
+    assert_eq!(input(&g, "clip_Title", "overrides"), golden(r#"{"S":{"keyframes":[{"property":"opacity","keys":[]}]}}"#));
+    let fx = input(&g, "clip_Title", "effects");
+    assert!(fx.contains(r#""overrides":{"S":{"keyframes":[{"property":"effect.fx_vignette.amount","keys":[{"id":"kf_clip_Title_S","time":0,"value":0.5,"easing":"linear"}]}]}}"#), "{fx}");
+    assert!(fx.contains(r#""overrides":{"S":{"keyframes":[{"property":"effect.fx_vignette_2.amount","keys":[]}]}}"#), "{fx}");
 }

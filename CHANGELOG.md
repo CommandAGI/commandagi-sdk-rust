@@ -8,6 +8,9 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- An `override_([]).artboard(…)` takes `.no_keys(["opacity"])`: the clip's keys of those properties do not show on
+  that artboard. An `override_()` in an `effect()` holds `keyframe().param(…)`s, that artboard's own keys of the param, and
+  takes `no_keys` of params.
 - A part states its steady `draw` (`draw="120 mA"` or `"1.2 W"`, a KiCad property `Draw`). A system's load that states
   no current or power names a circuit part (`part="ee/main.circuit.ts#U1"`), and `commandagi check` reads the part's draw.
 - A link budget: `quantity="rf-link"` with `frequency` (Hz) and `range` (m) on the budget, and contributions in `dBm`

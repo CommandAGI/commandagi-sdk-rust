@@ -61,7 +61,8 @@
 //! the page, else the first; `.crop(json(…))` the part of it to show; `.inputs(json(…))` the values it gives the
 //! drawing's parameters, so two artboards of one drawing can say two things). A video's own artboards are other frames of
 //! it at other sizes (`artboard([]).name("Vertical").width(1080).height(1920)` in the `video`, with no `src`; the video
-//! itself is the first); an `override_([]).artboard("Vertical")…` in a clip, title or effect sets what it is on that
+//! itself is the first; `.no_keys(["opacity"])` on an override names what has no keys on that artboard, and an effect's
+//! override holds `keyframe().param(…)`s); an `override_([]).artboard("Vertical")…` in a clip, title or effect sets what it is on that
 //! artboard only (a title reframed for 9:16, another media file in a `clip()`, a `shape()`'s fill, an `artboard()` clip's
 //! drawing `inputs`, an effect's amount). The `keyframe().property(…)`s inside an `override_([…])` are that artboard's
 //! own keys: there the property follows them, not the clip's. Times on a video's timeline are seconds; in a song, beats (an audio clip's `in`, where it starts in its
@@ -177,6 +178,8 @@ attributes! {
         crop;
         /// The video's own artboard an override sets the clip on.
         artboard;
+        /// What has no keys on an override's artboard, `json(r#"["opacity"]"#)`: the clip's keys of it do not show there.
+        no_keys;
         /// Where a clip or a note starts.
         start;
         /// How long a clip, a note, a transition or an animation lasts.
@@ -668,6 +671,25 @@ pub const OVERRIDE_ANIMATABLE: &[&str] = &["opacity", "transform.x", "transform.
 /// A `shape()`'s look an `override_()` sets.
 pub const OVERRIDE_SHAPE: &[&str] = &["fill", "stroke", "strokeWidth"];
 
+/// What an `override_()`'s `no_keys` names: each of `allowed` (none: any name), and none its own keys also key.
+fn no_keys(el: &El, keyed: &[(String, Vec<(f64, Json)>)], prefix: &str, allowed: Option<&[&str]>) -> Result<Vec<String>, String> {
+    let Some(v) = el.attr_of("noKeys") else { return Ok(Vec::new()) };
+    let refused = || format!("{}: noKeys is a list of {}, not {}", place(el), allowed.map_or("params".to_string(), |a| a.join(", ")), v.text());
+    let Json::Arr(names) = v else { return Err(refused()) };
+    if names.is_empty() {
+        return Err(refused());
+    }
+    let mut out = Vec::new();
+    for n in names {
+        let name = n.as_str().filter(|s| !s.is_empty() && allowed.map_or(true, |a| a.contains(s))).ok_or_else(refused)?;
+        if keyed.iter().any(|(p, _)| *p == format!("{prefix}{name}")) {
+            return Err(format!("{}: noKeys names {name}, which this override keys", place(el)));
+        }
+        out.push(format!("{prefix}{name}"));
+    }
+    Ok(out)
+}
+
 /// The artboard an `override_()` names: one the video declares.
 fn override_artboard(el: &El, artboards: &[String]) -> Result<String, String> {
     let Some(a) = txt(el, "artboard", None)?.filter(|a| !a.is_empty()) else {
@@ -691,7 +713,7 @@ fn clip_override(el: &El, clip: &El, artboards: &[String]) -> Result<(String, Js
     };
     let transform: Vec<&str> = CLIP_TRANSFORM.iter().map(|(k, _)| *k).collect();
     let crop: Vec<&str> = CLIP_CROP.iter().map(|(k, _)| *k).collect();
-    refuse_unknown(el, &[&["artboard"][..], OVERRIDE_LOOK, transform.as_slice(), CLIP_COLOR, crop.as_slice(), own].concat())?;
+    refuse_unknown(el, &[&["artboard", "noKeys"][..], OVERRIDE_LOOK, transform.as_slice(), CLIP_COLOR, crop.as_slice(), own].concat())?;
     let a = override_artboard(el, artboards)?;
     let mut o = Json::obj();
     if let Some(v) = num(el, "opacity", Some(0.0), Some(1.0))? {
@@ -768,7 +790,7 @@ fn clip_override(el: &El, clip: &El, artboards: &[String]) -> Result<(String, Js
         }
     }
     let src = if clip.tag == "clip" { txt(el, "src", None)? } else { None };
-    if matches!(&o, Json::Obj(e) if e.is_empty()) && src.is_none() && el.child_elements().next().is_none() {
+    if matches!(&o, Json::Obj(e) if e.is_empty()) && src.is_none() && el.attr_of("noKeys").is_none() && el.child_elements().next().is_none() {
         return Err(format!("{} in {}: an override names what it sets on artboard \"{a}\"", place(el), place(clip)));
     }
     Ok((a, o, src))
@@ -883,6 +905,11 @@ fn common(c: &El, inputs: &mut Json) -> Result<(), String> {
         inputs.set("crop", crop);
     }
     Ok(())
+}
+
+/// An override's keyframe tracks as the graph holds them.
+fn key_tracks(tracks: Vec<(String, Vec<(f64, Json)>)>) -> Json {
+    Json::Arr(tracks.into_iter().map(|(property, keys)| obj(&[("property", property.into()), ("keys", Json::Arr(keys.into_iter().map(|(_, k)| k).collect()))])).collect())
 }
 
 /// What a clip's children declare: its transition, intro and outro, effects, keyframes and notes.
@@ -1064,7 +1091,7 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources, artboards: &[S
                         }
                         let mut params = Json::obj();
                         for (p, v) in &kf.attrs {
-                            if ["artboard", "enabled"].contains(&p.as_str()) {
+                            if ["artboard", "enabled", "noKeys"].contains(&p.as_str()) {
                                 continue;
                             }
                             match v {
@@ -1074,6 +1101,23 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources, artboards: &[S
                         }
                         if !matches!(&params, Json::Obj(e) if e.is_empty()) {
                             o.set("params", params);
+                        }
+                        // Its own keyframes: on this artboard the param follows them, not the clip's.
+                        let mut keys: Vec<(String, Vec<(f64, Json)>)> = Vec::new();
+                        for key in kf.child_elements() {
+                            if key.tag != "keyframe" {
+                                return Err(format!("{} is not read in an override_() in an effect() (it holds its artboard's keyframe().param(…).time(…).value(…)s)", tag(key.tag)));
+                            }
+                            refuse_unknown(key, &["param", "time", "value", "easing", "bezier"])?;
+                            let param = txt(key, "param", None)?.filter(|p| !p.is_empty());
+                            let Some(param) = param else { return Err(format!("{}: an effect's keyframe names its param", place(key))) };
+                            add_key(&mut keys, key, format!("effect.{id}.{param}"), &format!("kf_{clip_id}_{a}"), None)?;
+                        }
+                        for property in no_keys(kf, &keys, &format!("effect.{id}."), None)? {
+                            keys.push((property, Vec::new()));
+                        }
+                        if !keys.is_empty() {
+                            o.set("keyframes", key_tracks(keys));
                         }
                         if matches!(&o, Json::Obj(e) if e.is_empty()) {
                             return Err(format!("override_().artboard(\"{a}\") in effect().type_(\"{kind}\") names what it sets"));
@@ -1112,9 +1156,11 @@ fn clip_children(clip: &El, clip_id: &str, sources: &mut Sources, artboards: &[S
                     };
                     add_key(&mut keys, kf, property, &format!("kf_{clip_id}_{a}"), None)?;
                 }
+                for property in no_keys(el, &keys, "", Some(OVERRIDE_ANIMATABLE))? {
+                    keys.push((property, Vec::new()));
+                }
                 if !keys.is_empty() {
-                    let tracks = keys.into_iter().map(|(property, keys)| obj(&[("property", property.into()), ("keys", Json::Arr(keys.into_iter().map(|(_, k)| k).collect()))]));
-                    o.set("keyframes", Json::Arr(tracks.collect()));
+                    o.set("keyframes", key_tracks(keys));
                 }
                 sources.put(format!("override:{a}"), el);
                 k.overrides.push((a, o, src));
