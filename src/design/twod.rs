@@ -612,6 +612,9 @@ fn plain(v: &Json, what: &str) -> Result<(), String> {
 }
 
 /// An element's attributes as the node's inputs, without the node's own fields (`id`, `label`, `disabled`).
+/// A compound's operations, the draw graph's: its refusal comes here, at declaration, in its words.
+const COMPOUND_OPS: [&str; 4] = ["unite", "minus", "intersect", "exclude"];
+
 fn attrs(el: &El, skip: &[&str]) -> Result<Json, String> {
     let mut out = Json::obj();
     for (k, v) in &el.attrs {
@@ -1109,6 +1112,11 @@ impl Doc {
             return self.add(el, t, a.with("in", wire(&input, "out")));
         }
         if t == "compound" {
+            if let Some(op) = el.attr_of("op") {
+                if !op.as_str().is_some_and(|o| COMPOUND_OPS.contains(&o)) {
+                    return Err(format!("compound.op is unite, minus, intersect or exclude, not {}", op.text()));
+                }
+            }
             let a = attrs(el, &[])?;
             let shapes = kids.iter().map(|c| self.drawn(c, false)).collect::<Result<Vec<_>, _>>()?;
             return self.add(el, t, spread(a, wires("children", &shapes)));

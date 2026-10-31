@@ -30,6 +30,20 @@ fn w(node: &str) -> String {
 }
 
 #[test]
+fn a_compound_names_one_of_the_four_operations_in_the_draw_graphs_words() {
+    let shape = || rect().x(0).y(0).w(1).h(1);
+    let of = |c: El| drawing([layer([c])]);
+    assert_eq!(bad(of(compound([shape()]).op("zork"))), r#"compound.op is unite, minus, intersect or exclude, not "zork""#);
+    assert_eq!(bad(of(compound([shape()]).op("toString"))), r#"compound.op is unite, minus, intersect or exclude, not "toString""#);
+    assert_eq!(bad(of(compound([shape()]).op(3))), "compound.op is unite, minus, intersect or exclude, not 3");
+    for named in ["unite", "minus", "intersect", "exclude"] {
+        let g = graph(of(compound([shape()]).op(named)));
+        assert_eq!(node(&g, "compound").get("inputs").unwrap().get("op").unwrap().as_str(), Some(named));
+    }
+    assert!(node(&graph(of(compound([shape()]))), "compound").get("inputs").unwrap().get("op").is_none());
+}
+
+#[test]
 fn a_compound_is_one_node_that_holds_its_shapes_back_to_front() {
     let g = graph(drawing([layer([compound([rect().x(0).y(0).w(100).h(100), ellipse().cx(100).cy(100).rx(40).ry(40)]).op("minus").fill("#0f172a")]).name("Art")]));
     assert_eq!(inputs(&g, "group"), golden(&format!(r#"{{"name": "Art", "children.1": {}}}"#, w("compound"))));
