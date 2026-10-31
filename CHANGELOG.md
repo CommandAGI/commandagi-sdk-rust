@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A machining setup's `machine` states its own travel: `travelMm` (`travel_mm` in Python and Rust), `[x, y, z]` in mm. A
+  stated travel holds a setup that names no unit, and the unit's definition does not replace it.
 - A supplier's price break takes `unitPriceHigh`, an estimate range with `unitPrice` its low end, as the TypeScript and
   Python SDKs do: `{"quantity": 10, "unitPrice": 9.15, "unitPriceHigh": 9.6}`. A high end under `unitPrice` is refused,
   and the refusal says the same words as theirs.

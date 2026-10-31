@@ -8,7 +8,7 @@
 //! fn document() -> El {
 //!     cam([
 //!         stock().material_id("plywood").thickness_mm(6).x_mm(90).y_mm(70),
-//!         machine().post("grbl").max_spindle_rpm(10000),
+//!         machine().post("grbl").max_spindle_rpm(10000).travel_mm([300, 180, 45]),
 //!         fixture().name("left clamp").x_mm(-14).y_mm(25).w_mm(20).d_mm(20).z_mm(4),
 //!         operation().id("op-1").op("mill_adaptive").profile("adaptive_wood").params(json(r#"{"toolDiameterMm": 3.175}"#)),
 //!         runs_on().unit("cloud://global/worlds/fab-cell/world.tsx#cnc-1").channel("gcode").name("cnc 3018 / 01"),
@@ -87,6 +87,8 @@ attributes! {
         max_feed_mm_per_min;
         /// The spindle's power.
         spindle_power_kw;
+        /// How far the machine travels, `[x, y, z]` (mm): a toolpath that spans more on an axis is refused.
+        travel_mm;
         /// A fixture's width (mm).
         w_mm;
         /// A fixture's depth (mm).
@@ -123,7 +125,7 @@ pub(crate) const FAMILY: Family = Family { module: "fab", roots: &["cam", "slice
 pub const CAM_REF_FIELDS: &[&str] = &["fileId", "name"];
 pub const CAM_STOCK_FIELDS: &[&str] = &["materialId", "thicknessMm", "xMm", "yMm"];
 pub const CAM_PART_FIELDS: &[&str] = &["footprintXMm", "footprintYMm", "atXMm", "atYMm"];
-pub const CAM_MACHINE_FIELDS: &[&str] = &["post", "maxSpindleRpm", "maxFeedMmPerMin", "spindlePowerKw"];
+pub const CAM_MACHINE_FIELDS: &[&str] = &["post", "maxSpindleRpm", "maxFeedMmPerMin", "spindlePowerKw", "travelMm"];
 pub const CAM_FIXTURE_FIELDS: &[&str] = &["name", "xMm", "yMm", "wMm", "dMm", "zMm"];
 pub const CAM_OPERATION_FIELDS: &[&str] = &["id", "op", "profile", "enabled", "params", "tabs", "region"];
 /// A unit's channel a job runs on (`runsOn` of a machining setup, `machine` of a slicing setup).
