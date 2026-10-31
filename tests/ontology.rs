@@ -53,6 +53,10 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
     let links = r#"[{"node": "ram", "joint": {"unit": "press-1", "channel": "axes", "name": "z", "type": "prismatic", "axis": "z", "origin_mm": [0, 0, 0], "home": 0}}]"#;
     let (_, posed, _) = document(world([]).name("Press").kind("physical").model("press.3d.tsx").links(json(links)));
     assert_eq!(posed, j(&format!(r#"{{"name": "Press", "kind": "physical", "model": "press.3d.tsx", "links": {links}, "units": []}}"#)));
+    // A world's follow policies (docs/follow.md): an attribute of world(), as the TypeScript SDK writes it.
+    let policies = r#"[{"id": "sim-control", "kind": "follow", "robot": "arm", "reality": "physical", "leader": {"unit": "arm", "run": "twin"}, "hz": 30}]"#;
+    let (_, followed, _) = document(world([]).name("Cell").kind("physical").policies(json(policies)));
+    assert_eq!(followed, j(&format!(r#"{{"name": "Cell", "kind": "physical", "policies": {policies}, "units": []}}"#)));
 
     let w = |children: Vec<El>| world(children).name("W").kind("physical");
     assert!(bad(world([]).name("W")).contains("world() needs kind"));

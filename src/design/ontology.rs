@@ -20,7 +20,7 @@
 //!
 //! ```text
 //! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, group().uid …,
-//!   .links?                                                               unit().uid …, view(), scene([body().id …])
+//!   .links?.policies?                                                     unit().uid …, view(), scene([body().id …])
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
@@ -103,7 +103,7 @@ attributes! {
         origin_mm = "origin_mm"; size_mm = "size_mm"; dimensions_mm = "dimensions_mm";
         hz; at; rot; vel; shape; mass; friction; restitution; angular_damping = "angular_damping"; gravity; scale;
         backdrop; walls; grids; bodies; forces; particles; entities; relations; systems; robots; joints; links; kinematics;
-        dynamics; constraints; fidelity; motion; color; blend; balance; coupled; seals; release; calibration; optics; root;
+        dynamics; constraints; fidelity; motion; color; blend; balance; coupled; seals; release; calibration; optics; root; policies;
         // A definition's and a channel's.
         id; type_; label; dir; medium; format; transport; interface; manufacturer; model_number = "model_number";
         product_url = "product_url"; price_usd = "price_usd"; record_hz = "record_hz"; spec_check = "spec_check";
@@ -140,7 +140,8 @@ pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision"
 pub const GROUP_FIELDS: &[&str] = &["uid", "name", "description", "group", "size_mm", "position", "rotation"];
 /// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
-const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links"];
+/// `policies`: the world's follow policies (docs/follow.md): one unit's robot follows another's joints, by angle.
+const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links", "policies"];
 const GEO_FIELDS: &[&str] = &["id", "name", "createdAt", "updatedAt", "description", "defaultWorkspace", "metadata"];
 /// A node's attributes that are not its ports.
 const NODE_ATTRS: &[&str] = &["id", "type", "label", "x", "y", "disabled", "output", "meta", "inputs"];
