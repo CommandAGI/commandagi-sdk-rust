@@ -150,4 +150,8 @@ fn a_calibration_is_its_joints_and_its_rezeros_oldest_first_each_checked() {
     );
     assert!(bad(cal(vec![joint().name("a").min(900)])).contains("both min and max"));
     assert!(bad(cal(vec![joint().name("a").min(900).max(800)])).contains("min < max"));
+    // A joint found by motion on another servo than its definition says: the servo id on this unit's bus.
+    let (_, doc, _) = document(cal(vec![joint().name("pan").id(2), joint().name("lift").id(1)]));
+    assert_eq!(doc.get("joints"), Some(&j(r#"[{"name": "pan", "id": 2}, {"name": "lift", "id": 1}]"#)));
+    assert!(bad(cal(vec![joint().name("a").id(2), joint().name("b").id(2)])).contains("one servo is one joint"));
 }

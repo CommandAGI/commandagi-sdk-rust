@@ -49,7 +49,8 @@ elements! {
     /// A unit's calibration: its joints and its re-zeros. `.device("../../devices/arm/definition.tsx").serial(…)`.
     calibration: children;
     /// A calibrated joint: `.name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json")`, and its
-    /// measured travel and direction: `.min(830).max(3270).reversed(true)`.
+    /// measured travel and direction: `.min(830).max(3270).reversed(true)`, and the servo it is on this unit's bus
+    /// when not the definition's: `.id(2)`.
     joint: leaf;
     /// A re-zero, appended, never edited: `.joint("shoulder_lift").zero(0.015).at(…).by("person:owner").reason(…)`.
     rezero: leaf;
@@ -94,8 +95,9 @@ pub const INSTANCE_EVENT_FIELDS: &[&str] = &["seq", "kind", "at", "prev", "by", 
 pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note", "by", "at"];
 /// The fields of one calibrated joint: its zero (rad, what its encoder reads at the chain's zero), its servo's gains,
 /// the run that measured them, the travel measured end to end (`min`, `max`: the bus's raw values, min < max), and
-/// whether the joint counts the other way than its definition says (`reversed`).
-pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "zero", "kp", "kv", "run", "min", "max", "reversed"];
+/// whether the joint counts the other way than its definition says (`reversed`), and the servo id the joint has on this
+/// unit's bus when it is not the definition's (`id`: a servo found by motion in a guided calibration).
+pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "id", "zero", "kp", "kv", "run", "min", "max", "reversed"];
 /// The fields of one re-zero: the joint, its new zero (rad), when (epoch ms), who (person:<id> | agent:<id>), why.
 pub const REZERO_FIELDS: &[&str] = &["joint", "zero", "at", "by", "reason"];
 /// The fields of one calibrated camera: its video channel, the arm it was measured against, its intrinsics (pixels),
@@ -198,6 +200,14 @@ fn calibration_of(t: &DocTree) -> Result<Json, String> {
         }
         if j.get("reversed").is_some() && !matches!(j.get("reversed"), Some(Json::Bool(_))) {
             return Err(format!("{at}: reversed is true or false, not {}", said(j.get("reversed"))));
+        }
+        if j.get("id").is_some() && !finite(j.get("id")).is_some_and(|n| n.fract() == 0.0 && (0.0..=252.0).contains(&n)) {
+            return Err(format!("{at}: id is the servo's id on this unit's bus (an integer 0..252), not {}", said(j.get("id"))));
+        }
+        if let Some(id) = finite(j.get("id")) {
+            if let Some(twin) = joints.iter().find(|o| !std::ptr::eq(*o, j) && finite(o.get("id")) == Some(id)) {
+                return Err(format!("{at}: servo {id} is also {}: one servo is one joint", said(twin.get("name"))));
+            }
         }
     }
     if let Some(by) = t.attr_of("by") {
