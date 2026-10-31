@@ -51,7 +51,7 @@ elements! {
     /// A calibrated joint: `.name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json")`, and its
     /// measured travel and direction: `.min(830).max(3270).reversed(true)` (a travel through the seam, 4095 -> 0:
     /// `.min(3887).max(80).wraps(true)`), and the servo it is on this unit's bus
-    /// when not the definition's: `.id(2)`.
+    /// when not the definition's: `.id(2)`; the position offset written to the servo to move the seam out: `.offset(1984)`.
     joint: leaf;
     /// A re-zero, appended, never edited: `.joint("shoulder_lift").zero(0.015).at(…).by("person:owner").reason(…)`.
     rezero: leaf;
@@ -68,7 +68,7 @@ attributes! {
         serial; product_id; model; release;
         seq; kind; at; prev; by; to; contract_ref; attestation_ref; data;
         rev; of; frozen; product; note; previous; path; digest; file; status; accepted; reason; from;
-        device; name; zero; kp; kv; run; joint; min; max; wraps; reversed;
+        device; name; zero; kp; kv; run; joint; min; max; wraps; offset; reversed;
         channel; robot; intrinsics; extrinsics; marker; residual; reality;
     }
 }
@@ -98,7 +98,7 @@ pub const CALIBRATION_FIELDS: &[&str] = &["device", "serial", "note", "by", "at"
 /// the run that measured them, the travel measured end to end (`min`, `max`: the bus's raw values, min < max), and
 /// whether the joint counts the other way than its definition says (`reversed`), and the servo id the joint has on this
 /// unit's bus when it is not the definition's (`id`: a servo found by motion in a guided calibration).
-pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "id", "zero", "kp", "kv", "run", "min", "max", "wraps", "reversed"];
+pub const CALIBRATION_JOINT_FIELDS: &[&str] = &["name", "id", "zero", "kp", "kv", "run", "min", "max", "wraps", "offset", "reversed"];
 /// The fields of one re-zero: the joint, its new zero (rad), when (epoch ms), who (person:<id> | agent:<id>), why.
 pub const REZERO_FIELDS: &[&str] = &["joint", "zero", "at", "by", "reason"];
 /// The fields of one calibrated camera: its video channel, the arm it was measured against, its intrinsics (pixels),
@@ -206,6 +206,10 @@ fn calibration_of(t: &DocTree) -> Result<Json, String> {
                 return Err(format!("{at}: a travel that wraps goes from min up through the seam to max, so min > max, not [{}, {}]", said(j.get("min")), said(j.get("max"))));
             }
             return Err(format!("{at}: min and max are the bus's values with min < max, not [{}, {}]", said(j.get("min")), said(j.get("max"))));
+        }
+        // offset: the position offset a guided calibration wrote to the servo to move the seam out of the travel.
+        if j.get("offset").is_some() && !finite(j.get("offset")).is_some_and(|n| n.fract() == 0.0 && n.abs() <= 2047.0) {
+            return Err(format!("{at}: offset is the position offset written to the servo, an integer -2047..2047, not {}", said(j.get("offset"))));
         }
         if j.get("reversed").is_some() && !matches!(j.get("reversed"), Some(Json::Bool(_))) {
             return Err(format!("{at}: reversed is true or false, not {}", said(j.get("reversed"))));
