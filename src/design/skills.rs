@@ -1,13 +1,14 @@
-//! A SYMBOLIC AGENT'S SKILL IN RUST — a `skill.rs` in the skill's own folder (`skills/<name>/skill.rs`). The same
-//! elements, and the same document, as the TypeScript SDK's `skills.ts` (`skill.tsx`) and the Python SDK's
-//! `skills.py`. A skill's name is its folder's name, so the file never names itself:
+//! AN AGENT'S SKILL IN RUST — a `skill.rs` in the skill's own folder (`skills/<name>/skill.rs`). The same elements,
+//! and the same document, as the TypeScript SDK's `skills.ts` (`skill.tsx`) and the Python SDK's `skills.py`. A
+//! skill's name is its folder's name, so the file never names itself. A skill holds no phrases and no utterance
+//! examples: free text is read only by a model agent with tools, which chooses a skill and gives its args as
+//! structured values:
 //!
 //! ```
 //! use commandagi::design::skills::*;
 //!
 //! fn document() -> El {
 //!     skill([
-//!         phrase().match_("count [the] errors in {file:path}"),
 //!         step().tool("read_file").args(json(r#"{"path": "{file}"}"#)).as_("read"),
 //!         step().expr(r#"count(filter(lines(read.text), contains(it, "error")))"#).as_("n"),
 //!         reply().text("{file} has {n} lines that say error."),
@@ -17,12 +18,12 @@
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
 //!
-//! What a skill holds, each a child in the order written: `phrase().match_(…)`, `step()` (exactly one of `expr`,
-//! `tool`, `script`, `skill` or `see`; `args`; `as_` binds its value; `always`), `reply().text(…)`,
-//! `rule().if_(…).then(…)`, `fact().is_(…)` and `example().say(…).reply(…)`; on `skill` itself `about`, `needs`,
-//! `gives`, `removes` and `origin`. A literal script beside it declares `result().value(…)`. Structure only: the
-//! phrases, expressions and facts are read, and a skill is admitted or rejected, by the agent's runtime
-//! (`packages/domain/world/symbolic` in the CommandAGI repository).
+//! A skill's args are the `{name}` placeholders its steps read that no earlier step binds with `as_` (`file` above).
+//! What a skill holds, each a child in the order written: `step()` (exactly one of `expr`, `tool`, `script`, `skill`
+//! or `see`; `args`; `as_` binds its value; `always`) and `reply().text(…)`; on `skill` itself `about` and `origin`.
+//! A literal script beside it declares `result().value(…)`. Structure only: the expressions are read, and a skill is
+//! admitted or rejected, by the agent's runtime (`packages/domain/world/symbolic/skills.js` in the CommandAGI
+//! repository).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
@@ -30,20 +31,12 @@ use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
-    /// One skill: its phrases, steps, reply, rules, facts and examples, in the order written.
+    /// One skill: its steps and reply, in the order written.
     skill: children;
-    /// How it is asked for: `.match_("count [the] errors in {file:path}")`.
-    phrase: leaf;
     /// What it does: exactly one of `.expr`, `.tool`, `.script`, `.skill` or `.see`.
     step: leaf;
     /// What it says, with `{bindings}` filled in: `.text("{n}")`.
     reply: leaf;
-    /// A rule it knows: `.if_(["unit(?u, ?d)"]).then("known(?u)")`.
-    rule: leaf;
-    /// A fact it knows: `.is_("ready(cam)")`.
-    fact: leaf;
-    /// An utterance and the reply it must give: the skill's own check.
-    example: leaf;
     /// What a literal script declares: `.value(…)`, the value its step binds.
     result: leaf;
 }
@@ -51,18 +44,17 @@ elements! {
 attributes! {
     /// The fields of a skill and of its children, chained on their elements.
     pub trait SkillsAttrs {
-        about; needs; gives; removes; origin;
-        match_; expr; tool; script; skill_ = "skill"; see; args; as_; always; image; template; against;
-        text; if_; then; name; is_; say; reply_ = "reply"; value;
+        about; origin;
+        expr; tool; script; skill_ = "skill"; see; args; as_; always; image; template; against;
+        text; value;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "skills", roots: &["skill", "result"], declare };
 
-pub const SKILL_FIELDS: &[&str] = &["about", "needs", "gives", "removes", "origin"];
+pub const SKILL_FIELDS: &[&str] = &["about", "origin"];
 pub const STEP_KINDS: &[&str] = &["expr", "tool", "script", "skill", "see"];
 pub const STEP_FIELDS: &[&str] = &["expr", "tool", "script", "skill", "see", "args", "as", "always", "image", "template", "against"];
-pub const RULE_FIELDS: &[&str] = &["if", "then", "name"];
 
 const SKILL: Vocabulary = Vocabulary {
     format: "skill",
@@ -70,12 +62,8 @@ const SKILL: Vocabulary = Vocabulary {
     root: "skill",
     tags: &[
         TagRule::new("skill", &[]).attrs(SKILL_FIELDS),
-        TagRule::new("phrase", &["skill"]).key("match").required(&["match"]).attrs(&["match"]),
         TagRule::new("step", &["skill"]).attrs(STEP_FIELDS),
         TagRule::new("reply", &["skill"]).single().required(&["text"]).attrs(&["text"]),
-        TagRule::new("rule", &["skill"]).required(&["if", "then"]).attrs(RULE_FIELDS),
-        TagRule::new("fact", &["skill"]).key("is").required(&["is"]).attrs(&["is"]),
-        TagRule::new("example", &["skill"]).key("say").required(&["say", "reply"]).attrs(&["say", "reply"]),
     ],
     from_tree: skill_of,
 };
@@ -94,10 +82,6 @@ fn declare(root: El) -> Result<Declared, String> {
 
 fn is_text(v: &Json) -> bool {
     matches!(v, Json::Str(s) if !s.is_empty())
-}
-
-fn is_facts(v: &Json) -> bool {
-    matches!(v, Json::Arr(items) if items.iter().all(is_text))
 }
 
 fn text(t: &DocTree, k: &str) -> Result<(), String> {
@@ -127,11 +111,6 @@ fn skill_of(t: &DocTree) -> Result<Json, String> {
     for k in ["about", "origin"] {
         text(t, k)?;
     }
-    for k in ["needs", "gives", "removes"] {
-        if let Some(v) = t.attr_of(k).filter(|v| !is_facts(v)) {
-            return Err(format!("<skill> {k} is a list of facts ([\"at(?unit, home)\"]), not {}", v.text()));
-        }
-    }
     let parts = |tag: &'static str| t.children.iter().filter(move |c| c.tag == tag);
     let mut steps = Vec::new();
     for (i, s) in parts("step").enumerate() {
@@ -151,49 +130,15 @@ fn skill_of(t: &DocTree) -> Result<Json, String> {
         }
         steps.push(said(s, STEP_FIELDS));
     }
-    let mut rules = Vec::new();
-    for r in parts("rule") {
-        let cond = r.attr_of("if");
-        let reads = match cond {
-            Some(v @ Json::Str(_)) => is_text(v),
-            Some(Json::Arr(items)) => !items.is_empty() && items.iter().all(is_text),
-            _ => false,
-        };
-        if !reads {
-            return Err(format!("<rule> if is a fact or a list of facts, not {}", cond.map(Json::text).unwrap_or_else(|| "undefined".into())));
-        }
-        text(r, "then")?;
-        text(r, "name")?;
-        rules.push(said(r, RULE_FIELDS));
-    }
     let reply = parts("reply").next();
     if let Some(r) = reply {
         text(r, "text")?;
     }
-    let mut phrases = Vec::new();
-    for p in parts("phrase") {
-        text(p, "match")?;
-        phrases.push(Json::obj().with("match", p.attr_of("match").cloned().unwrap_or(Json::Null)));
-    }
-    let mut facts = Vec::new();
-    for f in parts("fact") {
-        text(f, "is")?;
-        facts.push(f.attr_of("is").cloned().unwrap_or(Json::Null));
-    }
-    let mut examples = Vec::new();
-    for e in parts("example") {
-        match (e.attr_of("say"), e.attr_of("reply")) {
-            (Some(say @ Json::Str(s)), Some(rep @ Json::Str(_))) if !s.is_empty() => {
-                examples.push(Json::obj().with("say", say.clone()).with("reply", rep.clone()));
-            }
-            _ => return Err("<example> is say=\"…\" reply=\"…\"".into()),
-        }
-    }
-    let mut out = said(t, SKILL_FIELDS).with("phrases", Json::Arr(phrases)).with("steps", Json::Arr(steps));
+    let mut out = said(t, SKILL_FIELDS).with("steps", Json::Arr(steps));
     if let Some(r) = reply {
         out.set("reply", r.attr_of("text").cloned().unwrap_or(Json::Null));
     }
-    Ok(out.with("rules", Json::Arr(rules)).with("facts", Json::Arr(facts)).with("examples", Json::Arr(examples)))
+    Ok(out)
 }
 
 fn result_of(t: &DocTree) -> Result<Json, String> {

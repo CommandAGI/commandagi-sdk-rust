@@ -1,8 +1,10 @@
-// A symbolic agent's skill in Rust against the document the TypeScript SDK's skills.ts gives for the same elements:
-// its phrases, steps and reply; a literal script's result; a skill that does not read is refused with why.
+// An agent's skill in Rust against the document the TypeScript SDK's skills.ts gives for the same elements: its steps
+// and reply; a literal script's result; a skill that does not read is refused with why, and what the vocabulary has no
+// words for (a phrase, an example, a rule, a fact) is refused by name.
 
 use commandagi::design::skills::*;
 use commandagi::design::{declare, Declared};
+use commandagi::design::El;
 
 fn document(root: El) -> (String, Json) {
     match declare(root).unwrap() {
@@ -15,24 +17,20 @@ fn document(root: El) -> (String, Json) {
 fn the_example_is_its_document() {
     let (format, doc) = document(
         skill([
-            phrase().match_("triple {x:number}"),
             step().expr("mul(x, 3)").as_("out"),
             step().tool("read_file").args(json(r#"{"path": "{file}"}"#)).as_("read").always(true),
             reply().text("{out}"),
-            rule().if_(["unit(?u, ?d)"]).then("known(?u)"),
-            fact().is_("ready(cam)"),
-            example().say("triple 2").reply_(""),
         ])
-        .about("Three times a number."),
+        .about("Three times a number.")
+        .origin("frozen:cua"),
     );
     assert_eq!(format, "skill");
     assert_eq!(
         doc,
         Json::parse(
-            r#"{"about": "Three times a number.", "phrases": [{"match": "triple {x:number}"}],
+            r#"{"about": "Three times a number.", "origin": "frozen:cua",
                 "steps": [{"expr": "mul(x, 3)", "as": "out"}, {"tool": "read_file", "args": {"path": "{file}"}, "as": "read", "always": true}],
-                "reply": "{out}", "rules": [{"if": ["unit(?u, ?d)"], "then": "known(?u)"}], "facts": ["ready(cam)"],
-                "examples": [{"say": "triple 2", "reply": ""}]}"#
+                "reply": "{out}"}"#
         )
         .unwrap()
     );
@@ -46,10 +44,18 @@ fn a_skill_that_does_not_read_is_refused_with_why() {
         (skill([step().as_("x")]), "is exactly one of"),
         (skill([step().expr("1").always("yes")]), "always is true or false"),
         (skill([step().tool("read_file").args(["a"])]), "args is an object"),
-        (skill([rule().if_(json("[]")).then("x")]), "if is a fact or a list of facts"),
-        (skill([]).needs("ready"), "needs is a list of facts"),
+        (skill([]).attr("gives", json(r#"["at(arm, home)"]"#)), "gives"),
     ] {
         let said = declare(s).unwrap_err();
         assert!(said.contains(why), "{why}: {said}");
+    }
+}
+
+#[test]
+fn a_phrase_an_example_a_rule_or_a_fact_is_refused_by_name() {
+    // Free text is read only by a model agent: a skill has no phrase to match or example utterance to check.
+    for tag in ["phrase", "example", "rule", "fact"] {
+        let said = declare(skill([El::new(tag).attr("is", "a")])).unwrap_err();
+        assert!(said.contains(tag), "{tag}: {said}");
     }
 }
