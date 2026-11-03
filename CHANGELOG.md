@@ -6,6 +6,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 ## Unreleased
 
+Changed
+
+- `check().sweep(json(r#"{"joints": ["X", "Z"], "step": 10}"#))` names the joints it moves (was `joint`). Several joints are
+  swept as a grid, and a loop a swept joint closes is solved at each pose. The same as the TypeScript SDK.
+
 Added
 
 - `commandagi::design::records`: a calibration's `joint()` may carry its measured travel `.min()`/`.max()` (the bus's raw values, min < max) and `.reversed(true)`; `calibration()` takes `.by()` and `.at()` (who measured it and when). The same documents and refusals as the TypeScript SDK.

@@ -368,19 +368,19 @@ fn checks_accepts_permits_and_fasteners_are_the_documents_lists() {
 }
 
 #[test]
-fn a_check_sweeps_a_joint_over_its_limits_and_a_pair_accept_is_bounded_by_its_volume() {
+fn a_check_sweeps_its_joints_over_their_limits_and_a_pair_accept_is_bounded_by_its_volume() {
     // PCBC-14, PCBC-18: the TypeScript and Python SDKs read the same fields.
     let g = graph(
         assembly([
-            check().id("stroke").kind("interference").against(["Crown"]).sweep(json(r#"{"joint": "ramJ", "step": 10}"#)),
+            check().id("stroke").kind("interference").against(["Crown"]).sweep(json(r#"{"joints": ["ramJ"], "step": 10}"#)),
             accept().id("sleeve").check("stroke").body("Sleeve").other("Ram").max_volume(3200).reason("the ram is drawn as its envelope"),
         ])
         .name("Press"),
     );
-    assert_eq!(node(&g, "checks").get("inputs").unwrap().text(), r#"{"value":[{"id":"stroke","kind":"interference","against":["Crown"],"sweep":{"joint":"ramJ","step":10}}]}"#);
+    assert_eq!(node(&g, "checks").get("inputs").unwrap().text(), r#"{"value":[{"id":"stroke","kind":"interference","against":["Crown"],"sweep":{"joints":["ramJ"],"step":10}}]}"#);
     assert_eq!(node(&g, "accepted").get("inputs").unwrap().text(), r#"{"value":[{"id":"sleeve","check":"stroke","body":"Sleeve","other":"Ram","maxVolume":3200,"reason":"the ram is drawn as its envelope"}]}"#);
     assert_eq!(
-        bad(assembly([check().id("s").kind("interference").sweep(json(r#"{"joint": "ramJ", "samples": 1}"#))]).name("P")),
+        bad(assembly([check().id("s").kind("interference").sweep(json(r#"{"joints": ["ramJ"], "samples": 1}"#))]).name("P")),
         r#"check().id("s"): sweep/samples: must be at least 2 (got 1)"#
     );
 }

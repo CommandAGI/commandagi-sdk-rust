@@ -68,7 +68,7 @@
 //!                                                revolute, prismatic, cylindrical, planar, screw, spherical, universal
 //! mate().id().kind().a().b().axis() …            a mate between two components of an assembly (`assembly.mates`)
 //! sheet().id().size().scale().projection().views(…) …      an engineering drawing sheet of the document (`drawings`)
-//! check().id().kind().bodies().against().sweep(…) …      a check the design must pass (`checks`; a sweep moves a joint)
+//! check().id().kind().bodies().against().sweep(…) …      a check the design must pass (`checks`; a sweep moves joints)
 //! accept().id().check().body().other().region().max_volume().reason()   a finding accepted on purpose (`accepted`)
 //! permitted().id().check().body().process().edge_dir().region().reason()   findings a process or a purpose permits
 //!                                                (`permitted`)
@@ -129,7 +129,7 @@ elements! {
     assemble: leaf;
     /// The product as it is sold: `product().id("cam").name("Camera").shipping(json(r#"{"hsCode": "8525.89"}"#))`.
     product: leaf;
-    /// A check the design must pass: `check().id("stroke").kind("interference").sweep(json(r#"{"joint": "ramJ"}"#))`.
+    /// A check the design must pass: `check().id("stroke").kind("interference").sweep(json(r#"{"joints": ["ramJ"]}"#))`.
     check: leaf;
     /// A finding accepted on purpose: `accept().id("a1").check("clash").body("Sleeve").other("Ram").max_volume(3200).reason(…)`.
     accept: leaf;
@@ -252,8 +252,8 @@ attributes! {
         hole; shaft; intent;
         /// A stack-up check's chain (`["+pocket", "-width"]`), limit (`{"min": 0.05, "max": 0.5}`), method, samples and seed.
         chain; limit; method; samples; seed;
-        /// A check's bodies compared against others, its smallest shared volume (mm³), and its sweep over a joint's
-        /// range: `sweep(json(r#"{"joint": "ramJ", "step": 10}"#))`.
+        /// A check's bodies compared against others, its smallest shared volume (mm³), and its sweep over its joints'
+        /// ranges: `sweep(json(r#"{"joints": ["X", "Z"], "step": 10}"#))`.
         against; min_volume; sweep;
         /// A registered check's own fields (a printer's nozzle, a tool's radius), as that check reads them.
         options;
