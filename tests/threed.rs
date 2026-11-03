@@ -286,7 +286,7 @@ fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
             body().id("base").engineering(json(engineering)),
             slot().name("dynamics").value(json(r#"{"ground": {"enabled": true}}"#)),
             j1(),
-            joint().id("j2").kind("screw").a("arm").anchor([0, 0, 0]).pitch(2),
+            joint().id("j2").kind("screw").a("arm").anchor([0, 0, 0]).pitch(2).requires(json(r#"{"j1": [0, 1.5]}"#)),
             sheet().id("sheet1").views(json(r#"[{"id": "front", "view": "front"}, {"id": "top", "view": "top"}]"#)).title(json(r#"{"drawnBy": "JV"}"#)),
         ])
         .name("P"),
@@ -297,7 +297,7 @@ fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
     assert_eq!(dynamics.get("type").and_then(Json::as_str), Some("3d.dynamics"));
     assert_eq!(
         dynamics.get("inputs").unwrap().text(),
-        r#"{"ground":{"enabled":true},"joints":[{"id":"j1","kind":"revolute","a":"base","b":"arm","anchor":[0,0,40],"axis":[0,0,1],"limits":[-1.5,1.5],"refA":{"kind":"face","point":[0,0,40],"direction":[0,0,1]}},{"id":"j2","kind":"screw","a":"arm","anchor":[0,0,0],"pitch":2}]}"#
+        r#"{"ground":{"enabled":true},"joints":[{"id":"j1","kind":"revolute","a":"base","b":"arm","anchor":[0,0,40],"axis":[0,0,1],"limits":[-1.5,1.5],"refA":{"kind":"face","point":[0,0,40],"direction":[0,0,1]}},{"id":"j2","kind":"screw","a":"arm","anchor":[0,0,0],"pitch":2,"requires":{"j1":[0,1.5]}}]}"#
     );
     assert!(dynamics.get("meta").and_then(|m| m.get("sources")).and_then(|s| s.get("joint:j1")).is_some());
     // A sheet's fields with a default may be left out.
@@ -383,6 +383,10 @@ fn a_check_sweeps_its_joints_over_their_limits_and_a_pair_accept_is_bounded_by_i
         bad(assembly([check().id("s").kind("interference").sweep(json(r#"{"joints": ["ramJ"], "samples": 1}"#))]).name("P")),
         r#"check().id("s"): sweep/samples: must be at least 2 (got 1)"#
     );
+    // IC1-22, PCBC-24: a sweep holds another joint at a value for the whole sweep.
+    let held = graph(assembly([check().id("lift").kind("interference").sweep(json(r#"{"joints": ["lift"], "with": {"lid": 1.5}}"#))]).name("P"));
+    assert_eq!(node(&held, "checks").get("inputs").unwrap().text(), r#"{"value":[{"id":"lift","kind":"interference","sweep":{"joints":["lift"],"with":{"lid":1.5}}}]}"#);
+    assert!(bad(assembly([check().id("s").kind("interference").sweep(json(r#"{"joints": ["lift"], "with": {"lid": "open"}}"#))]).name("P")).contains("sweep/with/lid"));
 }
 
 #[test]

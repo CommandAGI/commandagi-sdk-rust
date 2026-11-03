@@ -236,7 +236,7 @@ attributes! {
         normals; nucleus; nurbs; offset; operation; optimization; order; origin; outward; overall_dimensions; pad; pad_diameter_mm;
         pads; paint; params; parents; part; parts; path; pin; pitch; placement; planar; plane; point; point_size; points;
         polygons; position; positions; profile; profiles; projection; proportions; provenance; pull_direction; qty; quaternion;
-        radii; radius; radius1; radius2; rate_per_hour; ref_; ref_a; ref_b; reference; refs; regions; render; representation; reverse;
+        radii; radius; radius1; radius2; rate_per_hour; ref_; ref_a; ref_b; reference; refs; regions; render; representation; requires; reverse;
         right_handed; rings; rotate_angle; rotate_axis; rotation_deg; rotations; rule; ruled; scale; scale_x_y_z;
         scales; scene_constraints; seed_feature; semantic_visibility; sh; sh_degree; side; signature; size; sketch;
         skins; source; source_materials; source_uv; spacing; spacing2; standard_parts; start; step; style;

@@ -13,6 +13,11 @@ Changed
 
 Added
 
+- `joint().requires(json(r#"{"j_lid": 100}"#))`: a joint moves only while other joints sit at a pose (a value, or a range
+  `[from, to]`), and `check().sweep(json(r#"{"joints": ["j_lift"], "with": {"guard": 60}}"#))` holds other joints at a
+  value. The same as the TypeScript SDK. For microfab: IC1-22 and PCBC-24 are closed; ROUTER-12 (the whole machine's
+  check at fine sweep steps) does not reproduce: the router at steps 5 / 5 / 2 runs whole in 107 s with the same
+  verdicts as at 20 / 10 / 5.
 - `commandagi::design::schematic`: a part says KiCad's reference when another part has it too, `part("POLY_2").reference("POLY")` (said only when it is not the name). `commandagi::design::pcb`: `component().library(…)` takes a footprint id with no library nickname as KiCad wrote it, `.footprint("POLY")`. The same as the TypeScript SDK.
 - `commandagi::design::records`: a calibration's `joint()` may carry its measured travel `.min()`/`.max()` (the bus's raw values, min < max) and `.reversed(true)`; `calibration()` takes `.by()` and `.at()` (who measured it and when). The same documents and refusals as the TypeScript SDK.
 - `commandagi::design::infra`: a VPN exit, a logged-in state and a vantage as `exit.rs`, `session.rs` and `vantage.rs`, the same
