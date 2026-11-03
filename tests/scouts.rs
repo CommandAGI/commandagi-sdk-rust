@@ -80,6 +80,10 @@ fn a_comparison_refuses_what_would_make_its_verdict_dishonest() {
         (one(case().tools(json(r#"[{"name": "a", "parameters": {}, "results": [{"when": {"x": 1}, "result": "r"}]}]"#)).check(json(r#"{"exact": "x"}"#))), "a result is"),
         (one(case().check(json(r#"{"program": {"data": []}}"#))), "program is { data: [[x, y], …] }"),
         (one(case().check(json(r#"{"program": {"data": [[1, 4]], "tolerance": -1}}"#))), "program tolerance is a number of 0 or more"),
+        (one(case().check(json(r#"{"kernel": {"as": "world.tsx", "expect": {"parts": 1}}}"#))), "a solid or a schematic, one file"),
+        (one(case().check(json(r#"{"kernel": {"as": "plate.3d.tsx", "expect": {"nets": 2}}}"#))), "a solid has no measure nets"),
+        (one(case().check(json(r#"{"kernel": {"as": "divider.sch.tsx", "expect": {"connections": [["R1"]]}}}"#))), "connections is a list of pin groups"),
+        (one(case().check(json(r#"{"kernel": {"as": "plate.3d.tsx", "expect": {}}}"#))), "names at least one of volume, bbox, bodies, holes"),
         (refuse(two_incumbents), "one incumbent"),
         (refuse(scout([]).budget(0)), "budget is a number above 0"),
         (refuse(scout([]).title("no budget")), "needs budget"),
@@ -109,6 +113,14 @@ fn a_tool_case_offers_its_tools_and_their_answers() {
     assert_eq!(cases[1].get("check"), Some(&Json::parse(r#"{"tool": "send_email"}"#).unwrap()));
     let (_, prog, _) = document(scout([workload([case().id("c").from_("synthetic").prompt("p").check(json(r#"{"program": {"data": [[1, 4], [2, 7], [5, 16]]}}"#))]).id("w")]).budget(1));
     assert_eq!(first_workload_cases(&prog)[0].get("check"), Some(&Json::parse(r#"{"program": {"data": [[1, 4], [2, 7], [5, 16]]}}"#).unwrap()));
+    // A kernel check measures a solid or a schematic: each kind has its own measures.
+    for check in [
+        r#"{"kernel": {"as": "plate.3d.tsx", "expect": {"volume": 3858.6, "bbox": [40, 20, 5], "bodies": 1, "holes": 1}, "tolerance": 0.01}}"#,
+        r#"{"kernel": {"as": "divider.sch.tsx", "expect": {"parts": 3, "nets": 3, "connections": [["R1.2", "R2.1"]]}}}"#,
+    ] {
+        let (_, k, _) = document(scout([workload([case().id("c").from_("synthetic").prompt("p").check(json(check))]).id("w")]).budget(1));
+        assert_eq!(first_workload_cases(&k)[0].get("check"), Some(&Json::parse(check).unwrap()));
+    }
 }
 
 #[test]

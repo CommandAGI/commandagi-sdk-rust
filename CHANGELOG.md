@@ -13,6 +13,10 @@ Changed
 
 Added
 
+- A scout's case may be checked by the kernel: `check(json(r#"{"kernel": {"as": "plate.3d.tsx", "expect": {"volume": 13928.8,
+  "bbox": [60, 40, 6], "bodies": 1, "holes": 4}}}"#))` builds the answer as a solid and holds its measures;
+  `"as": "divider.sch.tsx"` reads it into its netlist and holds `parts`, `nets` and `connections`. The same as the
+  TypeScript SDK.
 - `joint().requires(json(r#"{"j_lid": 100}"#))`: a joint moves only while other joints sit at a pose (a value, or a range
   `[from, to]`), and `check().sweep(json(r#"{"joints": ["j_lift"], "with": {"guard": 60}}"#))` holds other joints at a
   value. The same as the TypeScript SDK. For microfab: IC1-22 and PCBC-24 are closed; ROUTER-12 (the whole machine's

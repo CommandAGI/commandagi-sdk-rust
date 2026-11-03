@@ -89,7 +89,10 @@ pub const CASE_ORIGINS: &[&str] = &["public", "synthetic", "own-run"];
 /// What a workload needs of a model: a hard gate, never a score.
 pub const WORKLOAD_NEEDS: &[&str] = &["tools", "structured", "image"];
 /// The checks a case may name, cheapest first (a judge's rubric only where no check exists).
-pub const CHECK_KINDS: &[&str] = &["exact", "oneOf", "number", "contains", "regex", "json", "letter", "literal", "tool", "program"];
+pub const CHECK_KINDS: &[&str] = &["exact", "oneOf", "number", "contains", "regex", "json", "letter", "literal", "tool", "program", "kernel"];
+/// What a `kernel` check may expect of a solid (`<name>.3d.tsx`), and of a schematic (`<name>.sch.tsx`).
+pub const SOLID_MEASURES: &[&str] = &["volume", "bbox", "bodies", "holes"];
+pub const CIRCUIT_MEASURES: &[&str] = &["parts", "nets", "connections"];
 
 pub const REPLACEMENT_FIELDS: &[&str] = &["product", "vendor", "url", "asOf", "by", "readme"];
 pub const LAYER_FIELDS: &[&str] = &["kind", "title"];
@@ -257,6 +260,73 @@ fn check_of(t: &DocTree) -> Result<(), String> {
         if let Some(v) = p.get("tolerance").filter(|v| !matches!(v, Json::Num(n) if *n >= 0.0)) {
             return Err(format!("{} check: program tolerance is a number of 0 or more, not {}", call(t), v.text()));
         }
+    }
+    if let Some(k) = c.get("kernel") {
+        kernel_check(t, k)?;
+    }
+    Ok(())
+}
+
+/// The kind of file a `kernel` check measures, by its name: `Some(true)` a solid, `Some(false)` a schematic, alone in
+/// its folder (`plate.3d.tsx`, `divider.sch.rs`).
+fn kernel_file(name: &str) -> Option<bool> {
+    if name.contains('/') {
+        return None;
+    }
+    let lower = name.to_ascii_lowercase();
+    let ext = [".tsx", ".jsx", ".py", ".rs"].into_iter().find(|e| lower.ends_with(e))?;
+    let stem = &lower[..lower.len() - ext.len()];
+    if stem.len() > 3 && stem.ends_with(".3d") {
+        Some(true)
+    } else if stem.len() > 4 && stem.ends_with(".sch") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// A `kernel` check: the file it measures, and only the measures that file's kind has.
+fn kernel_check(t: &DocTree, k: &Json) -> Result<(), String> {
+    let solid = match (k, k.get("as")) {
+        (Json::Obj(_), Some(Json::Str(name))) => kernel_file(name),
+        _ => None,
+    };
+    let Some(solid) = solid else {
+        return Err(format!("{} check: kernel is {{ as: \"bracket.3d.tsx\" | \"divider.sch.tsx\", expect }} — a solid or a schematic, one file", call(t)));
+    };
+    if let Json::Obj(entries) = k {
+        if let Some((key, _)) = entries.iter().find(|(key, _)| !["as", "expect", "tolerance", "oriented"].contains(&key.as_str())) {
+            return Err(format!("{} check: kernel has no {}", call(t), key));
+        }
+    }
+    let allowed = if solid { SOLID_MEASURES } else { CIRCUIT_MEASURES };
+    let Some(Json::Obj(expect)) = k.get("expect").filter(|e| matches!(e, Json::Obj(x) if !x.is_empty())) else {
+        return Err(format!("{} check: kernel expect names at least one of {}", call(t), allowed.join(", ")));
+    };
+    for (key, v) in expect {
+        if !allowed.contains(&key.as_str()) {
+            return Err(format!("{} check: a {} has no measure {} ({})", call(t), if solid { "solid" } else { "schematic" }, key, allowed.join(", ")));
+        }
+        let count = matches!(v, Json::Num(n) if *n >= 0.0 && n.fract() == 0.0);
+        if ["bodies", "holes", "parts", "nets"].contains(&key.as_str()) && !count {
+            return Err(format!("{} check: kernel {} is a count", call(t), key));
+        }
+        if key == "volume" && !matches!(v, Json::Num(n) if *n > 0.0 && n.is_finite()) {
+            return Err(format!("{} check: kernel volume is mm³, more than 0", call(t)));
+        }
+        if key == "bbox" && !matches!(v, Json::Arr(xs) if xs.len() == 3 && xs.iter().all(|x| matches!(x, Json::Num(n) if *n >= 0.0 && n.is_finite()))) {
+            return Err(format!("{} check: kernel bbox is [x, y, z] mm", call(t)));
+        }
+        let pin = |p: &Json| matches!(p, Json::Str(s) if s.split('.').count() == 2 && s.split('.').all(|x| !x.is_empty() && !x.contains(char::is_whitespace)));
+        if key == "connections" && !matches!(v, Json::Arr(gs) if !gs.is_empty() && gs.iter().all(|g| matches!(g, Json::Arr(ps) if ps.len() >= 2 && ps.iter().all(pin)))) {
+            return Err(format!("{} check: kernel connections is a list of pin groups ([[\"R1.2\", \"R2.1\"]]), each on one net", call(t)));
+        }
+    }
+    if let Some(v) = k.get("tolerance").filter(|v| !matches!(v, Json::Num(n) if *n >= 0.0 && *n < 1.0)) {
+        return Err(format!("{} check: kernel tolerance is a share, 0 to under 1, not {}", call(t), v.text()));
+    }
+    if k.get("oriented").is_some_and(|v| !matches!(v, Json::Bool(_)) || !solid) {
+        return Err(format!("{} check: kernel oriented is true or false, on a solid", call(t)));
     }
     Ok(())
 }
