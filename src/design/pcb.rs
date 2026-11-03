@@ -53,7 +53,8 @@
 //!                                   (BOARD_FOOTPRINTS), or a library footprint by its ref ("Package_SO:SOIC-8") in
 //!                                   the `.pretty` folder `library` names (or the one `.kicad_mod` in it that it
 //!                                   names: the file of a second variant of one footprint,
-//!                                   "board.pretty/SOIC-8 2.kicad_mod"). `ref_at` and `value_at` [x, y] are where
+//!                                   "board.pretty/SOIC-8 2.kicad_mod"; with a library, a footprint id KiCad gave
+//!                                   no library nickname is its bare name, "POLY"). `ref_at` and `value_at` [x, y] are where
 //!                                   its reference and value texts sit (mm, in the footprint's own frame), and
 //!                                   `ref_rot` how far its reference text is turned there (degrees).
 //! trace().name().layer().width().points().rule().from().to().net().surface().uuid().segment_uuids().kicad()
@@ -1268,8 +1269,15 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     if !pretty {
                         return Err(format!("{}: library names a footprint library folder (a .pretty) or one .kicad_mod in it, not {}", at(el), library.text()));
                     }
-                    if !fp_text.is_some_and(footprint_ref) {
-                        return Err(format!("{}: a library footprint is its ref, \"Library:Footprint\" (\"Package_SO:SOIC-8\"), not {}", at(el), shown(fp)));
+                    // A footprint id with no library nickname (KiCad wrote `(footprint "POLY")`) is its bare name: the
+                    // library names the file.
+                    let bare = |f: &str| !f.is_empty() && !f.contains(':') && !f.contains('/');
+                    if !fp_text.is_some_and(|f| footprint_ref(f) || bare(f)) {
+                        return Err(format!(
+                            "{}: a library footprint is its ref, \"Library:Footprint\" (\"Package_SO:SOIC-8\"), or the bare name KiCad gave it (\"POLY\"), not {}",
+                            at(el),
+                            shown(fp)
+                        ));
                     }
                 } else if !fp_text.is_some_and(|f| BOARD_FOOTPRINTS.contains(&f) || footprint_ref(f)) {
                     return Err(format!(

@@ -173,6 +173,11 @@ fn a_netlist_circuit_lists_its_parts_pins_and_nets_and_carries_its_kicad_files()
     // A board-only footprint (a logo) is a part with no pins.
     let logo = graph(group("S", [part("G1").value("LOGO").pins(json("[]"))]));
     assert_eq!(node(&logo, "G1").get("inputs").unwrap().text(), r#"{"ref":"G1","value":"LOGO","pins":[]}"#);
+    // Two parts KiCad calls POLY: the second has a name of its own and says KiCad's reference.
+    let poly = graph(group("P", [part("POLY").pins(["1"]), part("POLY_2").reference("POLY").pins(["1"])]));
+    assert!(node(&poly, "POLY_2").get("inputs").unwrap().text().starts_with(r#"{"ref":"POLY_2","reference":"POLY","#));
+    assert!(!node(&poly, "POLY").get("inputs").unwrap().text().contains("reference"));
+    assert!(bad(group("P", [part("POLY").reference("POLY").pins(["1"])])).contains("reference is said only when it is not the name"));
     assert!(bad(group("S", [part("U1").pins(["1"]), net("N").pins([".U1 > .2"])])).contains("U1 has no pin 2"));
     assert!(bad(group("S", [attachment("a").role("art").file("a")])).contains("role is one of"));
     assert!(bad(group("S", [part("C1").pins(["1"]).spice(json(r#"[{"id": "c"}]"#))])).contains("spice is a list"));

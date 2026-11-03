@@ -113,7 +113,10 @@ fn an_end_names_a_via_or_another_traces_point_written_before_or_after_it() {
 fn a_library_footprint_is_its_ref_and_the_pretty_folder_that_holds_it() {
     let g = graph(board_of(vec![component().name("U1").footprint("Package_SO:SOIC-8").library("footprints.pretty").pcb_x(12).pcb_y(8).pcb_rotation(90)]));
     assert_eq!(inputs(&g, "fp_U1"), r#"{"ref":"U1","footprint":"Package_SO:SOIC-8","library":"footprints.pretty","placement":{"x":12,"y":8,"rot":90,"side":"top"}}"#);
-    assert!(bad(board_of(vec![component().name("U1").footprint("SOIC-8").library("footprints.pretty")])).contains(r#"its ref, "Library:Footprint""#));
+    assert!(bad(board_of(vec![component().name("U1").footprint("Package_SO/SOIC-8").library("footprints.pretty")])).contains(r#"its ref, "Library:Footprint""#));
+    // A footprint id KiCad gave no library nickname is its bare name: the library names the file.
+    let bare = graph(board_of(vec![component().name("POLY").footprint("POLY").library("board.pretty").pcb_x(1).pcb_y(2)]));
+    assert!(inputs(&bare, "fp_POLY").contains(r#""footprint":"POLY""#));
     assert!(bad(board_of(vec![component().name("U1").footprint("Package_SO:SOIC-8").library("SOIC-8.kicad_mod")])).contains("a footprint library folder (a .pretty)"));
     // A second variant of one footprint is its own file in the folder; the part still names the footprint it is.
     let v = graph(board_of(vec![component().name("U2").footprint("Package_SO:SOIC-8").library("footprints.pretty/SOIC-8 2.kicad_mod").pcb_x(1).pcb_y(2)]));

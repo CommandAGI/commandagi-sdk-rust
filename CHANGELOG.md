@@ -13,6 +13,7 @@ Changed
 
 Added
 
+- `commandagi::design::schematic`: a part says KiCad's reference when another part has it too, `part("POLY_2").reference("POLY")` (said only when it is not the name). `commandagi::design::pcb`: `component().library(…)` takes a footprint id with no library nickname as KiCad wrote it, `.footprint("POLY")`. The same as the TypeScript SDK.
 - `commandagi::design::records`: a calibration's `joint()` may carry its measured travel `.min()`/`.max()` (the bus's raw values, min < max) and `.reversed(true)`; `calibration()` takes `.by()` and `.at()` (who measured it and when). The same documents and refusals as the TypeScript SDK.
 - `commandagi::design::infra`: a VPN exit, a logged-in state and a vantage as `exit.rs`, `session.rs` and `vantage.rs`, the same
   elements and documents as the TypeScript SDK's `exit.tsx`, `session.tsx` and `vantage.tsx`, with the same refusals.

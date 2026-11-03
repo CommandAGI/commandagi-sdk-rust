@@ -48,6 +48,10 @@
 //!                                                                           json(r#"[{"number": "1", "name": "VBAT"}]"#);
 //!                                                                           [] for a board-only footprint (a logo)
 //! net(name).pins([".C1 > .pin1", ".U1 > .pin6"])                           a stored net of a netlist circuit
+//! … .reference("POLY")                                                     on any part: KiCad's reference when another
+//!                                                                           part has it too; the name stays the part's
+//!                                                                           own (POLY_2). Said only when it is not
+//!                                                                           the name
 //! … .no_connect(["3", "4"])                                                on any part: the pins it leaves open on
 //!                                                                           purpose, by pin NUMBER (KiCad's no-connect
 //!                                                                           marker); the electrical rule check does
@@ -176,6 +180,9 @@ attributes! {
         spice;
         /// The pins a part leaves open on purpose, by pin number: `["3", "4"]`.
         no_connect;
+        /// KiCad's reference of a part whose reference another part has too: `part("POLY_2").reference("POLY")`.
+        /// Said only when it is not the name.
+        reference;
         /// A part's number in its owner's numbering (KiCad property `CommandAGI IPN`): `"MF-R-3K"`.
         part_number;
         /// Who makes a part (KiCad property `Manufacturer`): `"Yageo"`.
@@ -388,6 +395,19 @@ fn spice_of(el: &El) -> Result<Option<Json>, String> {
     Ok(Some(v.clone()))
 }
 
+/// KiCad's reference of a part whose reference another part has too (KiCad's `microwave` demo has four footprints
+/// called POLY): the part's name is its own (`POLY_2`), and `.reference("POLY")` is what KiCad reads. It is said only
+/// when it is not the name.
+fn kicad_reference_of(el: &El, name: &str) -> Result<Option<Json>, String> {
+    match el.attr_of("reference") {
+        None => Ok(None),
+        Some(Json::Str(r)) if r.is_empty() => Err(format!("{}: reference is KiCad's reference designator (\"R1\")", el.call_text())),
+        Some(Json::Str(r)) if r == name => Err(format!("{}: reference is said only when it is not the name", el.call_text())),
+        Some(Json::Str(r)) => Ok(Some(Json::from(r.as_str()))),
+        Some(_) => Err(format!("{}: reference is KiCad's reference designator (\"R1\")", el.call_text())),
+    }
+}
+
 /// The pins a part leaves open on purpose (`.no_connect(["3", "4"])`), by pin number, as written.
 fn no_connect_of(el: &El) -> Result<Option<Json>, String> {
     let Some(v) = el.attr_of("noConnect") else { return Ok(None) };
@@ -486,7 +506,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
     let mut later: Vec<&El> = Vec::new();
     for &el in children {
         if let Some(ideal) = ideal(el.tag) {
-            let mut allowed = [&["name", "spice", "noConnect"], PLACE].concat();
+            let mut allowed = [&["name", "reference", "spice", "noConnect"], PLACE].concat();
             allowed.extend(ideal.value);
             if ideal.excitation {
                 allowed.push("excitation");
@@ -513,6 +533,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
             };
             let value = ideal.power.map(str::to_string).or(raw);
             let mut inputs = vec![("ref".to_string(), Json::from(reference.as_str()))];
+            if let Some(kicad) = kicad_reference_of(el, &reference)? {
+                inputs.push(("reference".into(), kicad));
+            }
             if let Some(value) = value {
                 inputs.push(("value".into(), value.into()));
             }
@@ -544,7 +567,7 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
         }
         match el.tag {
             "part" => {
-                refuse_unknown(el, &[&["name", "symbol", "library", "value", "pins", "spice", "noConnect"], FIELD_PROPS, PLACE].concat())?;
+                refuse_unknown(el, &[&["name", "reference", "symbol", "library", "value", "pins", "spice", "noConnect"], FIELD_PROPS, PLACE].concat())?;
                 let reference = text(el, "name", "the part's reference (U1)")?;
                 if parts.contains_key(&reference) {
                     return Err(format!("two parts are called {reference}"));
@@ -566,6 +589,9 @@ fn declare_sheet(s: &mut Scope, children: &[&El]) -> Result<(), String> {
                 let value = value_of(el, "value", "\"LM358\", 1000")?;
                 // The pins are the library's: the editor reads them (and the part's type) from the library file.
                 let mut inputs = vec![("ref".to_string(), Json::from(reference.as_str()))];
+                if let Some(kicad) = kicad_reference_of(el, &reference)? {
+                    inputs.push(("reference".into(), kicad));
+                }
                 if let Some(v) = value {
                     inputs.push(("value".into(), v.into()));
                 }
@@ -818,6 +844,9 @@ fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, Strin
     };
     let value = value_of(el, "value", "\"LM358\", 1000")?;
     let mut inputs = vec![("ref".to_string(), Json::from(reference))];
+    if let Some(kicad) = kicad_reference_of(el, reference)? {
+        inputs.push(("reference".into(), kicad));
+    }
     if let Some(v) = value {
         inputs.push(("value".into(), v.into()));
     }
