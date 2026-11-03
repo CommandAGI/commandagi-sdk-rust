@@ -368,6 +368,23 @@ fn checks_accepts_permits_and_fasteners_are_the_documents_lists() {
 }
 
 #[test]
+fn a_tactile_skin_places_a_grid_of_taxels_on_a_face_of_a_body() {
+    // The TypeScript and Python SDKs read the same fields (test_threed.py, threed.test.ts).
+    let jaw = |rows: f64| {
+        part([
+            box_().id("jaw").name("Jaw").center([-22, 0, 21]).size([4, 24, 38]).operation("new"),
+            tactile().id("pad").body("Jaw").at([-20, 0, 20]).normal([1, 0, 0]).along([0, 1, 0]).rows(rows).cols(4).pitch(5),
+        ])
+        .name("Jaw")
+    };
+    assert_eq!(
+        node(&graph(jaw(4.0)), "tactile").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"pad","body":"Jaw","at":[-20,0,20],"normal":[1,0,0],"along":[0,1,0],"rows":4,"cols":4,"pitch":5}]}"#
+    );
+    assert!(bad(jaw(0.0)).contains("rows"));
+}
+
+#[test]
 fn a_check_sweeps_its_joints_over_their_limits_and_a_pair_accept_is_bounded_by_its_volume() {
     // PCBC-14, PCBC-18: the TypeScript and Python SDKs read the same fields.
     let g = graph(

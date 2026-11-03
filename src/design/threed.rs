@@ -74,6 +74,8 @@
 //!                                                (`permitted`)
 //! fastener().id().part().length().at().axis().clamped([…]).receiver().washer().nut() …   a fastener stack: a library
 //!                                                screw placed through clamped bodies into a receiver (`fasteners`)
+//! tactile().id().body().at().normal().along().rows().cols().pitch() …   a tactile skin: a grid of taxels on one face
+//!                                                of a body (`tactile`), which a device definition's tactile channel records
 //! library().id().match_().engineering(…).sizes(…)   the data of every library fastener piece whose designation
 //!                                                matches (`library`): its supplier and price, given once
 //! slot().name(…).value(…)                       any other field of the document, whole
@@ -137,6 +139,8 @@ elements! {
     permitted: leaf;
     /// A fastener stack: `fastener().id("f1").part("iso-4762-m6").length(18).at([0, 0, 20]).clamped(["Lid"]).receiver("Base")`.
     fastener: leaf;
+    /// A tactile skin: `tactile().id("pad").body("Jaw").at([-20, 0, 20]).normal([1, 0, 0]).along([0, 1, 0]).rows(4).cols(4).pitch(5)`.
+    tactile: leaf;
     /// The data of every library fastener piece whose designation matches: `library().id("shcs").match_("ISO 4762 * A2-70")`.
     library: leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
@@ -265,6 +269,8 @@ attributes! {
         process; edge_dir;
         /// A fastener stack's clamped bodies, receiver, washer, nut, grip, fit, least thread engagement, torque and part number.
         clamped; receiver; washer; nut; grip; fit; min_engagement; torque; part_number;
+        /// A tactile skin's direction along its rows, its rows and columns of taxels, and the pressure it saturates at (kPa).
+        along; rows; cols; saturation;
         /// A library entry's designation pattern and its sizes.
         match_; sizes;
     }
@@ -344,6 +350,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
         ("accept", "accepted", "value", "AcceptedFinding"),
         ("permitted", "permitted", "value", "PermittedFinding"),
         ("fastener", "fasteners", "value", "FastenerStack"),
+        ("tactile", "tactile", "value", "TactileSkin"),
         ("item", "items", "value", "ProductItem"),
         ("assemble", "assemblySteps", "value", "AssemblyStep"),
         ("library", "library", "value", "LibraryData"),
@@ -351,7 +358,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
     ];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "item", "assemble", "library", "product", "point", "constraint",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "item", "assemble", "library", "product", "point", "constraint",
     "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input",
 ];
 /// A sketch's segment kinds, by tag.
@@ -368,7 +375,7 @@ const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
-    "accepted", "permitted", "fasteners", "items", "assemblySteps", "library", "products",
+    "accepted", "permitted", "fasteners", "tactile", "items", "assemblySteps", "library", "products",
 ];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];

@@ -13,6 +13,8 @@ Changed
 
 Added
 
+- A tactile skin on a face of a body: `tactile().id("pad").body("Jaw").at([-20, 0, 20]).normal([1, 0, 0]).along([0, 1, 0]).rows(4).cols(4).pitch(5)`
+  (the document's `tactile` list). The same as the TypeScript SDK.
 - A scout's case may be checked by the kernel: `check(json(r#"{"kernel": {"as": "plate.3d.tsx", "expect": {"volume": 13928.8,
   "bbox": [60, 40, 6], "bodies": 1, "holes": 4}}}"#))` builds the answer as a solid and holds its measures;
   `"as": "divider.sch.tsx"` reads it into its netlist and holds `parts`, `nets` and `connections`. The same as the
@@ -575,7 +577,6 @@ Added
 Changed
 
 - A union's refusal names the field at fault (`edges/0/select/vertical: is not one of its fields`).
-
 
 The first tagged release. The crate was `0.1.0` in its manifest from its first commit (2026-10-05) and through the 56
 commits to this one.
