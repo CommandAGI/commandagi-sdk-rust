@@ -115,6 +115,9 @@ fn a_library_footprint_is_its_ref_and_the_pretty_folder_that_holds_it() {
     assert_eq!(inputs(&g, "fp_U1"), r#"{"ref":"U1","footprint":"Package_SO:SOIC-8","library":"footprints.pretty","placement":{"x":12,"y":8,"rot":90,"side":"top"}}"#);
     assert!(bad(board_of(vec![component().name("U1").footprint("SOIC-8").library("footprints.pretty")])).contains(r#"its ref, "Library:Footprint""#));
     assert!(bad(board_of(vec![component().name("U1").footprint("Package_SO:SOIC-8").library("SOIC-8.kicad_mod")])).contains("a footprint library folder (a .pretty)"));
+    // A second variant of one footprint is its own file in the folder; the part still names the footprint it is.
+    let v = graph(board_of(vec![component().name("U2").footprint("Package_SO:SOIC-8").library("footprints.pretty/SOIC-8 2.kicad_mod").pcb_x(1).pcb_y(2)]));
+    assert!(inputs(&v, "fp_U2").contains(r#""library":"footprints.pretty/SOIC-8 2.kicad_mod""#));
 }
 
 #[test]

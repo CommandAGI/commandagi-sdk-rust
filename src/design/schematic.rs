@@ -45,7 +45,8 @@
 //!                                                                           declares nothing
 //! part(name).pins(["1", "2"]).value(…).symbol(…)                            a part of a netlist circuit (no sheet):
 //!                                                                           its pins by number, or
-//!                                                                           json(r#"[{"number": "1", "name": "VBAT"}]"#)
+//!                                                                           json(r#"[{"number": "1", "name": "VBAT"}]"#);
+//!                                                                           [] for a board-only footprint (a logo)
 //! net(name).pins([".C1 > .pin1", ".U1 > .pin6"])                           a stored net of a netlist circuit
 //! … .no_connect(["3", "4"])                                                on any part: the pins it leaves open on
 //!                                                                           purpose, by pin NUMBER (KiCad's no-connect
@@ -787,7 +788,8 @@ fn netlist_part(s: &mut Scope, el: &El, reference: &str) -> Result<Placed, Strin
         }
     }
     let raw = match el.attr_of("pins") {
-        Some(Json::Arr(p)) if !p.is_empty() => p,
+        // A part with no pins is a board-only footprint (a logo, a mounting mark: KiCad's `board_only`).
+        Some(Json::Arr(p)) => p,
         _ => return Err(format!("{}: pins is a list of pin numbers ([\"1\", \"2\"]) or of {{ number, name }}", el.call_text())),
     };
     // A pin number may repeat (a power pin each unit of a part shares, a mechanical pad with no number).

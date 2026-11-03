@@ -170,6 +170,9 @@ fn a_netlist_circuit_lists_its_parts_pins_and_nets_and_carries_its_kicad_files()
     assert_eq!(node(&g, "net_VCC").text(), r#"{"id":"net_VCC","type":"eda.net","inputs":{"pins.1":{"wire":{"node":"U1","port":"p2"}},"pins.2":{"wire":{"node":"C1","port":"p1"}}},"label":"VCC"}"#);
     assert_eq!(node(&g, "source_Board.kicad_sch").text(), r#"{"id":"source_Board.kicad_sch","type":"eda.source","inputs":{"name":"Board.kicad_sch","role":"schematic","file":"Board.kicad_sch"},"label":"Board.kicad_sch"}"#);
     assert!(bad(group("S", [part("U1").pins(["1"]).sch_x(0).sch_y(0)])).contains("has no place on the sheet"));
+    // A board-only footprint (a logo) is a part with no pins.
+    let logo = graph(group("S", [part("G1").value("LOGO").pins(json("[]"))]));
+    assert_eq!(node(&logo, "G1").get("inputs").unwrap().text(), r#"{"ref":"G1","value":"LOGO","pins":[]}"#);
     assert!(bad(group("S", [part("U1").pins(["1"]), net("N").pins([".U1 > .2"])])).contains("U1 has no pin 2"));
     assert!(bad(group("S", [attachment("a").role("art").file("a")])).contains("role is one of"));
     assert!(bad(group("S", [part("C1").pins(["1"]).spice(json(r#"[{"id": "c"}]"#))])).contains("spice is a list"));

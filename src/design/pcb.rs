@@ -51,7 +51,9 @@
 //!                                   .uuid().kicad()
 //!                                   the schematic's part `name` on this board: one of the editor's own land patterns
 //!                                   (BOARD_FOOTPRINTS), or a library footprint by its ref ("Package_SO:SOIC-8") in
-//!                                   the `.pretty` folder `library` names. `ref_at` and `value_at` [x, y] are where
+//!                                   the `.pretty` folder `library` names (or the one `.kicad_mod` in it that it
+//!                                   names: the file of a second variant of one footprint,
+//!                                   "board.pretty/SOIC-8 2.kicad_mod"). `ref_at` and `value_at` [x, y] are where
 //!                                   its reference and value texts sit (mm, in the footprint's own frame), and
 //!                                   `ref_rot` how far its reference text is turned there (degrees).
 //! trace().name().layer().width().points().rule().from().to().net().surface().uuid().segment_uuids().kicad()
@@ -1259,10 +1261,12 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 if let Some(library) = library {
                     let pretty = library.as_str().is_some_and(|l| {
                         let l = l.to_lowercase();
-                        l.ends_with(".pretty") || l.ends_with(".pretty/")
+                        // A folder, or one `.kicad_mod` in it: the file of a second variant of one footprint.
+                        let file = l.rsplit_once('/').is_some_and(|(dir, name)| dir.ends_with(".pretty") && name.len() > ".kicad_mod".len() && name.ends_with(".kicad_mod"));
+                        l.ends_with(".pretty") || l.ends_with(".pretty/") || file
                     });
                     if !pretty {
-                        return Err(format!("{}: library names a footprint library folder (a .pretty), not {}", at(el), library.text()));
+                        return Err(format!("{}: library names a footprint library folder (a .pretty) or one .kicad_mod in it, not {}", at(el), library.text()));
                     }
                     if !fp_text.is_some_and(footprint_ref) {
                         return Err(format!("{}: a library footprint is its ref, \"Library:Footprint\" (\"Package_SO:SOIC-8\"), not {}", at(el), shown(fp)));
