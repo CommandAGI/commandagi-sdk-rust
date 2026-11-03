@@ -572,3 +572,12 @@ fn every_root_of_the_schema_is_an_element_of_the_module() {
     let missing: Vec<&str> = roots.iter().map(|(root, _)| root.as_str()).filter(|root| !tags.iter().any(|t| t == root)).collect();
     assert!(missing.is_empty(), "schema roots with no element in commandagi::design::threed: {missing:?}");
 }
+
+// The editor's Sketch tool starts with an empty sketch: it draws nothing until its first point.
+#[test]
+fn an_empty_sketch_is_a_sketch_that_draws_nothing_yet() {
+    let g = graph(part([sketch(Vec::<El>::new()).id("s1").name("Sketch 1").plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#))]).name("Blank"));
+    let sk = node(&g, "s1").get("inputs").and_then(|i| i.get("sketch")).unwrap();
+    assert_eq!(sk.get("points").unwrap().text(), "{}");
+    assert_eq!(sk.get("segments").unwrap().text(), "{}");
+}
