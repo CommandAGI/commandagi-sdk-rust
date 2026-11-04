@@ -68,6 +68,29 @@ fn an_rfc_is_its_draft_and_id_a_case_its_harms_and_relief() {
 }
 
 #[test]
+fn a_round_is_the_companys_rounds_in_the_order_written() {
+    // The same round as business.test.ts and test_business.py.
+    let r = round([investment().stakeholder("Lead Fund").amount("5000000"), investment().stakeholder("Ada Lovelace").amount(250000)])
+        .name("Series A")
+        .date("2027-03-01")
+        .pre_money("20000000")
+        .currency("USD")
+        .pool_target("0.10");
+    let site = r.source_json().unwrap();
+    let (_, doc, sources) = document(company([cap_table().ocf("Kite Works/captable/"), r]).name("Kite Works"));
+    assert_eq!(
+        doc.get("rounds"),
+        Some(&j(r#"[{"name": "Series A", "date": "2027-03-01", "preMoney": "20000000", "currency": "USD", "poolTarget": "0.10",
+                     "investments": [{"stakeholder": "Lead Fund", "amount": "5000000"}, {"stakeholder": "Ada Lovelace", "amount": 250000}]}]"#))
+    );
+    assert_eq!(sources.get("rounds/0"), Some(&site));
+    assert!(sources.get("rounds/0/investments/1").is_some());
+    assert_eq!(document(company([]).name("Bare")).1.get("rounds"), None, "no round: no rounds field");
+    assert!(bad(company([round([]).name("Seed")]).name("X")).contains("round() needs pre_money"));
+    assert!(bad(company([round([investment().stakeholder("A").amount("1").with_attr("shares", 2)]).name("Seed").pre_money("1")]).name("X")).contains("investment() has no attribute shares"));
+}
+
+#[test]
 fn what_the_vocabulary_does_not_say_is_refused_by_name() {
     assert!(bad(company([]).name("X").with_attr("mailbox", "a@b")).contains("company() has no attribute mailbox"));
     assert!(bad(company([harm().id("h")]).name("X")).contains("company() does not take harm()"));

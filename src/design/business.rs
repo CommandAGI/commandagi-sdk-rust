@@ -38,6 +38,11 @@ use super::{Declared, Family};
 pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
 pub use super::{fragment, json, El, Json, Value};
 
+/// A priced round, pro forma, and its investments (`round()`, `investment()`).
+mod equity;
+use equity::{rounds_of, EQUITY_TAGS};
+pub use equity::{investment, round, EquityAttrs};
+
 elements! {
     /// A company: its entity, the standard's parts and its registrations.
     company = "Company": children;
@@ -127,7 +132,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters")],
-        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("registeredAgents", "RegisteredAgent")],
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent")],
     },
     spec(
         "Entity",
@@ -280,7 +285,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -414,6 +419,8 @@ pub fn company_of(node: &BusinessNode) -> Json {
         .collect();
     let company = if subsidiaries.is_empty() { company } else { company.with("subsidiaries", subsidiaries) };
     let company = if papers.is_empty() { company } else { company.with("papers", papers) };
+    let rounds = rounds_of(node);
+    let company = if rounds.is_empty() { company } else { company.with("rounds", rounds) };
     let company = match finance_of(node) {
         Some(finance) => company.with("finance", finance),
         None => company,
