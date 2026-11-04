@@ -619,3 +619,36 @@ fn an_empty_sketch_is_a_sketch_that_draws_nothing_yet() {
     assert_eq!(sk.get("points").unwrap().text(), "{}");
     assert_eq!(sk.get("segments").unwrap().text(), "{}");
 }
+
+// contacts.json is the golden of the three SDKs (contacts.golden.json in the TypeScript SDK): the twin document each
+// declares in its own language, read as the dynamics node's contacts.
+#[test]
+fn a_contact_is_the_dynamics_contacts_list_and_the_twin_reads_as_the_golden() {
+    let golden = Json::parse(include_str!("contacts.json")).unwrap();
+    let twin = |friction: f64, report: &str| {
+        part([
+            box_().id("table").name("Table").center([0, 0, 50]).size([400, 200, 100]).operation("new"),
+            box_().id("pad").name("Pad").center([0, 0, 125]).size([60, 60, 50]).operation("new"),
+            box_().id("ball").name("Ball").center([-600, 0, 300]).size([40, 40, 40]).operation("new"),
+            box_().id("phantom").name("Phantom").center([150, 0, 200]).size([40, 40, 40]).operation("new"),
+            slot().name("dynamics").value(json(r#"{"bindings": [{"feature": "table", "solver": "rigid", "fixed": true}]}"#)),
+            contact().id("grip").a("Pad").b("Table").friction(friction).report(json(report)),
+            contact().id("bounce").a("Ball").restitution(0.9),
+            contact().id("pass").a("Phantom").b("Table").collide(false).report(json("[]")),
+        ])
+        .name("Pad on a table")
+    };
+    let g = graph(twin(0.9, r#"["normal", "slip"]"#));
+    assert_eq!(node(&g, "dynamics").get("inputs").and_then(|i| i.get("contacts")), golden.get("contacts"));
+    let refused = golden.get("refused").unwrap();
+    let says = match refused.get("says") {
+        Some(Json::Str(s)) => s.clone(),
+        _ => panic!("the golden says what is refused"),
+    };
+    let friction = match refused.get("friction") {
+        Some(Json::Num(n)) => *n,
+        _ => panic!("the golden has a refused friction"),
+    };
+    assert!(bad(twin(friction, r#"["normal", "slip"]"#)).contains(&says));
+    assert!(bad(twin(0.9, r#"["torque"]"#)).contains("report"));
+}

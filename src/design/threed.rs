@@ -66,6 +66,10 @@
 //!                                                tariff heading, its packed size and mass
 //! joint().id().kind().a().b().anchor().axis().limits() …   a joint between two bodies (`dynamics.joints`): fixed,
 //!                                                revolute, prismatic, cylindrical, planar, screw, spherical, universal
+//! contact().id().a().b().collide().friction().restitution().report([…])   a contact pair (`dynamics.contacts`): two
+//!                                                sides of bodies named as a check names them (no `b`: the ground),
+//!                                                whether they touch, their own friction and restitution, and what a
+//!                                                run records of them
 //! mate().id().kind().a().b().axis() …            a mate between two components of an assembly (`assembly.mates`)
 //! sheet().id().size().scale().projection().views(…) …      an engineering drawing sheet of the document (`drawings`)
 //! check().id().kind().bodies().against().sweep(…) …      a check the design must pass (`checks`; a sweep moves joints)
@@ -122,6 +126,8 @@ elements! {
     slot: leaf;
     /// A joint between two bodies: `joint().id("j1").kind("revolute").a("base").b("arm").anchor([0, 0, 40]).axis([0, 0, 1])`.
     joint: leaf;
+    /// A contact pair: `contact().id("pad").a("Pad").b("Ramp").friction(0.9).restitution(0.1).report(["normal", "slip"])`.
+    contact: leaf;
     /// A mate between two components of an assembly: `mate().id("m1").kind("concentric").a("p1").b("p2").axis("Z")`.
     mate: leaf;
     /// An engineering drawing sheet: `sheet().id("sheet1").views(json(r#"[{"id": "front", "view": "front"}]"#))`.
@@ -281,6 +287,8 @@ attributes! {
         strands; file; section; to; slack; segment; hold; retention; first; ends;
         /// A library entry's designation pattern and its sizes.
         match_; sizes;
+        /// A contact pair's touch, its own friction and restitution, and what a run records of it.
+        collide; friction; restitution; report;
     }
 }
 
@@ -352,6 +360,7 @@ fn sheet_view_problems(sheet: &Json) -> Vec<String> {
 pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
     &[
         ("joint", "dynamics", "joints", "DynamicsJoint"),
+        ("contact", "dynamics", "contacts", "DynamicsContact"),
         ("mate", "assembly", "mates", "Mate"),
         ("sheet", "drawings", "value", "DrawingSheet"),
         ("check", "checks", "value", "DesignCheck"),
@@ -367,7 +376,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
     ];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "point", "constraint",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "point", "constraint",
     "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input",
 ];
 /// A sketch's segment kinds, by tag.
