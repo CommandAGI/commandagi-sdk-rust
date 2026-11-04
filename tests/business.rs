@@ -129,3 +129,12 @@ fn a_group_names_its_subsidiaries_and_its_papers() {
     );
     assert!(bad(company([subsidiary().file("B.company.rs")]).name("X")).contains("subsidiary() needs ownership"));
 }
+
+#[test]
+fn a_company_names_each_brand_file_outside_the_standard() {
+    let (_, doc, _) = document(company([brand().file("Northwind/brands/Northwind.brand.rs")]).name("Northwind").files(["Northwind/"]));
+    assert_eq!(doc.get("brands"), Some(&j(r#"[{"file":"Northwind/brands/Northwind.brand.rs"}]"#)));
+    assert_eq!(doc.get("standard"), Some(&j(r#"{"enabled":false}"#)));
+    let (_, none, _) = document(company([]).name("Northwind"));
+    assert_eq!(none.get("brands"), None);
+}

@@ -70,6 +70,8 @@ elements! {
     signature = "Signature": leaf;
     /// An earlier file of a paper: `.file("…v1.md").date("2024-01-08")`.
     version = "Version": leaf;
+    /// A brand of the company: its own `.brand.rs`, `.file("brands/Northwind.brand.rs")` (`super::brands`).
+    brand = "Brand": leaf;
     /// An RFC draft: its options.
     rfc = "Rfc": children;
     /// One option of an RFC: its changes.
@@ -134,7 +136,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team")],
-        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent")],
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand")],
     },
     spec(
         "Entity",
@@ -186,6 +188,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
     },
     spec("Signature", &[("party", Text), ("signer", Text), ("capacity", Text), ("date", Text), ("method", Text), ("evidence", Text)], &["party"]),
     spec("Version", &[("file", Text), ("date", Text), ("note", Text)], &["file"]),
+    spec("Brand", &[("file", Text)], &["file"]),
     TagSpec {
         tag: "Rfc",
         props: &[("id", Text), ("procedure", Text), ("title", Text), ("body", Text), ("target", Text), ("engineJson", Text)],
@@ -400,9 +403,8 @@ pub fn company_of(node: &BusinessNode) -> Json {
     };
     let company = company
         .with("files", node.prop("files").cloned().unwrap_or(Json::Arr(Vec::new())))
-        .with("dashboard", or_null(node.prop("dashboard")))
-        .with("entity", entity)
-        .with("standard", standard);
+        .with("dashboard", or_null(node.prop("dashboard")));
+    let company = company.with("entity", entity).with("standard", standard);
     // Each area's field is absent when the file names none of it (docs/company-substrate.md § how an area joins).
     let subsidiaries: Vec<Json> = node.many("subsidiaries").iter().map(|x| Json::Obj(x.props.clone())).collect();
     let papers: Vec<Json> = node
@@ -429,9 +431,15 @@ pub fn company_of(node: &BusinessNode) -> Json {
     };
     let agents: Vec<Json> = node.many("registeredAgents").iter().map(|x| Json::Obj(x.props.clone())).collect();
     let company = if agents.is_empty() { company } else { company.with("registeredAgents", agents) };
-    match node.one("team") {
+    let company = match node.one("team") {
         Some(t) => company.with("team", team_of(t)),
         None => company,
+    };
+    let brands: Vec<Json> = node.many("brands").iter().map(|x| Json::Obj(x.props.clone())).collect();
+    if brands.is_empty() {
+        company
+    } else {
+        company.with("brands", brands)
     }
 }
 
