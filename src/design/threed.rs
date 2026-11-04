@@ -76,6 +76,7 @@
 //!                                                screw placed through clamped bodies into a receiver (`fasteners`)
 //! tactile().id().body().at().normal().along().rows().cols().pitch() …   a tactile skin: a grid of taxels on one face
 //!                                                of a body (`tactile`), which a device definition's tactile channel records
+//! port().id().body().at().axis().hold() …       where a rod's end can be held (`ports`): a pad, a joint, a socket, a row
 //! library().id().match_().engineering(…).sizes(…)   the data of every library fastener piece whose designation
 //!                                                matches (`library`): its supplier and price, given once
 //! slot().name(…).value(…)                       any other field of the document, whole
@@ -141,6 +142,8 @@ elements! {
     fastener: leaf;
     /// A tactile skin: `tactile().id("pad").body("Jaw").at([-20, 0, 20]).normal([1, 0, 0]).along([0, 1, 0]).rows(4).cols(4).pitch(5)`.
     tactile: leaf;
+    /// Where a rod's end can be held: `port().id("a").body("board").at([0, 0, 8.5]).axis([0, 0, -1]).hold("insert").depth(6).retention(1).count(63).pitch(2.54)`.
+    port: leaf;
     /// The data of every library fastener piece whose designation matches: `library().id("shcs").match_("ISO 4762 * A2-70")`.
     library: leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
@@ -153,6 +156,8 @@ elements! {
     /// A curve in space, which makes no body and which a sweep follows: `curve().id("lead").points(json("[[0, 0, 0], [30, 10, 15]]"))`,
     /// then `sweep().path(json(r#"{"curve": "lead"}"#))`. A `spline` (the default), a `polyline` or a `helix`.
     curve: leaf;
+    /// A rod (a wire, a lead, a string, a hair, a flat flex): `rod().id("j1").material("WIRE-22AWG-SOLID-PVC").from(json(r#"{"port": "bb/a3"}"#)).to(json(r#"{"port": "bb/a12"}"#))`.
+    rod: leaf;
     loft: leaf;
     fillet: leaf;
     chamfer: leaf;
@@ -271,6 +276,9 @@ attributes! {
         clamped; receiver; washer; nut; grip; fit; min_engagement; torque; part_number;
         /// A tactile skin's direction along its rows, its rows and columns of taxels, and the pressure it saturates at (kPa).
         along; rows; cols; saturation;
+        /// A rod's strands, the file it reads them from, its section, its far end, its slack and its node spacing; a
+        /// port's hold, a socket's retention and the number a row's first port is called by; a placement's rods' ends.
+        strands; file; section; to; slack; segment; hold; retention; first; ends;
         /// A library entry's designation pattern and its sizes.
         match_; sizes;
     }
@@ -351,6 +359,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
         ("permitted", "permitted", "value", "PermittedFinding"),
         ("fastener", "fasteners", "value", "FastenerStack"),
         ("tactile", "tactile", "value", "TactileSkin"),
+        ("port", "ports", "value", "Port"),
         ("item", "items", "value", "ProductItem"),
         ("assemble", "assemblySteps", "value", "AssemblyStep"),
         ("library", "library", "value", "LibraryData"),
@@ -358,7 +367,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
     ];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "item", "assemble", "library", "product", "point", "constraint",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "point", "constraint",
     "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input",
 ];
 /// A sketch's segment kinds, by tag.
@@ -375,7 +384,7 @@ const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
-    "accepted", "permitted", "fasteners", "tactile", "items", "assemblySteps", "library", "products",
+    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products",
 ];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];

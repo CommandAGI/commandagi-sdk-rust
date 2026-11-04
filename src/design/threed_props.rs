@@ -72,6 +72,7 @@ pub const THREED_FEATURES: &[&str] = &[
     "revolve",
     "sweep",
     "curve",
+    "rod",
     "loft",
     "fillet",
     "chamfer",
@@ -130,6 +131,7 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("revolve", "RevolveProps"),
     ("sweep", "SweepProps"),
     ("curve", "CurveProps"),
+    ("rod", "RodProps"),
     ("loft", "LoftProps"),
     ("fillet", "FilletProps"),
     ("chamfer", "ChamferProps"),
@@ -1092,6 +1094,159 @@ impl CurveProps {
     }
 }
 
+/// How an end is held: soldered to a pad or a joint, crimped, inserted in a socket, or pinned at a point (free to turn).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RodHold {
+    /// `"solder"`
+    Solder,
+    /// `"crimp"`
+    Crimp,
+    /// `"insert"`
+    Insert,
+    /// `"pin"`
+    Pin,
+}
+
+impl ToJson for RodHold {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            RodHold::Solder => "solder",
+            RodHold::Crimp => "crimp",
+            RodHold::Insert => "insert",
+            RodHold::Pin => "pin",
+        })
+    }
+}
+
+/// Where a rod's end is held.
+#[derive(Clone, Debug)]
+pub struct RodEnd {
+    /// A port: one of this document's (`<port>`; a member of a row of them by its id and number, `a12`), a placed file's (`<placement id>/<port>`) or a placed component's pad (`<placement id>/<pad number>`). The port says how it holds.
+    pub port: Option<String>,
+    /// Or a body, by id: the end is held on it where it is drawn (a lead in its part's body, a hair in the scalp).
+    pub body: Option<String>,
+    /// How a body holds it.
+    /// Default: `"solder"`.
+    pub hold: Option<RodHold>,
+}
+
+impl ToJson for RodEnd {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        if let Some(v) = &self.port {
+            o.set("port", v.to_json());
+        }
+        if let Some(v) = &self.body {
+            o.set("body", v.to_json());
+        }
+        if let Some(v) = &self.hold {
+            o.set("hold", v.to_json());
+        }
+        o
+    }
+}
+
+/// A ROD: a wire, a component's lead, a string, a hair, a cable, a flat flex, a spring: an elastic body much longer than it is wide, with a bend that springs back below its yield and sets beyond it (docs/formats.md § a 3D document's rods). It makes no solid body: it is drawn as its section along its points, and the `rod` family of the dynamics simulates it (live in editing with `activation: { rod: "always" }`). Its shape is its rest shape: a permanent bend made in the editor is written back as its points. What it connects (a conductor joining two ports' nets) is read from its ends and its material, not stated on it.
+#[derive(Clone, Debug)]
+pub struct RodProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// Its points at rest, in order (one rod). Absent with `from` and `to`: laid between its two ends with its slack.
+    /// Unit: mm.
+    pub points: Option<Vec<Vec3>>,
+    /// Many rods of one material and section (a head of hair, a brush, a harness's strands), each its points at rest.
+    /// Unit: mm.
+    pub strands: Option<Vec<Vec<Vec3>>>,
+    /// What it is made of: a row of the rods tables along the search path (`materials/rods.csv`: a wire, its conductor and insulation and their diameters; it gives the section too), or a grade of the engineering tables with `section`.
+    pub material: Option<String>,
+    /// Its cross-section, where its material's row states none: a circle, a tube or a rectangle (a ribbon).
+    /// Unit: mm.
+    pub section: Option<Json>,
+    /// Where its first end (each strand's first point) is held, and how. Absent: free.
+    pub from: Option<RodEnd>,
+    /// Where its last end (each strand's last point) is held, and how. Absent: free.
+    pub to: Option<RodEnd>,
+    /// Its length, laid between `from` and `to` with no points.
+    /// Unit: mm.
+    pub length: Option<f64>,
+    /// Laid between `from` and `to` with no points or length: how much longer than the straight distance it is (0.2: 20 % longer).
+    /// Default: `0.15`.
+    pub slack: Option<f64>,
+    /// The section's first axis at its start (a ribbon's width). Absent: across its first edge, toward world z.
+    pub up: Option<Vec3>,
+    /// The distance between its nodes in the simulation. Absent: its length over 24, at least 2 diameters.
+    /// Unit: mm.
+    pub segment: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for RodProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        if let Some(v) = &self.points {
+            o.set("points", v.to_json());
+        }
+        if let Some(v) = &self.strands {
+            o.set("strands", v.to_json());
+        }
+        if let Some(v) = &self.material {
+            o.set("material", v.to_json());
+        }
+        if let Some(v) = &self.section {
+            o.set("section", v.to_json());
+        }
+        if let Some(v) = &self.from {
+            o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.to {
+            o.set("to", v.to_json());
+        }
+        if let Some(v) = &self.length {
+            o.set("length", v.to_json());
+        }
+        if let Some(v) = &self.slack {
+            o.set("slack", v.to_json());
+        }
+        if let Some(v) = &self.up {
+            o.set("up", v.to_json());
+        }
+        if let Some(v) = &self.segment {
+            o.set("segment", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl RodProps {
+    /// The `rod` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("rod");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct LoftProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -1648,6 +1803,26 @@ impl ToJson for ComponentFootprint {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ExternalPartPropsEndsValue {
+    pub from: Option<RodEnd>,
+    pub to: Option<RodEnd>,
+}
+
+impl ToJson for ExternalPartPropsEndsValue {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        if let Some(v) = &self.from {
+            o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.to {
+            o.set("to", v.to_json());
+        }
+        o
+    }
+}
+
 /// One body of a placed 3D document moved in its file's frame (`<externalPart moves>`).
 #[derive(Clone, Debug)]
 pub struct PlacedMove {
@@ -1695,6 +1870,8 @@ pub struct ExternalPartProps {
     pub footprint: Option<ComponentFootprint>,
     /// A placed 3D document: what of it is left out here, each by the id, the name or the part number its own file gives it (`*` matches any text): a body it makes, a file it places (its id names everything placed under it), a fastener stack, an `<item>`. What its file says of a body left out (an `<accept>`, a `<permitted>`, the stacks that hold it) goes with it. An entry that names nothing of the file is an error. One frame in every station, each station with its own deck: `omit={["deck"]}`.
     pub omit: Option<Vec<String>>,
+    /// A placed 3D document: where its rods' ends are held here, by the rod's id in its file (a resistor's leads in a breadboard's sockets: `ends={{ leg1: { to: { port: "bb/e12" } } }}`). Each end stated here is held so, over its file's.
+    pub ends: Option<Vec<(String, ExternalPartPropsEndsValue)>>,
     /// A placed 3D document: bodies it makes or files it places, each moved in its file's frame before the placement (a lid opened, a ram lowered), by the id, the name or the part number its own file gives it (a placed file's id moves everything placed under it). What its file says of the body (an `<accept>` or `<permitted>` region, in the body's own frame) moves with it, and so do its spare holes and the fastener stacks that hold only what one move moves. An entry that names nothing of the file is an error.
     pub moves: Option<Vec<PlacedMove>>,
     /// A placed 3D document at other values of its `<parameter>`s, each by its name: a library profile at its cut length (`inputs={{ length: 2830 }}`), a screw at its length. The file is built at those values for this placement alone; a name the file does not declare is an error of the placement.
@@ -1744,6 +1921,9 @@ impl ToJson for ExternalPartProps {
         }
         if let Some(v) = &self.omit {
             o.set("omit", v.to_json());
+        }
+        if let Some(v) = &self.ends {
+            o.set("ends", v.to_json());
         }
         if let Some(v) = &self.moves {
             o.set("moves", v.to_json());

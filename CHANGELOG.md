@@ -6,6 +6,12 @@ promises nothing about the next one: read this file before you change the tag yo
 
 ## Unreleased
 
+Added
+
+- `rod()` and `port()`: a rod (a wire, a lead, a string, a hair, a flat flex) is a 3D feature with its section, its material (a
+  rods row: a wire's layers) and its ends held at ports or on bodies; a port is where a rod's end can be held (a pad,
+  a socket, a breadboard's row of them), the document's `ports`. A placement's `ends` holds its file's rods' ends.
+
 Changed
 
 - `check().sweep(json(r#"{"joints": ["X", "Z"], "step": 10}"#))` names the joints it moves (was `joint`). Several joints are

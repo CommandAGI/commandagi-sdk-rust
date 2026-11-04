@@ -385,6 +385,23 @@ fn a_tactile_skin_places_a_grid_of_taxels_on_a_face_of_a_body() {
 }
 
 #[test]
+fn a_rod_is_a_feature_held_at_ports_and_port_is_the_documents_ports_list() {
+    // The TypeScript and Python SDKs read the same fields (threed.test.ts, test_threed.py).
+    let board = |hold: &str| {
+        part([
+            box_().id("board").name("Board").center([80.0, 0.0, 4.0]).size([165.0, 55.0, 8.5]).operation("new"),
+            port().id("a").body("board").at([0.0, 0.0, 8.5]).axis([0, 0, -1]).hold(hold).depth(6).retention(1).count(63).pitch(2.54),
+            rod().id("j1").name("Jumper").material("WIRE-22AWG-SOLID-PVC").from(json(r#"{"port": "a3"}"#)).to(json(r#"{"port": "a12"}"#)).slack(0.2),
+        ])
+        .name("Board")
+    };
+    let g = graph(board("insert"));
+    assert!(node(&g, "ports").get("inputs").unwrap().text().contains(r#""hold":"insert""#));
+    assert!(node(&g, "j1").get("inputs").unwrap().text().contains(r#""to":{"port":"a12"}"#));
+    assert!(bad(board("glue")).contains("hold"));
+}
+
+#[test]
 fn a_check_sweeps_its_joints_over_their_limits_and_a_pair_accept_is_bounded_by_its_volume() {
     // PCBC-14, PCBC-18: the TypeScript and Python SDKs read the same fields.
     let g = graph(
