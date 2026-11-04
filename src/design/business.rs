@@ -51,6 +51,14 @@ elements! {
     calendar = "Calendar": leaf;
     /// The matters folder.
     matters = "Matters": leaf;
+    /// A group's subsidiary: its own company file, `.file("Acme UK.company.rs").ownership("100")`.
+    subsidiary = "Subsidiary": leaf;
+    /// A typed document of the company: `.kind("nda").file("Acme/Documents/NDA.md")`, its signatures and versions.
+    paper = "Paper": children;
+    /// A signature on a paper: `.party("Acme Inc.").signer("Ada Park").evidence("…signed.pdf")`.
+    signature = "Signature": leaf;
+    /// An earlier file of a paper: `.file("…v1.md").date("2024-01-08")`.
+    version = "Version": leaf;
     /// An RFC draft: its options.
     rfc = "Rfc": children;
     /// One option of an RFC: its changes.
@@ -75,6 +83,8 @@ attributes! {
         op; parameter; value; duty_id; text; protects; harm; elements; criminal; uniqueness; issuers; modalities;
         respondent; filed_for; source; article; agreement_id; term; act; act_date; evidence; media; reopens;
         interest; description; amount; harm_ids; days;
+        ownership; since; method; status; parties; effective; renewal; notice_days;
+        party; signer; capacity; date; note;
     }
 }
 
@@ -113,7 +123,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters")],
-        many: &[("registrations", "Registration")],
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper")],
     },
     spec(
         "Entity",
@@ -136,6 +146,27 @@ const BUSINESS_TAGS: &[TagSpec] = &[
     spec("People", &[("folder", Text)], &["folder"]),
     spec("Calendar", &[("folder", Text)], &["folder"]),
     spec("Matters", &[("folder", Text)], &["folder"]),
+    spec("Subsidiary", &[("file", Text), ("ownership", Amount), ("since", Text), ("method", Text)], &["file", "ownership"]),
+    TagSpec {
+        tag: "Paper",
+        props: &[
+            ("kind", Text),
+            ("title", Text),
+            ("file", Text),
+            ("status", Text),
+            ("parties", Texts),
+            ("jurisdiction", Text),
+            ("effective", Text),
+            ("expires", Text),
+            ("renewal", Text),
+            ("noticeDays", Amount),
+        ],
+        required: &["kind", "file"],
+        one: &[],
+        many: &[("signatures", "Signature"), ("versions", "Version")],
+    },
+    spec("Signature", &[("party", Text), ("signer", Text), ("capacity", Text), ("date", Text), ("method", Text), ("evidence", Text)], &["party"]),
+    spec("Version", &[("file", Text), ("date", Text), ("note", Text)], &["file"]),
     TagSpec {
         tag: "Rfc",
         props: &[("id", Text), ("procedure", Text), ("title", Text), ("body", Text), ("target", Text), ("engineJson", Text)],
@@ -341,11 +372,33 @@ pub fn company_of(node: &BusinessNode) -> Json {
         Some(p) => company.with("postalAddress", p.clone()),
         None => company,
     };
-    company
+    let company = company
         .with("files", node.prop("files").cloned().unwrap_or(Json::Arr(Vec::new())))
         .with("dashboard", or_null(node.prop("dashboard")))
         .with("entity", entity)
-        .with("standard", standard)
+        .with("standard", standard);
+    // Each area's field is absent when the file names none of it (docs/company-substrate.md § how an area joins).
+    let subsidiaries: Vec<Json> = node.many("subsidiaries").iter().map(|x| Json::Obj(x.props.clone())).collect();
+    let papers: Vec<Json> = node
+        .many("papers")
+        .iter()
+        .map(|x| {
+            let mut paper = Json::Obj(x.props.clone());
+            for field in ["signatures", "versions"] {
+                let list: Vec<Json> = x.many(field).iter().map(|n| Json::Obj(n.props.clone())).collect();
+                if !list.is_empty() {
+                    paper.set(field, list);
+                }
+            }
+            paper
+        })
+        .collect();
+    let company = if subsidiaries.is_empty() { company } else { company.with("subsidiaries", subsidiaries) };
+    if papers.is_empty() {
+        company
+    } else {
+        company.with("papers", papers)
+    }
 }
 
 /// `{"id"?, "draft"}`: the id once the contract opened the draft (or it was filed).

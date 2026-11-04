@@ -77,3 +77,32 @@ fn what_the_vocabulary_does_not_say_is_refused_by_name() {
     assert!(bad(company([]).name("X").files("X/")).contains("files is a list of text"));
     assert!(bad(entity().jurisdiction("US")).contains("not the root of a document"));
 }
+
+#[test]
+fn a_group_names_its_subsidiaries_and_its_papers() {
+    let root = company([
+        subsidiary().file("Acme UK.company.tsx").ownership("100").since("2026-01-10"),
+        paper([
+            signature().party("Acme Inc.").signer("Ada Park").date("2026-01-20").method("wet"),
+            version().file("Acme/Lease v1.pdf").date("2026-01-02"),
+        ])
+        .kind("agreement")
+        .file("Acme/Lease.pdf")
+        .status("signed")
+        .parties(["Acme Inc.", "Pier 9 LLC"])
+        .expires("2027-01-31")
+        .renewal("1 year")
+        .notice_days("90"),
+    ])
+    .name("Acme");
+    assert_eq!(
+        document(root).1,
+        j(r#"{"format": "commandagi-company", "name": "Acme", "about": "", "files": [], "dashboard": null, "entity": null,
+  "standard": {"enabled": false},
+  "subsidiaries": [{"file": "Acme UK.company.tsx", "ownership": "100", "since": "2026-01-10"}],
+  "papers": [{"kind": "agreement", "file": "Acme/Lease.pdf", "status": "signed", "parties": ["Acme Inc.", "Pier 9 LLC"], "expires": "2027-01-31", "renewal": "1 year", "noticeDays": "90",
+              "signatures": [{"party": "Acme Inc.", "signer": "Ada Park", "date": "2026-01-20", "method": "wet"}],
+              "versions": [{"file": "Acme/Lease v1.pdf", "date": "2026-01-02"}]}]}"#)
+    );
+    assert!(bad(company([subsidiary().file("B.company.rs")]).name("X")).contains("subsidiary() needs ownership"));
+}

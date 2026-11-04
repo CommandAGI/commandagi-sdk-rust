@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `company([...])` takes `subsidiary().file(..).ownership(..)` (each its own company file, by ref) and
+  `paper([signature()..., version()...]).kind(..).file(..).status(..)`; a paper is `paper()`, not `document()`, the
+  name of a file's root function. The document gains `subsidiaries` and `papers`, absent when the file names none. The
+  same in the TypeScript and Python SDKs (CommandAGI's docs/company-substrate.md).
 - `body().material(…)` is a physically based material: a `preset` (now with `anodized-aluminum`, `stainless-steel`,
   `abs`, `pbt`, `pc`, `petg`, `pla`, `glass`, `pcb`) and the fields it changes (`ior`, `transmission`, `thickness`,
   `clearcoat`, `clearcoatRoughness`, `anisotropy`, `emissive`, `emissiveIntensity`, `texture`), checked against the
