@@ -328,3 +328,16 @@ fn a_boards_checks_and_accepts_are_kept_in_the_graphs_meta() {
     assert_eq!(checks[0].get("kind").and_then(Json::as_str), Some("drc"));
     assert!(bad(board_of(vec![check().id("drc").kind("drc").width(1)])).contains("width is not read (it takes id, kind, severity, options)"));
 }
+
+#[test]
+fn a_wire_is_a_hand_soldered_wire_from_pin_to_pin() {
+    let g = graph(board_of(vec![
+        component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
+        component().name("R2").footprint("smd-0805").pcb_x(25).pcb_y(10),
+        wire().name("W1").from(".R1 > .pin1").to(".R2 > .pin2").material("WIRE-22AWG-SOLID-PVC").points(json("[[9, 10, 0], [17, 4, 3], [26, 10, 0]]")),
+        wire().from(".R1 > .pin2").to(".R2 > .1").slack(0.3),
+    ]));
+    assert_eq!(node(&g, "W1").get("type").and_then(Json::as_str), Some("eda.wire"));
+    assert_eq!(inputs(&g, "W1"), compact(r#"{"from": {"ref": "R1", "number": "1"}, "to": {"ref": "R2", "number": "2"}, "material": "WIRE-22AWG-SOLID-PVC", "points": [[9, 10, 0], [17, 4, 3], [26, 10, 0]]}"#));
+    assert_eq!(inputs(&g, "wire_2"), compact(r#"{"from": {"ref": "R1", "number": "2"}, "to": {"ref": "R2", "number": "1"}, "slack": 0.3}"#));
+}

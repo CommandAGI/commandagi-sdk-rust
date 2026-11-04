@@ -70,6 +70,9 @@
 //!                                   of its cross-section. Any other is refused by name.
 //! pour().name().layers().points().terminals(json(r#"[[0, ".J1 > .pin2"]]"#)).net().uuid().kicad()
 //!                                   a copper pour: its boundary on its layers.
+//! wire().name().from().to().material().points().slack().net()
+//!                                   a wire soldered by hand from pin to pin (a jumper): a rod the 3D view draws, along
+//!                                   its points ([[x, y, z], …], z up from the top face) or laid off its pads.
 //! ```
 //!
 //! The layout's constraints (the board's design intent: the placer, the router, the layout score and the checks read
@@ -157,6 +160,8 @@ elements! {
     via: leaf;
     /// A copper pour.
     pour: leaf;
+    /// A wire soldered by hand from pin to pin (a jumper): a rod the 3D view draws, `wire().from(".R1 > .pin1").to(".R2 > .pin2")`.
+    wire: leaf;
     /// The rules of some nets: `netclass().name("supply").nets(["P24", "FIN*"]).width(0.5)`.
     netclass: leaf;
     /// Two nets routed as a pair.
@@ -280,6 +285,10 @@ attributes! {
         to;
         /// The schematic net the copper realises.
         net;
+        /// A wire's row of the rods tables (its conductor and insulation).
+        material;
+        /// How much longer than its pads' distance a wire with no points is laid (0.15: 15 % longer).
+        slack;
         /// A trace's KiCad segment uuids, one per segment.
         segment_uuids;
         /// A via's drill (mm).
@@ -407,6 +416,8 @@ pub const BOARD_PART: &str = "eda.footprint";
 pub const CONDUCTOR: &str = "eda.conductor";
 /// A board fact a `graphic`, `text`, `dimension`, `kicad` or `net` declares; the editor folds it into the circuit.
 pub const BOARD_FACT: &str = "eda.boardfact";
+/// A hand-soldered wire between two pads (`wire()`): not copper of the board, a rod the 3D view draws.
+pub const BOARD_WIRE: &str = "eda.wire";
 /// The editor's own land patterns, by the name a `component().footprint(…)` gives (the circuit's id is `Authored:<name>`).
 pub const BOARD_FOOTPRINTS: &[&str] = &["smd-0805", "axial-7.62", "header-2.54"];
 /// A new board's layer table (the circuit editor's blank board): ordinal, name, type.
@@ -1098,6 +1109,7 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
     let mut conductors: HashMap<String, &El> = HashMap::new();
     let mut nets: Vec<String> = Vec::new();
     let mut constraint_names: Vec<String> = Vec::new();
+    let mut wire_names: Vec<String> = Vec::new();
     let mut kicad_forms = 0;
     let mut fabs = 0;
     for el in &children {
@@ -1151,6 +1163,13 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                     return Err(if el.tag == "objective" { "a board has one objective()".to_string() } else { format!("two {}() elements are called {}", el.tag, key.split_once(':').map(|(_, n)| n).unwrap_or_default()) });
                 }
                 constraint_names.push(key);
+            }
+        } else if el.tag == "wire" {
+            if let Some(Json::Str(n)) = nm {
+                if wire_names.contains(n) {
+                    return Err(format!("two wire() elements are called {n}"));
+                }
+                wire_names.push(n.clone());
             }
         } else if el.tag != "stack" && el.tag != "masks" && !FACTS.contains(&el.tag) {
             return Err(format!("{}() is not read on a board (see commandagi::design::pcb)", fn_name(el.tag)));
@@ -1476,6 +1495,41 @@ fn declare_board(s: &mut Scope, root: &El) -> Result<bool, String> {
                 kicad_of(el, "kicad", &mut inputs)?;
                 let id = ids.next().expect("each conductor has an id");
                 s.add(CONDUCTOR, inputs, Some(&id), Some("Via"), meta(el))?;
+            }
+            "wire" => {
+                refuse_unknown(el, &["name", "from", "to", "material", "points", "slack", "net"])?;
+                let pin = |key: &str| -> Result<Json, String> {
+                    let sel = el.attr_of(key).cloned().unwrap_or(Json::Null);
+                    let t = end(&sel, el, 0)?;
+                    match (t.get("ref"), t.get("number")) {
+                        (Some(r), Some(n)) => Ok(Json::obj().with("ref", r.clone()).with("number", n.clone())),
+                        _ => Err(format!("{}: a wire is soldered to a pin (\".R1 > .pin2\"), not {}", at(el), sel.text())),
+                    }
+                };
+                let mut inputs = vec![("from".to_string(), pin("from")?), ("to".to_string(), pin("to")?)];
+                if let Some(m) = text_of(el, "material", false)? {
+                    inputs.push(("material".into(), m.into()));
+                }
+                match el.attr_of("points") {
+                    None => {}
+                    Some(Json::Arr(pts)) if pts.len() >= 2 && pts.iter().all(|p| matches!(p, Json::Arr(q) if q.len() == 3 && q.iter().all(|v| v.as_f64().is_some_and(f64::is_finite)))) => {
+                        inputs.push(("points".into(), Json::Arr(pts.clone())));
+                    }
+                    Some(_) => return Err(format!("{}: points is the wire's shape, [[x, y, z], …] in mm (two or more)", at(el))),
+                }
+                if let Some(slack) = num(el, "slack", false)? {
+                    if slack < 0.0 {
+                        return Err(format!("{}: slack is 0 or more", at(el)));
+                    }
+                    inputs.push(("slack".into(), slack.into()));
+                }
+                net_of(el, &mut inputs)?;
+                // Its node is its name, else its place among the board's wires (`wire_1` …).
+                let id = match el.attr_of("name").and_then(Json::as_str) {
+                    Some(n) => n.to_string(),
+                    None => format!("wire_{}", children.iter().filter(|c| c.tag == "wire").position(|c| std::ptr::eq(*c, el)).unwrap_or_default() + 1),
+                };
+                s.add(BOARD_WIRE, inputs, Some(&id), Some("Wire"), meta(el))?;
             }
             "pour" => {
                 refuse_unknown(el, &["name", "layers", "points", "terminals", "net", "uuid", "kicad"])?;

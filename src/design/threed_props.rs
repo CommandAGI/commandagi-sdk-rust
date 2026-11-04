@@ -1147,6 +1147,33 @@ impl ToJson for RodEnd {
     }
 }
 
+/// A point of a rod held still: the point `along` its strand from its first point, held at `at`.
+#[derive(Clone, Debug)]
+pub struct RodPin {
+    /// Which strand (its index).
+    /// Default: `0`.
+    pub strand: Option<i64>,
+    /// How far along the strand from its first point.
+    /// Unit: mm.
+    pub along: f64,
+    /// Where it is held.
+    /// Unit: mm.
+    pub at: Vec3,
+}
+
+impl ToJson for RodPin {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        if let Some(v) = &self.strand {
+            o.set("strand", v.to_json());
+        }
+        o.set("along", self.along.to_json());
+        o.set("at", self.at.to_json());
+        o
+    }
+}
+
 /// A ROD: a wire, a component's lead, a string, a hair, a cable, a flat flex, a spring: an elastic body much longer than it is wide, with a bend that springs back below its yield and sets beyond it (docs/formats.md § a 3D document's rods). It makes no solid body: it is drawn as its section along its points, and the `rod` family of the dynamics simulates it (live in editing with `activation: { rod: "always" }`). Its shape is its rest shape: a permanent bend made in the editor is written back as its points. What it connects (a conductor joining two ports' nets) is read from its ends and its material, not stated on it.
 #[derive(Clone, Debug)]
 pub struct RodProps {
@@ -1180,6 +1207,13 @@ pub struct RodProps {
     /// The distance between its nodes in the simulation. Absent: its length over 24, at least 2 diameters.
     /// Unit: mm.
     pub segment: Option<f64>,
+    /// Its strands from a file: an OBJ's polylines (its `l` records), in mm, each from its root (its first point, where `from` holds it) to its tip. A path from this file's folder. A head of hair's guide strands.
+    pub file: Option<String>,
+    /// Points of it held still where they are (a middle point a force drag let go of with Shift).
+    pub pins: Option<Vec<RodPin>>,
+    /// Its strands are guides, each standing for many (a head of hair): they pass through each other (they still meet bodies, cloths and other rods), and each is stepped once a step, which the direct solve keeps within 0.01 mm of its static answer. 800 guides of 8 points then run in the editor.
+    /// Default: `false`.
+    pub guides: Option<bool>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -1222,6 +1256,15 @@ impl ToJson for RodProps {
         }
         if let Some(v) = &self.segment {
             o.set("segment", v.to_json());
+        }
+        if let Some(v) = &self.file {
+            o.set("file", v.to_json());
+        }
+        if let Some(v) = &self.pins {
+            o.set("pins", v.to_json());
+        }
+        if let Some(v) = &self.guides {
+            o.set("guides", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
