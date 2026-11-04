@@ -13,8 +13,10 @@
 //! .package_dimensions(…)                                             its datasheet package ("<n> pins, pitch <mm> mm,
 //!                                                                    body <l> x <w> mm")
 //! .suppliers(json(r#"[{"name", "sku", "url", "currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays",
-//!                      "stock", "source", "date"}]"#))
-//! .alternates(json(r#"[{"manufacturer", "mpn", "note"}]"#))  .datasheet("https://…")
+//!                      "leadTimeDaysHigh", "stock", "kind", "confidence", "samplesDays", "tooling", "service",
+//!                      "supplier", "source", "date"}]"#))
+//! .alternates(json(r#"[{"manufacturer", "mpn", "note", "approved", "differences", "datasheet", "suppliers"}]"#))
+//! .datasheet("https://…")
 //! .lifecycle(json(r#"{"status", "lastTimeBuy", "onHand", "reorderPoint", "source", "date"}"#))
 //! .compliance(json(r#"{"rohs", "rohsExemption", "reach", "conflictMinerals", "eccn", "certifications"}"#))
 //! .shipping(json(r#"{"hsCode", "origin", "hazmat", "packaging"}"#))   its logistics (docs/formats.md § logistics)
@@ -120,7 +122,10 @@ const CHOICES: &[(&str, &[&str])] = &[
 ];
 const COUNTS: &[&str] = &["lifecycle.onHand", "lifecycle.reorderPoint"];
 const DATES: &[&str] = &["lifecycle.lastTimeBuy", "lifecycle.date"];
-const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "stock", "url", "source", "date"];
+const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "leadTimeDaysHigh", "stock", "kind", "confidence", "samplesDays", "tooling", "service", "supplier", "url", "source", "date"];
+const OFFER_KINDS: &[&str] = &["stock", "quote", "listing", "broker"];
+const CONFIDENCES: &[&str] = &["firm", "indication"];
+const ALTERNATE_KEYS: &[&str] = &["manufacturer", "mpn", "note", "approved", "differences", "datasheet", "suppliers"];
 /// A price break's keys, in the order its `Terms` list holds them. `unitPriceHigh` makes it an estimate range, with
 /// `unitPrice` its low end (docs/formats.md § logistics).
 const BREAK_KEYS: &[&str] = &["quantity", "unitPrice", "unitPriceHigh"];
@@ -240,11 +245,73 @@ pub(crate) fn check_offers(at: &str, v: &Json) -> Result<Json, String> {
         if s.get("leadTimeDays").is_some() && !matches!(s.get("leadTimeDays"), Some(Json::Num(n)) if *n >= 0.0) {
             return Err(format!("{at}: leadTimeDays is a number of days"));
         }
+        if let Some(high) = s.get("leadTimeDaysHigh") {
+            let low = s.get("leadTimeDays").and_then(Json::as_f64).unwrap_or(0.0);
+            if !matches!(high, Json::Num(n) if *n >= 0.0 && *n >= low) {
+                return Err(format!("{at}: leadTimeDaysHigh is a number of days, not under leadTimeDays"));
+            }
+        }
+        if s.get("samplesDays").is_some() && !matches!(s.get("samplesDays"), Some(Json::Num(n)) if *n >= 0.0) {
+            return Err(format!("{at}: samplesDays is a number of days"));
+        }
+        if s.get("kind").is_some() && !matches!(s.get("kind"), Some(Json::Str(k)) if OFFER_KINDS.contains(&k.as_str())) {
+            return Err(format!("{at}: kind is stock, quote, listing or broker"));
+        }
+        if s.get("confidence").is_some() && !matches!(s.get("confidence"), Some(Json::Str(k)) if CONFIDENCES.contains(&k.as_str())) {
+            return Err(format!("{at}: confidence is firm or indication"));
+        }
+        if s.get("tooling").is_some() && !matches!(s.get("tooling"), Some(Json::Num(n)) if *n >= 0.0) && s.get("tooling").and_then(Json::as_str) != Some("unknown") {
+            return Err(format!(r#"{at}: tooling is a cost, 0 or more, or "unknown""#));
+        }
+        for k in ["service", "supplier"] {
+            if s.get(k).is_some() && !is_text(s.get(k)) {
+                return Err(format!("{at}: {k} is text"));
+            }
+        }
         if let Some(b) = s.get("priceBreaks") {
             let ok = matches!(b, Json::Arr(l) if l.iter().all(price_break));
             if !ok {
                 return Err(format!("{at}: priceBreaks is a list of {{ quantity, unitPrice, unitPriceHigh? }} (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it)"));
             }
+        }
+    }
+    Ok(v.clone())
+}
+
+/// Alternates, each checked: another maker's part, what differs, whether it is approved, and its offers.
+pub(crate) fn check_alternates(at: &str, v: &Json) -> Result<Json, String> {
+    let list = match v {
+        Json::Arr(l) if !l.is_empty() => l,
+        _ => return Err(format!("{at}: alternates is a list of {{ manufacturer, mpn, note?, approved?, differences?, datasheet?, suppliers? }}")),
+    };
+    for (i, a) in list.iter().enumerate() {
+        let at = format!("{at}: alternates[{i}]");
+        if !matches!(a, Json::Obj(_)) {
+            return Err(format!("{at} is an alternate ({{ manufacturer, mpn, … }})"));
+        }
+        for (k, _) in entries(a) {
+            if !ALTERNATE_KEYS.contains(&k.as_str()) {
+                return Err(format!("{at}: {k} is not read (it takes {})", ALTERNATE_KEYS.join(", ")));
+            }
+        }
+        for k in ["manufacturer", "mpn"] {
+            if !is_text(a.get(k)) {
+                return Err(format!("{at}: {k} is text"));
+            }
+        }
+        for k in ["note", "datasheet"] {
+            if a.get(k).is_some() && !is_text(a.get(k)) {
+                return Err(format!("{at}: {k} is text"));
+            }
+        }
+        if a.get("approved").is_some() && !matches!(a.get("approved"), Some(Json::Bool(_))) {
+            return Err(format!("{at}: approved is true or false"));
+        }
+        if a.get("differences").is_some() && !matches!(a.get("differences"), Some(Json::Arr(l)) if l.iter().all(|d| is_text(Some(d)))) {
+            return Err(format!("{at}: differences is a list of text"));
+        }
+        if let Some(offers) = a.get("suppliers") {
+            check_offers(&at, offers)?;
         }
     }
     Ok(v.clone())
@@ -364,16 +431,7 @@ pub(crate) fn part_field_forms(at: &str, el: &El) -> Result<Vec<Json>, String> {
         forms.extend(offer_forms(at, v)?);
     }
     if let Some(v) = el.attr_of("alternates") {
-        let alternate = |a: &Json| {
-            matches!(a, Json::Obj(_))
-                && is_text(a.get("manufacturer"))
-                && is_text(a.get("mpn"))
-                && (a.get("note").is_none() || is_text(a.get("note")))
-                && entries(a).iter().all(|(k, _)| ["manufacturer", "mpn", "note"].contains(&k.as_str()))
-        };
-        if !matches!(v, Json::Arr(l) if !l.is_empty() && l.iter().all(alternate)) {
-            return Err(format!("{at}: alternates is a list of {{ manufacturer, mpn, note? }}"));
-        }
+        check_alternates(at, v)?;
         forms.push(field_form("Alternates", &v.text()));
     }
     if let Some(v) = el.attr_of("datasheet") {

@@ -23,6 +23,11 @@
 //! A supplier is `supplier([location()…, ships()…, contact()…]).name("JLCPCB")`. A route's legs run in order from the
 //! supplier's `location()`; a leg that names a place (`to`, `lat`, `lon`) ends there, and a leg that names none ends
 //! at the builder. Refs are by the plan's folder. Nothing adds a default.
+//!
+//! A supplier's `service([fee()…]).id("global-sourcing")` is a way to buy through it (pre-order, global sourcing,
+//! consignment) with its review and buying days and its fees (per order, line or unit). A plan's `.build("2027-06-01")`
+//! is the day the parts must be at the builder, and `source([use_().offer("LCSC")…]).part(…).strategy("split")` says
+//! how one line is filled (single, fill, split, dual).
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, rust_name};
@@ -38,6 +43,10 @@ elements! {
     ships: leaf;
     /// A person or a desk to ask: `.role("sales").email(…)`.
     contact: leaf;
+    /// A way to buy through the supplier: `service([fee()…]).id("global-sourcing").review_days(1).lead_time_days(9)`.
+    service: children;
+    /// What a service costs: `.amount(20).currency("USD").per("line")` (per order, line or unit, in groups of `each`).
+    fee: leaf;
     /// A logistics plan: the BOM's designs, the builder and the routes.
     logistics: children;
     /// A design whose roll-up is (part of) the bill of materials: `.ref_("Tile kit.3d.tsx")`.
@@ -49,6 +58,10 @@ elements! {
     /// One leg of a route: `.carrier(…).service(…).transit_days(…).cost(…).currency(…)`, and `.to(…).lat(…).lon(…)`
     /// when it ends somewhere before the builder.
     leg: leaf;
+    /// How one line is filled: `source([use_()…]).part("KH-205580-DZ").strategy("split")`.
+    source: children;
+    /// One offer a line is filled from: `.offer("LCSC")`, `.mpn(…)` for an alternate's, `.qty(…)` or `.share(…)`.
+    use_ = "use": leaf;
 }
 
 attributes! {
@@ -57,6 +70,8 @@ attributes! {
         name; url; lead_time_days; note; lat; lon; country; address;
         carrier; service; transit_days; role; email; phone;
         quantity; ref_ = "ref"; qty; supplier; cost; currency; to;
+        id; review_days; review_days_high; lead_time_days_high; amount; per; each;
+        build; part; strategy; offer; mpn; share;
     }
 }
 
@@ -66,7 +81,13 @@ pub const PLACE_FIELDS: &[&str] = &["name", "lat", "lon", "country", "address"];
 pub const SUPPLIER_FIELDS: &[&str] = &["name", "url", "leadTimeDays", "note"];
 pub const SHIPS_FIELDS: &[&str] = &["carrier", "service", "transitDays", "note"];
 pub const CONTACT_FIELDS: &[&str] = &["name", "role", "email", "phone"];
-pub const LOGISTICS_FIELDS: &[&str] = &["name", "quantity"];
+pub const SERVICE_FIELDS: &[&str] = &["id", "name", "reviewDays", "reviewDaysHigh", "leadTimeDays", "leadTimeDaysHigh", "note"];
+pub const FEE_FIELDS: &[&str] = &["amount", "currency", "per", "each", "note"];
+pub const LOGISTICS_FIELDS: &[&str] = &["name", "quantity", "build"];
+pub const SOURCE_FIELDS: &[&str] = &["part", "strategy"];
+pub const USE_FIELDS: &[&str] = &["offer", "mpn", "qty", "share"];
+const FEE_PER: &[&str] = &["order", "line", "unit"];
+const STRATEGIES: &[&str] = &["single", "fill", "split", "dual"];
 pub const BOM_FIELDS: &[&str] = &["ref", "qty"];
 pub const LEG_FIELDS: &[&str] = &["carrier", "service", "transitDays", "cost", "currency", "to", "lat", "lon", "country"];
 
@@ -79,6 +100,8 @@ const SUPPLIER: Vocabulary = Vocabulary {
         TagRule::new("location", &["supplier"]).single().required(&["name", "lat", "lon"]).attrs(PLACE_FIELDS),
         TagRule::new("ships", &["supplier"]).required(&["carrier"]).attrs(SHIPS_FIELDS),
         TagRule::new("contact", &["supplier"]).attrs(CONTACT_FIELDS),
+        TagRule::new("service", &["supplier"]).required(&["id"]).attrs(SERVICE_FIELDS),
+        TagRule::new("fee", &["service"]).required(&["amount", "currency", "per"]).attrs(FEE_FIELDS),
     ],
     from_tree: supplier_of,
 };
@@ -93,6 +116,8 @@ const LOGISTICS: Vocabulary = Vocabulary {
         TagRule::new("builder", &["logistics"]).single().required(&["name", "lat", "lon"]).attrs(PLACE_FIELDS),
         TagRule::new("route", &["logistics"]).required(&["supplier"]).attrs(&["supplier"]),
         TagRule::new("leg", &["route"]).required(&["carrier"]).attrs(LEG_FIELDS),
+        TagRule::new("source", &["logistics"]).required(&["part", "strategy"]).attrs(SOURCE_FIELDS),
+        TagRule::new("use", &["source"]).required(&["offer"]).attrs(USE_FIELDS),
     ],
     from_tree: logistics_of,
 };
@@ -165,6 +190,7 @@ fn supplier_of(t: &DocTree) -> Result<Json, String> {
     }
     let mut ships = Vec::new();
     let mut contacts = Vec::new();
+    let mut services = Vec::new();
     for c in &t.children {
         if c.tag == "ships" {
             text(c, &["carrier", "service", "note"])?;
@@ -173,19 +199,68 @@ fn supplier_of(t: &DocTree) -> Result<Json, String> {
         } else if c.tag == "contact" {
             text(c, CONTACT_FIELDS)?;
             contacts.push(fields(c, CONTACT_FIELDS));
+        } else if c.tag == "service" {
+            services.push(service_of(c)?);
         }
     }
-    Ok(out.with("ships", ships).with("contacts", contacts))
+    Ok(out.with("ships", ships).with("contacts", contacts).with("services", services))
+}
+
+fn currency(t: &DocTree) -> Result<(), String> {
+    match t.attr_of("currency") {
+        None => Ok(()),
+        Some(Json::Str(s)) if s.len() == 3 && s.chars().all(|ch| ch.is_ascii_uppercase()) => Ok(()),
+        _ => Err(format!(r#"{}(): currency is ISO 4217 ("USD")"#, t.tag)),
+    }
+}
+
+fn service_of(t: &DocTree) -> Result<Json, String> {
+    text(t, &["id", "name", "note"])?;
+    count(t, &["reviewDays", "reviewDaysHigh", "leadTimeDays", "leadTimeDaysHigh"])?;
+    let mut fees = Vec::new();
+    for f in t.children.iter().filter(|f| f.tag == "fee") {
+        text(f, &["note"])?;
+        if !matches!(f.attr_of("amount").and_then(Json::as_f64), Some(n) if n.is_finite() && n >= 0.0) {
+            return Err("fee(): amount is a number, 0 or more".into());
+        }
+        if f.attr_of("currency").is_none() {
+            return Err("fee(): states its currency".into());
+        }
+        currency(f)?;
+        if !matches!(f.attr_of("per"), Some(Json::Str(p)) if FEE_PER.contains(&p.as_str())) {
+            return Err("fee(): per is order, line or unit".into());
+        }
+        if matches!(f.attr_of("each"), Some(v) if !matches!(v.as_f64(), Some(n) if n >= 1.0 && n.fract() == 0.0)) {
+            return Err("fee(): each is a whole number, 1 or more".into());
+        }
+        fees.push(fields(f, FEE_FIELDS));
+    }
+    Ok(fields(t, SERVICE_FIELDS).with("fees", fees))
+}
+
+fn source_of(t: &DocTree) -> Result<Json, String> {
+    text(t, &["part"])?;
+    if !matches!(t.attr_of("strategy"), Some(Json::Str(s)) if STRATEGIES.contains(&s.as_str())) {
+        return Err("source(): strategy is single, fill, split or dual".into());
+    }
+    let mut uses = Vec::new();
+    for u in t.children.iter().filter(|u| u.tag == "use") {
+        text(u, &["offer", "mpn"])?;
+        if matches!(u.attr_of("qty"), Some(v) if !matches!(v.as_f64(), Some(n) if n > 0.0)) {
+            return Err("use_(): qty is a number above 0".into());
+        }
+        if matches!(u.attr_of("share"), Some(v) if !matches!(v.as_f64(), Some(n) if n > 0.0 && n <= 1.0)) {
+            return Err("use_(): share is a number above 0, at most 1".into());
+        }
+        uses.push(fields(u, USE_FIELDS));
+    }
+    Ok(fields(t, SOURCE_FIELDS).with("uses", uses))
 }
 
 fn leg_of(c: &DocTree) -> Result<Json, String> {
     text(c, &["carrier", "service", "to"])?;
     count(c, &["transitDays", "cost"])?;
-    match c.attr_of("currency") {
-        None => {}
-        Some(Json::Str(s)) if s.len() == 3 && s.chars().all(|ch| ch.is_ascii_uppercase()) => {}
-        _ => return Err(r#"leg(): currency is ISO 4217 ("USD")"#.into()),
-    }
+    currency(c)?;
     if c.attr_of("cost").is_some() && c.attr_of("currency").is_none() {
         return Err("leg(): cost states its currency".into());
     }
@@ -197,13 +272,17 @@ fn leg_of(c: &DocTree) -> Result<Json, String> {
 }
 
 fn logistics_of(t: &DocTree) -> Result<Json, String> {
-    text(t, &["name"])?;
+    text(t, &["name", "build"])?;
+    if matches!(t.attr_of("build"), Some(Json::Str(b)) if !(b.len() == 10 && b.chars().enumerate().all(|(i, c)| if i == 4 || i == 7 { c == '-' } else { c.is_ascii_digit() }))) {
+        return Err("logistics(): build is YYYY-MM-DD".into());
+    }
     if matches!(t.attr_of("quantity"), Some(v) if !matches!(v.as_f64(), Some(n) if n >= 1.0 && n.fract() == 0.0)) {
         return Err("logistics(): quantity is a whole number, 1 or more".into());
     }
     let out = fields(t, LOGISTICS_FIELDS);
     let mut boms = Vec::new();
     let mut routes = Vec::new();
+    let mut sources = Vec::new();
     for c in &t.children {
         if c.tag == "bom" {
             text(c, &["ref"])?;
@@ -215,11 +294,13 @@ fn logistics_of(t: &DocTree) -> Result<Json, String> {
             text(c, &["supplier"])?;
             let legs = c.children.iter().filter(|l| l.tag == "leg").map(leg_of).collect::<Result<Vec<_>, _>>()?;
             routes.push(fields(c, &["supplier"]).with("legs", legs));
+        } else if c.tag == "source" {
+            sources.push(source_of(c)?);
         }
     }
     let mut out = out.with("boms", boms);
     if let Some(b) = t.single("builder") {
         out.set("builder", place(b, "name")?);
     }
-    Ok(out.with("routes", routes))
+    Ok(out.with("routes", routes).with("sources", sources))
 }

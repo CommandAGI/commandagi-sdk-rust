@@ -215,3 +215,23 @@ fn a_3d_documents_product_is_a_list_of_the_document_and_stock_and_shutoff_are_en
     assert!(refused(item().id("b").name("B").engineering(json(r#"{"make": {"stock": {"name": "S", "perPart": 0}}}"#))).contains("perPart"));
     assert!(refused(slot().name("products").value(json("[]"))).contains("products is not a slot"));
 }
+
+#[test]
+fn an_offers_kind_confidence_tooling_and_lead_range_and_an_alternate_round_trip_through_the_fields() {
+    use commandagi::design::schematic::*;
+    const QUOTE: &str = r#"[{"name": "Kinghelm", "currency": "USD", "priceBreaks": [{"quantity": 5000, "unitPrice": 0.07, "unitPriceHigh": 0.1}], "moq": 5000, "leadTimeDays": 15, "leadTimeDaysHigh": 20, "kind": "quote", "confidence": "indication", "samplesDays": 14, "tooling": "unknown", "supplier": "suppliers/kinghelm.supplier.tsx", "source": "maker's blog", "date": "2026-11-03"}]"#;
+    const ALT: &str = r#"[{"manufacturer": "YIYUAN", "mpn": "YTC1P-6020-01", "approved": false, "differences": ["rated stroke 1.5 mm, not 2.0 mm"], "suppliers": [{"name": "LCSC", "sku": "C5221290", "stock": 885}]}]"#;
+    let g = graph_of(group("L", [part("P1").pins(["1"]).mpn("KH-205580-DZ").suppliers(json(QUOTE)).alternates(json(ALT))]));
+    let inputs = node(&g, "P1").get("inputs").unwrap();
+    assert_eq!(
+        props(inputs)[1],
+        ("Kinghelm Terms".to_string(), r#"{"currency":"USD","priceBreaks":[[5000,0.07,0.1]],"moq":5000,"leadTimeDays":15,"leadTimeDaysHigh":20,"kind":"quote","confidence":"indication","samplesDays":14,"tooling":"unknown","supplier":"suppliers/kinghelm.supplier.tsx","source":"maker's blog","date":"2026-11-03"}"#.to_string())
+    );
+    let parse = |t: &str| Json::parse(t).unwrap();
+    let back = Json::obj().with("mpn", "KH-205580-DZ").with("alternates", parse(ALT)).with("suppliers", parse(QUOTE));
+    assert_eq!(part_fields(inputs).text(), back.text());
+    let got = bad(group("L", [part("P1").pins(["1"]).suppliers(json(r#"[{"name": "X", "kind": "offer"}]"#))]));
+    assert!(got.contains("kind is stock, quote, listing or broker"), "{got}");
+    let got = bad(group("L", [part("P1").pins(["1"]).alternates(json(r#"[{"manufacturer": "Y", "mpn": "Z", "grade": "A"}]"#))]));
+    assert!(got.contains("alternates[0]: grade is not read"), "{got}");
+}

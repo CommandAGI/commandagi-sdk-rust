@@ -31,7 +31,7 @@ fn a_supplier_is_its_location_carriers_and_contacts() {
     assert_eq!(format, "supplier");
     assert_eq!(
         doc,
-        j(r#"{"name":"JLCPCB","url":"https://jlcpcb.com","leadTimeDays":8,"location":{"name":"JLCPCB, Shenzhen","lat":22.543,"lon":114.058,"country":"CN"},"ships":[{"carrier":"DHL","service":"Express Worldwide","transitDays":5}],"contacts":[{"role":"sales","email":"support@jlcpcb.com"}]}"#)
+        j(r#"{"name":"JLCPCB","url":"https://jlcpcb.com","leadTimeDays":8,"location":{"name":"JLCPCB, Shenzhen","lat":22.543,"lon":114.058,"country":"CN"},"ships":[{"carrier":"DHL","service":"Express Worldwide","transitDays":5}],"contacts":[{"role":"sales","email":"support@jlcpcb.com"}],"services":[]}"#)
     );
     let bad = declare(supplier([location().name("Y").lat(95).lon(0)]).name("X")).unwrap_err();
     assert!(bad.contains("lat is degrees north"), "{bad}");
@@ -55,10 +55,47 @@ fn a_plan_is_its_boms_builder_and_legs() {
     assert_eq!(format, "logistics");
     assert_eq!(
         doc,
-        j(r#"{"name":"tile kit","quantity":10,"boms":[{"ref":"Tile kit.3d.tsx"}],"builder":{"name":"Austin","lat":30.267,"lon":-97.743,"country":"US"},"routes":[{"supplier":"suppliers/jlcpcb.supplier.tsx","legs":[{"carrier":"DHL","service":"Express pickup","transitDays":1,"cost":6,"currency":"USD","to":{"name":"DHL hub, Hong Kong","lat":22.308,"lon":113.918,"country":"HK"}},{"carrier":"DHL","service":"Express Worldwide","transitDays":4,"cost":32,"currency":"USD"}]}]}"#)
+        j(r#"{"name":"tile kit","quantity":10,"boms":[{"ref":"Tile kit.3d.tsx"}],"builder":{"name":"Austin","lat":30.267,"lon":-97.743,"country":"US"},"routes":[{"supplier":"suppliers/jlcpcb.supplier.tsx","legs":[{"carrier":"DHL","service":"Express pickup","transitDays":1,"cost":6,"currency":"USD","to":{"name":"DHL hub, Hong Kong","lat":22.308,"lon":113.918,"country":"HK"}},{"carrier":"DHL","service":"Express Worldwide","transitDays":4,"cost":32,"currency":"USD"}]}],"sources":[]}"#)
     );
     let bad = declare(logistics([route([leg().carrier("UPS").cost(5)]).supplier("s.supplier.tsx")])).unwrap_err();
     assert!(bad.contains("cost states its currency"), "{bad}");
     let bad = declare(logistics([]).quantity(2.5)).unwrap_err();
     assert!(bad.contains("whole number"), "{bad}");
+}
+
+#[test]
+fn a_supplier_offers_services_with_their_days_and_fees() {
+    let (_, doc) = document(
+        supplier([service([fee().amount(20).currency("USD").per("line").note("connectors and batteries"), fee().amount(0.017).currency("USD").per("unit")])
+            .id("global-sourcing")
+            .name("Global sourcing")
+            .review_days(1)
+            .review_days_high(3)
+            .lead_time_days(9)
+            .lead_time_days_high(20)])
+        .name("JLCPCB"),
+    );
+    assert_eq!(
+        doc.get("services").unwrap(),
+        &j(r#"[{"id":"global-sourcing","name":"Global sourcing","reviewDays":1,"reviewDaysHigh":3,"leadTimeDays":9,"leadTimeDaysHigh":20,"fees":[{"amount":20,"currency":"USD","per":"line","note":"connectors and batteries"},{"amount":0.017,"currency":"USD","per":"unit"}]}]"#)
+    );
+    let bad = declare(supplier([service([fee().amount(70).per("line").each(50)]).id("consignment")]).name("JLCPCB")).unwrap_err();
+    assert!(bad.contains("currency"), "{bad}");
+}
+
+#[test]
+fn a_plan_states_its_build_date_and_how_a_line_is_filled() {
+    let (_, doc) = document(
+        logistics([source([use_().offer("JLCPCB parts library").qty(1984), use_().offer("LCSC")]).part("KH-205580-DZ").strategy("split")])
+            .name("helmets")
+            .quantity(10)
+            .build("2027-01-15"),
+    );
+    assert_eq!(doc.get("build").unwrap(), &j(r#""2027-01-15""#));
+    assert_eq!(
+        doc.get("sources").unwrap(),
+        &j(r#"[{"part":"KH-205580-DZ","strategy":"split","uses":[{"offer":"JLCPCB parts library","qty":1984},{"offer":"LCSC"}]}]"#)
+    );
+    let bad = declare(logistics([source([use_().offer("LCSC")]).part("X").strategy("cheapest")])).unwrap_err();
+    assert!(bad.contains("strategy is single, fill, split or dual"), "{bad}");
 }
