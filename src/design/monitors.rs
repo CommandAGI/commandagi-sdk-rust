@@ -71,7 +71,7 @@ attributes! {
         session; snapshot; profile; keep; max_cost_per_day; unit; vantage;
         /// The connected account it reads as (`gmail@jacobfv123@gmail.com`); the api worker (via="worker") reads it.
         connection;
-        monitor; match_; prompt;
+        monitor; match_; prompt; agent; max_spend;
         op; inputs;
         into_ = "into"; of; when; slug; props; name; max; visibility;
         rubric; model;
@@ -86,7 +86,7 @@ pub const SOURCE_FIELDS: &[&str] = &[
     "keep", "maxCostPerDay", "unit", "vantage", "connection",
 ];
 pub const FOLLOW_FIELDS: &[&str] = &["monitor", "when"];
-pub const WAKE_FIELDS: &[&str] = &["match", "every", "prompt"];
+pub const WAKE_FIELDS: &[&str] = &["match", "every", "prompt", "agent", "maxSpend"];
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
 pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
 pub const MONITOR_JUDGE_FIELDS: &[&str] = &["id", "of", "rubric", "model"];
@@ -523,6 +523,12 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
             _ => {
                 word(c, "match", "match")?;
                 word(c, "prompt", "match")?;
+                word(c, "agent", "match")?;
+                if let Some(spend) = c.attr_of("maxSpend").filter(|v| !matches!(v, Json::Null)) {
+                    if !matches!(spend, Json::Num(n) if n.is_finite() && *n > 0.0) {
+                        return Err(format!("{} maxSpend is a price in USD (0.5), not {}", call(c, "match"), spend.text()));
+                    }
+                }
                 // A wake wakes on records (match) or on a clock (every), never both.
                 if let Some(every) = c.attr_of("every") {
                     if c.attr_of("match").is_some() {
@@ -610,7 +616,14 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
         .collect();
     let wakes = list("wakes")
         .iter()
-        .map(|w| Json::obj().with("match", or_null(w, "match")).with("every", or_null(w, "every")).with("prompt", or_null(w, "prompt")))
+        .map(|w| {
+            Json::obj()
+                .with("match", or_null(w, "match"))
+                .with("every", or_null(w, "every"))
+                .with("prompt", or_null(w, "prompt"))
+                .with("agent", or_null(w, "agent"))
+                .with("maxSpend", or_null(w, "maxSpend"))
+        })
         .collect();
     let discovers = list("discovers")
         .iter()

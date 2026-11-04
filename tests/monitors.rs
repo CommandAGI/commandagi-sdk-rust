@@ -171,7 +171,7 @@ fn a_derive_and_a_discover() {
 #[test]
 fn a_wake_on_a_clock() {
     let (_, doc) = document(monitor([wake().every("7d").prompt("Write the week's brief.")]));
-    assert_eq!(monitor_with_defaults(&doc).get("wakes"), Some(&j(r#"[{"match": null, "every": "7d", "prompt": "Write the week's brief."}]"#)));
+    assert_eq!(monitor_with_defaults(&doc).get("wakes"), Some(&j(r#"[{"match": null, "every": "7d", "prompt": "Write the week's brief.", "agent": null, "maxSpend": null}]"#)));
     assert!(declare(monitor([wake().every("8d").prompt("p")])).unwrap_err().contains("every is a duration from 30s to 7d"));
     assert!(declare(monitor([wake().match_("x.*").every("1d").prompt("p")])).unwrap_err().contains("not both"));
 }
@@ -186,4 +186,32 @@ fn a_judge_names_what_it_judges_its_rubric_and_its_model() {
     assert!(refused(judge().id("j").of("thread").rubric("r.md").model("m")).contains(r#"of is "turn", "task""#));
     assert!(refused(judge().id("j").of("turn").rubric("r.txt").model("m")).contains("rubric is a .md file"));
     assert!(refused(judge().id("j").of("turn").rubric("r.md")).contains("model"));
+}
+
+// monitor_wake.json is the golden of the three SDKs (sdk/typescript/src/design/monitor-wake.golden.json, sdk/python/tests/monitor_wake.json).
+fn wake_of(attrs: &Json) -> El {
+    let Json::Obj(fields) = attrs else { panic!("attrs is an object") };
+    let mut w = wake();
+    for (k, v) in fields.iter() {
+        w = w.attr(k.clone(), v.clone());
+    }
+    w
+}
+
+#[test]
+fn a_wake_names_its_agent_and_bounds_its_spend() {
+    let golden = Json::parse(include_str!("monitor_wake.json")).unwrap();
+    let rows = |k: &str| match golden.get(k) {
+        Some(Json::Arr(a)) => a.clone(),
+        _ => panic!("the golden has {k}"),
+    };
+    for row in rows("valid") {
+        let (_, doc) = document(monitor([wake_of(row.get("attrs").unwrap())]));
+        assert_eq!(monitor_with_defaults(&doc).get("wakes"), Some(&Json::Arr(vec![row.get("document").unwrap().clone()])));
+    }
+    for row in rows("invalid") {
+        let Some(Json::Str(error)) = row.get("error") else { panic!("an error") };
+        let got = declare(monitor([wake_of(row.get("attrs").unwrap())])).unwrap_err();
+        assert!(got.contains(error.as_str()), "{got} should say {error}");
+    }
 }
