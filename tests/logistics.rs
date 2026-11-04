@@ -196,6 +196,12 @@ fn a_3d_documents_item_and_assemble_are_lists_of_the_document_and_body_engineeri
     assert!(declare(part([item().id("pin").name("Pin").qty(1128).engineering(json(pin))]).name("P")).is_ok());
     assert!(refused(item().id("pin").name("Pin").engineering(json(r#"{"need": {"multiple": 0}}"#))).contains("multiple"));
     assert!(refused(item().id("pin").name("Pin").engineering(json(r#"{"need": {"panels": 2}}"#))).contains("panels"));
+    // A bulk quantity: 0.64 m of webbing a product, a third of a strip, an offer that sells it in 2 m strips.
+    let strip = r#"{"process": "purchased", "need": {"attrition": 0.05, "spares": 0.5}, "suppliers": [{"name": "eBay", "pack": 2, "currency": "USD", "priceBreaks": [{"quantity": 1, "unitPrice": 2.23}]}]}"#;
+    assert!(declare(part([item().id("web").name("Webbing").qty(0.64).unit("m").engineering(json(strip))]).name("P")).is_ok());
+    assert!(declare(part([item().id("foam").name("Foam strip").qty(0.3333)]).name("P")).is_ok());
+    assert!(refused(item().id("web").name("Webbing").qty(0.64).unit("yd")).contains("unit"));
+    assert!(refused(item().id("web").name("Webbing").engineering(json(r#"{"suppliers": [{"name": "eBay", "pack": 0}]}"#))).contains("pack"));
 }
 
 #[test]
@@ -218,6 +224,7 @@ fn a_3d_documents_product_is_a_list_of_the_document_and_stock_and_shutoff_are_en
     let refused = |el: El| bad(part([el]).name("P"));
     assert!(refused(product().id("kit")).contains("name"));
     assert!(refused(item().id("b").name("B").engineering(json(r#"{"make": {"stock": {"name": "S", "perPart": 0}}}"#))).contains("perPart"));
+    assert!(refused(item().id("b").name("B").engineering(json(r#"{"make": {"stock": {"name": "S", "perPart": 88, "unit": "lb"}}}"#))).contains("unit"));
     assert!(refused(slot().name("products").value(json("[]"))).contains("products is not a slot"));
 }
 
@@ -268,6 +275,7 @@ fn a_shared_stock_a_preorder_count_an_offer_through_another_suppliers_service_st
     assert!(commandagi::design::declare(group("L", [u4().suppliers(json(r#"[{"name": "X", "preorder": -3898}]"#))])).is_ok(), "more promised than held");
     let refused = [
         (u4().suppliers(json(r#"[{"name": "X", "preorder": 1.5}]"#)), "preorder is a whole number"),
+        (u4().suppliers(json(r#"[{"name": "X", "pack": 0}]"#)), "pack is what one unit sold holds"),
         (u4().suppliers(json(r#"[{"name": "X", "via": "suppliers/jlcpcb.supplier.tsx"}]"#)), "names that supplier's service"),
         (u4().suppliers(json(r#"[{"name": "X", "incoming": [{"quantity": 3000, "date": "soon"}]}]"#)), "incoming is a list of { quantity, date }"),
         (u4().suppliers(json(r#"[{"name": "X", "dates": {"colour": "2026-11-03"}}]"#)), "dates is { <term>: YYYY-MM-DD }"),

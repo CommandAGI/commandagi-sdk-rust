@@ -12,7 +12,7 @@
 //!                                                                    "measured <YYYY-MM-DD>[, <how>]")
 //! .package_dimensions(…)                                             its datasheet package ("<n> pins, pitch <mm> mm,
 //!                                                                    body <l> x <w> mm")
-//! .suppliers(json(r#"[{"name", "sku", "url", "currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays",
+//! .suppliers(json(r#"[{"name", "sku", "url", "currency", "priceBreaks", "moq", "orderMultiple", "pack", "leadTimeDays",
 //!                      "leadTimeDaysHigh", "stock", "preorder", "pool", "incoming", "kind", "confidence",
 //!                      "samplesDays", "tooling", "service", "via", "supplier", "source", "date", "dates"}]"#))
 //! .alternates(json(r#"[{"manufacturer", "mpn", "note", "approved", "differences", "datasheet", "suppliers"}]"#))
@@ -124,7 +124,7 @@ const CHOICES: &[(&str, &[&str])] = &[
 ];
 const COUNTS: &[&str] = &["lifecycle.onHand", "lifecycle.reorderPoint"];
 const DATES: &[&str] = &["lifecycle.lastTimeBuy", "lifecycle.date"];
-const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "leadTimeDaysHigh", "stock", "preorder", "pool", "incoming", "kind", "confidence", "samplesDays", "tooling", "service", "via", "supplier", "url", "source", "date", "dates"];
+const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "pack", "leadTimeDays", "leadTimeDaysHigh", "stock", "preorder", "pool", "incoming", "kind", "confidence", "samplesDays", "tooling", "service", "via", "supplier", "url", "source", "date", "dates"];
 const NEED_KEYS: &[&str] = &["spares", "attrition", "attritionMin", "multiple"];
 const OFFER_KINDS: &[&str] = &["stock", "quote", "listing", "broker"];
 const CONFIDENCES: &[&str] = &["firm", "indication"];
@@ -243,6 +243,9 @@ pub(crate) fn check_offers(at: &str, v: &Json) -> Result<Json, String> {
             if s.get(k).is_some() && !whole(s.get(k), 1.0) {
                 return Err(format!("{at}: {k} is a whole number, 1 or more"));
             }
+        }
+        if s.get("pack").is_some() && !matches!(s.get("pack"), Some(Json::Num(n)) if *n > 0.0) {
+            return Err(format!("{at}: pack is what one unit sold holds, more than 0"));
         }
         if s.get("stock").is_some() && !whole(s.get("stock"), 0.0) {
             return Err(format!("{at}: stock is a whole number"));
