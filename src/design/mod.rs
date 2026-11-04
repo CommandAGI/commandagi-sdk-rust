@@ -59,6 +59,7 @@ pub mod part_fields;
 pub mod params;
 pub mod pcb;
 pub mod pdf;
+pub(crate) mod people_ops;
 pub mod postal;
 pub(crate) mod read;
 pub mod records;

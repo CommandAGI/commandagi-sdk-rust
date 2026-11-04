@@ -34,8 +34,10 @@ use super::company_formation::FORMATION_TAGS;
 pub use super::company_formation::{registered_agent, FormationAttrs};
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
+use super::people_ops::{team_of, PEOPLE_OPS_TAGS};
 use super::{Declared, Family};
 pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
+pub use super::people_ops::{band, benefit, checklist, role, team, PeopleOpsAttrs};
 pub use super::{fragment, json, El, Json, Value};
 
 /// A priced round, pro forma, and its investments (`round()`, `investment()`).
@@ -131,7 +133,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         tag: "Company",
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
-        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters")],
+        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team")],
         many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent")],
     },
     spec(
@@ -285,7 +287,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -426,10 +428,10 @@ pub fn company_of(node: &BusinessNode) -> Json {
         None => company,
     };
     let agents: Vec<Json> = node.many("registeredAgents").iter().map(|x| Json::Obj(x.props.clone())).collect();
-    if agents.is_empty() {
-        company
-    } else {
-        company.with("registeredAgents", agents)
+    let company = if agents.is_empty() { company } else { company.with("registeredAgents", agents) };
+    match node.one("team") {
+        Some(t) => company.with("team", team_of(t)),
+        None => company,
     }
 }
 
