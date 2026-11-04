@@ -24,6 +24,10 @@
 //! supplier's `location()`; a leg that names a place (`to`, `lat`, `lon`) ends there, and a leg that names none ends
 //! at the builder. Refs are by the plan's folder. Nothing adds a default.
 //!
+//! A leg that says `.quote("cheapest")` (or `fastest`, a carrier `usps`, a carrier and its service code
+//! `usps/PRIORITY_MAIL`) with its parcel `.kg(2.5).mm([300, 250, 220])` is quoted live by the shipping interface,
+//! beside its stated cost (docs/shipping.md); a place's `.postal("94112")` is the postal code the carriers rate by.
+//!
 //! A supplier's `service([fee()…]).id("global-sourcing")` is a way to buy through it (pre-order, global sourcing,
 //! consignment) with its review and buying days and its fees (per order, line or unit). A plan's `.build("2027-06-01")`
 //! is the day the parts must be at the builder, and `source([use_().offer("LCSC")…]).part(…).strategy("split")` says
@@ -67,17 +71,17 @@ elements! {
 attributes! {
     /// The fields of a supplier, a plan and their parts, chained on their elements.
     pub trait LogisticsAttrs {
-        name; url; lead_time_days; note; lat; lon; country; address;
+        name; url; lead_time_days; note; lat; lon; country; postal; address;
         carrier; service; transit_days; role; email; phone;
         quantity; ref_ = "ref"; qty; supplier; cost; currency; to;
         id; review_days; review_days_high; lead_time_days_high; amount; per; each;
-        build; part; strategy; offer; mpn; share;
+        build; part; strategy; offer; mpn; share; quote; kg; mm;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "logistics", roots: &["supplier", "logistics"], declare };
 
-pub const PLACE_FIELDS: &[&str] = &["name", "lat", "lon", "country", "address"];
+pub const PLACE_FIELDS: &[&str] = &["name", "lat", "lon", "country", "postal", "address"];
 pub const SUPPLIER_FIELDS: &[&str] = &["name", "url", "leadTimeDays", "note"];
 pub const SHIPS_FIELDS: &[&str] = &["carrier", "service", "transitDays", "note"];
 pub const CONTACT_FIELDS: &[&str] = &["name", "role", "email", "phone"];
@@ -89,7 +93,7 @@ pub const USE_FIELDS: &[&str] = &["offer", "mpn", "qty", "share"];
 const FEE_PER: &[&str] = &["order", "line", "unit"];
 const STRATEGIES: &[&str] = &["single", "fill", "split", "dual"];
 pub const BOM_FIELDS: &[&str] = &["ref", "qty"];
-pub const LEG_FIELDS: &[&str] = &["carrier", "service", "transitDays", "cost", "currency", "to", "lat", "lon", "country"];
+pub const LEG_FIELDS: &[&str] = &["carrier", "service", "transitDays", "cost", "currency", "quote", "kg", "mm", "to", "lat", "lon", "country", "postal"];
 
 const SUPPLIER: Vocabulary = Vocabulary {
     format: "supplier",
@@ -172,10 +176,12 @@ fn place(t: &DocTree, name: &str) -> Result<Json, String> {
         }
         _ => return Err(format!(r#"{}(): country is ISO 3166 alpha-2 ("CN")"#, t.tag)),
     }
-    text(t, &["address"])?;
-    if let Some(a @ Json::Str(s)) = t.attr_of("address") {
-        if !s.is_empty() {
-            out.set("address", a.clone());
+    text(t, &["postal", "address"])?;
+    for k in ["postal", "address"] {
+        if let Some(a @ Json::Str(s)) = t.attr_of(k) {
+            if !s.is_empty() {
+                out.set(k, a.clone());
+            }
         }
     }
     Ok(out)
@@ -264,11 +270,37 @@ fn leg_of(c: &DocTree) -> Result<Json, String> {
     if c.attr_of("cost").is_some() && c.attr_of("currency").is_none() {
         return Err("leg(): cost states its currency".into());
     }
-    let mut out = fields(c, &["carrier", "service", "transitDays", "cost", "currency"]);
+    if matches!(c.attr_of("quote"), Some(v) if !matches!(v, Json::Str(w) if is_want(w))) {
+        return Err("leg(): quote is cheapest, fastest, a carrier (usps), or a carrier and its service code (usps/PRIORITY_MAIL)".into());
+    }
+    if matches!(c.attr_of("kg"), Some(v) if !matches!(v.as_f64(), Some(n) if n.is_finite() && n > 0.0)) {
+        return Err("leg(): kg is the parcel's weight in kilograms, above 0".into());
+    }
+    if matches!(c.attr_of("mm"), Some(v) if !matches!(v, Json::Arr(xs) if xs.len() == 3 && xs.iter().all(|x| matches!(x.as_f64(), Some(n) if n.is_finite() && n > 0.0)))) {
+        return Err("leg(): mm is the parcel's [length, width, height] in millimetres".into());
+    }
+    if c.attr_of("quote").is_some() && (c.attr_of("kg").is_none() || c.attr_of("mm").is_none()) {
+        return Err("leg(): quote needs its parcel: kg and mm".into());
+    }
+    let mut out = fields(c, &["carrier", "service", "transitDays", "cost", "currency", "quote", "kg", "mm"]);
     if ["to", "lat", "lon", "country"].iter().any(|k| c.attr_of(k).is_some()) {
         out.set("to", place(c, "to")?);
     }
     Ok(out)
+}
+
+/// What a leg's quote asks for, by its grammar: `cheapest`, `fastest`, a carrier, or a carrier and its service code.
+fn is_want(w: &str) -> bool {
+    if w == "cheapest" || w == "fastest" {
+        return true;
+    }
+    let (carrier, service) = match w.split_once('/') {
+        Some((c, s)) => (c, Some(s)),
+        None => (w, None),
+    };
+    let carrier_ok = (2..=32).contains(&carrier.len()) && carrier.starts_with(|c: char| c.is_ascii_lowercase()) && carrier.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    let service_ok = service.map_or(true, |s| (1..=64).contains(&s.len()) && s.chars().all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c)));
+    carrier_ok && service_ok
 }
 
 fn logistics_of(t: &DocTree) -> Result<Json, String> {

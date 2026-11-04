@@ -99,3 +99,24 @@ fn a_plan_states_its_build_date_and_how_a_line_is_filled() {
     let bad = declare(logistics([source([use_().offer("LCSC")]).part("X").strategy("cheapest")])).unwrap_err();
     assert!(bad.contains("strategy is single, fill, split or dual"), "{bad}");
 }
+
+#[test]
+fn a_leg_that_says_quote_this_states_its_want_parcel_and_postal_codes() {
+    let (_, doc) = document(
+        logistics([
+            builder().name("the builder, San Francisco").lat(37.72).lon(-122.44).country("US").postal("94112"),
+            route([leg().carrier("USPS").quote("cheapest").kg(2.5).mm([300, 250, 220]).to("a buyer, Berlin").lat(52.52).lon(13.4).country("DE").postal("10115")])
+                .supplier("suppliers/x.supplier.tsx"),
+        ])
+        .name("helmet"),
+    );
+    assert_eq!(doc.get("builder").unwrap(), &j(r#"{"name":"the builder, San Francisco","lat":37.72,"lon":-122.44,"country":"US","postal":"94112"}"#));
+    assert_eq!(
+        doc.get("routes").unwrap(),
+        &j(r#"[{"supplier":"suppliers/x.supplier.tsx","legs":[{"carrier":"USPS","quote":"cheapest","kg":2.5,"mm":[300,250,220],"to":{"name":"a buyer, Berlin","lat":52.52,"lon":13.4,"country":"DE","postal":"10115"}}]}]"#)
+    );
+    let bad = |l: El| declare(logistics([route([l]).supplier("s.supplier.tsx")])).err().unwrap();
+    assert!(bad(leg().carrier("UPS").quote("the cheap one")).contains("quote is cheapest, fastest"));
+    assert!(bad(leg().carrier("UPS").quote("ups/03")).contains("quote needs its parcel"));
+    assert!(bad(leg().carrier("UPS").quote("fastest").kg(2).mm([300, 250])).contains("mm is the parcel"));
+}
