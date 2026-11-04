@@ -32,12 +32,14 @@
 
 use super::company_formation::FORMATION_TAGS;
 pub use super::company_formation::{registered_agent, FormationAttrs};
+use super::company_governance::{governance_of, GOVERNANCE_TAGS};
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
 use super::people_ops::{team_of, PEOPLE_OPS_TAGS};
 use super::{Declared, Family};
 pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
 pub use super::people_ops::{band, benefit, checklist, role, team, PeopleOpsAttrs};
+pub use super::company_governance::{assignment, compliance, evidence, ip_asset, obligation, policy, seat, vote, GovernanceAttrs};
 pub use super::{fragment, json, El, Json, Value};
 
 /// A priced round, pro forma, and its investments (`round()`, `investment()`).
@@ -112,7 +114,7 @@ pub(super) enum Kind {
     Data,
     Amount,
 }
-use Kind::*;
+pub(crate) use Kind::*;
 
 /// One tag: its attributes and their kinds, those it needs, and its children by the field they fill.
 pub(super) struct TagSpec {
@@ -135,8 +137,9 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         tag: "Company",
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
-        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team")],
-        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand")],
+        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance")],
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand"),
+            ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy")],
     },
     spec(
         "Entity",
@@ -181,10 +184,14 @@ const BUSINESS_TAGS: &[TagSpec] = &[
             ("submitted", Text),
             ("accepted", Text),
             ("confirmation", Text),
+            // a vote on the paper (company_governance.rs)
+            ("body", Text),
+            ("threshold", Text),
+            ("quorum", Text),
         ],
         required: &["kind", "file"],
         one: &[],
-        many: &[("signatures", "Signature"), ("versions", "Version")],
+        many: &[("signatures", "Signature"), ("versions", "Version"), ("votes", "Vote")],
     },
     spec("Signature", &[("party", Text), ("signer", Text), ("capacity", Text), ("date", Text), ("method", Text), ("evidence", Text)], &["party"]),
     spec("Version", &[("file", Text), ("date", Text), ("note", Text)], &["file"]),
@@ -290,7 +297,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).chain(GOVERNANCE_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -412,7 +419,7 @@ pub fn company_of(node: &BusinessNode) -> Json {
         .iter()
         .map(|x| {
             let mut paper = Json::Obj(x.props.clone());
-            for field in ["signatures", "versions"] {
+            for field in ["signatures", "versions", "votes"] {
                 let list: Vec<Json> = x.many(field).iter().map(|n| Json::Obj(n.props.clone())).collect();
                 if !list.is_empty() {
                     paper.set(field, list);
@@ -436,11 +443,8 @@ pub fn company_of(node: &BusinessNode) -> Json {
         None => company,
     };
     let brands: Vec<Json> = node.many("brands").iter().map(|x| Json::Obj(x.props.clone())).collect();
-    if brands.is_empty() {
-        company
-    } else {
-        company.with("brands", brands)
-    }
+    let company = if brands.is_empty() { company } else { company.with("brands", brands) };
+    governance_of(node, company)
 }
 
 /// `{"id"?, "draft"}`: the id once the contract opened the draft (or it was filed).

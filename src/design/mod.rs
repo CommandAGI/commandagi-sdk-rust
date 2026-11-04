@@ -38,6 +38,7 @@ pub mod brands;
 pub mod business;
 pub(crate) mod business_finance;
 pub(crate) mod company_formation;
+pub mod company_governance;
 pub(crate) mod circuit_checks;
 pub mod documents;
 pub mod element;

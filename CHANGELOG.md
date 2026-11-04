@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A company's governance, compliance, IP and insurance (`company_governance.rs`, re-exported by `business`):
+  `seat()`, `compliance()`, `obligation()`, `evidence()`, `ip_asset()`, `assignment()` and `policy()` in a
+  `company()`, and `vote()` in a `paper()` (which gains `body`, `threshold` and `quorum`); their attributes are
+  `GovernanceAttrs`. The same in the TypeScript, Python and Rust SDKs (one golden fixture, `tests/company_governance.json`).
 - `company([...])` takes `subsidiary().file(..).ownership(..)` (each its own company file, by ref) and
   `paper([signature()..., version()...]).kind(..).file(..).status(..)`; a paper is `paper()`, not `document()`, the
   name of a file's root function. The document gains `subsidiaries` and `papers`, absent when the file names none. The
