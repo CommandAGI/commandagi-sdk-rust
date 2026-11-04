@@ -35,6 +35,7 @@
 
 pub mod agents;
 pub mod business;
+pub(crate) mod business_finance;
 pub(crate) mod circuit_checks;
 pub mod documents;
 pub mod element;

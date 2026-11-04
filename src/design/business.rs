@@ -31,7 +31,9 @@
 //! ```
 
 use super::element::{attributes, elements, fn_name, rust_name};
+use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
 use super::{Declared, Family};
+pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
@@ -91,7 +93,7 @@ attributes! {
 pub(crate) const FAMILY: Family = Family { module: "business", roots: &["Company", "Rfc", "Case"], declare };
 
 #[derive(Clone, Copy, PartialEq)]
-enum Kind {
+pub(super) enum Kind {
     Text,
     Texts,
     Bool,
@@ -102,14 +104,14 @@ enum Kind {
 use Kind::*;
 
 /// One tag: its attributes and their kinds, those it needs, and its children by the field they fill.
-struct TagSpec {
-    tag: &'static str,
-    props: &'static [(&'static str, Kind)],
-    required: &'static [&'static str],
+pub(super) struct TagSpec {
+    pub(super) tag: &'static str,
+    pub(super) props: &'static [(&'static str, Kind)],
+    pub(super) required: &'static [&'static str],
     /// A child that occurs at most once, by the field it fills.
-    one: &'static [(&'static str, &'static str)],
+    pub(super) one: &'static [(&'static str, &'static str)],
     /// Children that repeat, by the list they fill.
-    many: &'static [(&'static str, &'static str)],
+    pub(super) many: &'static [(&'static str, &'static str)],
 }
 
 const fn spec(tag: &'static str, props: &'static [(&'static str, Kind)], required: &'static [&'static str]) -> TagSpec {
@@ -231,13 +233,13 @@ pub struct BusinessNode {
 }
 
 impl BusinessNode {
-    fn prop(&self, name: &str) -> Option<&Json> {
+    pub(super) fn prop(&self, name: &str) -> Option<&Json> {
         self.props.iter().find(|(k, _)| k == name).map(|(_, v)| v)
     }
-    fn one(&self, field: &str) -> Option<&BusinessNode> {
+    pub(super) fn one(&self, field: &str) -> Option<&BusinessNode> {
         self.one.iter().find(|(f, _)| *f == field).and_then(|(_, n)| n.as_ref())
     }
-    fn many(&self, field: &str) -> &[BusinessNode] {
+    pub(super) fn many(&self, field: &str) -> &[BusinessNode] {
         self.many.iter().find(|(f, _)| *f == field).map(|(_, l)| l.as_slice()).unwrap_or(&[])
     }
 }
@@ -268,7 +270,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -286,19 +288,23 @@ pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
             return Err(format!("{f}() needs {}", rust_name(k)));
         }
     }
-    let mut one: Vec<(&'static str, Option<BusinessNode>)> = spec.one.iter().map(|(field, _)| (*field, None)).collect();
-    let mut many: Vec<(&'static str, Vec<BusinessNode>)> = spec.many.iter().map(|(field, _)| (*field, Vec::new())).collect();
+    // A company also takes its finance's children (business_finance.rs).
+    let (finance_one, finance_many): (&[(&str, &str)], &[(&str, &str)]) = if spec.tag == "Company" { (COMPANY_FINANCE_ONE, COMPANY_FINANCE_MANY) } else { (&[], &[]) };
+    let spec_one: Vec<(&'static str, &'static str)> = spec.one.iter().chain(finance_one).copied().collect();
+    let spec_many: Vec<(&'static str, &'static str)> = spec.many.iter().chain(finance_many).copied().collect();
+    let mut one: Vec<(&'static str, Option<BusinessNode>)> = spec_one.iter().map(|(field, _)| (*field, None)).collect();
+    let mut many: Vec<(&'static str, Vec<BusinessNode>)> = spec_many.iter().map(|(field, _)| (*field, Vec::new())).collect();
     for child in el.child_elements() {
-        if let Some(i) = spec.one.iter().position(|(_, t)| *t == child.tag) {
+        if let Some(i) = spec_one.iter().position(|(_, t)| *t == child.tag) {
             let node = read_business_node(child)?;
             if one[i].1.is_some() {
                 return Err(format!("{f}() has two {}()", fn_name(child.tag)));
             }
             one[i].1 = Some(node);
-        } else if let Some(i) = spec.many.iter().position(|(_, t)| *t == child.tag) {
+        } else if let Some(i) = spec_many.iter().position(|(_, t)| *t == child.tag) {
             many[i].1.push(read_business_node(child)?);
         } else {
-            let takes: Vec<String> = spec.one.iter().chain(spec.many).map(|(_, t)| format!("{}()", fn_name(t))).collect();
+            let takes: Vec<String> = spec_one.iter().chain(&spec_many).map(|(_, t)| format!("{}()", fn_name(t))).collect();
             let takes = if takes.is_empty() { "no children".to_string() } else { takes.join(", ") };
             return Err(format!("{f}() does not take {}() (it takes {takes})", fn_name(child.tag)));
         }
@@ -394,10 +400,10 @@ pub fn company_of(node: &BusinessNode) -> Json {
         })
         .collect();
     let company = if subsidiaries.is_empty() { company } else { company.with("subsidiaries", subsidiaries) };
-    if papers.is_empty() {
-        company
-    } else {
-        company.with("papers", papers)
+    let company = if papers.is_empty() { company } else { company.with("papers", papers) };
+    match finance_of(node) {
+        Some(finance) => company.with("finance", finance),
+        None => company,
     }
 }
 
