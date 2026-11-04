@@ -167,3 +167,11 @@ fn a_derive_and_a_discover() {
     refused(d().visibility("shared"), "visibility is private, unlisted, public");
     refused(follows().monitor("../x").when(json(r#"{"data.conversation": {"above": 1}}"#)), "when: data.conversation: above is not an operator");
 }
+
+#[test]
+fn a_wake_on_a_clock() {
+    let (_, doc) = document(monitor([wake().every("7d").prompt("Write the week's brief.")]));
+    assert_eq!(monitor_with_defaults(&doc).get("wakes"), Some(&j(r#"[{"match": null, "every": "7d", "prompt": "Write the week's brief."}]"#)));
+    assert!(declare(monitor([wake().every("8d").prompt("p")])).unwrap_err().contains("every is a duration from 30s to 7d"));
+    assert!(declare(monitor([wake().match_("x.*").every("1d").prompt("p")])).unwrap_err().contains("not both"));
+}

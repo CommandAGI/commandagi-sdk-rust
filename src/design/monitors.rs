@@ -53,7 +53,7 @@ elements! {
     source: leaf;
     /// A follow: copy the records of another monitor that its `when` takes into this one.
     follows: leaf;
-    /// A wake: wake the thread's agent when a matching record arrives.
+    /// A wake: wake the thread's agent when a matching record arrives (`match_`), or on a clock (`every`: a weekly brief).
     wake: leaf;
     /// A derived stream: an operator folds the records of other monitors into records of this one.
     derive: leaf;
@@ -83,7 +83,7 @@ pub const SOURCE_FIELDS: &[&str] = &[
     "keep", "maxCostPerDay", "unit", "vantage", "connection",
 ];
 pub const FOLLOW_FIELDS: &[&str] = &["monitor", "when"];
-pub const WAKE_FIELDS: &[&str] = &["match", "prompt"];
+pub const WAKE_FIELDS: &[&str] = &["match", "every", "prompt"];
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
 pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
 /// The most new folders a discover writes a tick.
@@ -514,6 +514,16 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
             _ => {
                 word(c, "match", "match")?;
                 word(c, "prompt", "match")?;
+                // A wake wakes on records (match) or on a clock (every), never both.
+                if let Some(every) = c.attr_of("every") {
+                    if c.attr_of("match").is_some() {
+                        return Err(format!("{} wakes on records (match) or on a clock (every), not both", call(c, "match")));
+                    }
+                    let ok = matches!(every, Json::Str(s) if duration_seconds(s).is_some_and(|n| n >= EVERY_BOUNDS.0 && n <= EVERY_BOUNDS.1));
+                    if !ok {
+                        return Err(format!("<wake> every is a duration from 30s to 7d, not {}", every.text()));
+                    }
+                }
                 wakes.push(said(c, WAKE_FIELDS));
             }
         }
@@ -570,7 +580,10 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
                 .with("since", or_null(d, "since"))
         })
         .collect();
-    let wakes = list("wakes").iter().map(|w| Json::obj().with("match", or_null(w, "match")).with("prompt", or_null(w, "prompt"))).collect();
+    let wakes = list("wakes")
+        .iter()
+        .map(|w| Json::obj().with("match", or_null(w, "match")).with("every", or_null(w, "every")).with("prompt", or_null(w, "prompt")))
+        .collect();
     let discovers = list("discovers")
         .iter()
         .map(|d| {
