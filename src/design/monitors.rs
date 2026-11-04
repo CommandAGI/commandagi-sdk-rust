@@ -20,7 +20,7 @@
 //!
 //! A follow names the followed monitor's folder, relative to this monitor's folder, and takes the records its `when`
 //! (a record predicate, like a discover's) holds for. A wake's `match` is written `match_` (a Rust keyword), and a
-//! discover's `into` is written `into_` (`Into::into` has the name). Nothing adds a default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes` and `discovers` are always lists.
+//! discover's `into` is written `into_` (`Into::into` has the name). Nothing adds a default: what the file does not say, the document does not have. A monitor's `sameAs`, `sources`, `follows`, `derives`, `wakes`, `discovers` and `judges` are always lists.
 //!
 //! A `derive` folds other monitors' records into this one's, each port named to a folder; a `discover` gives each thing
 //! its records name a folder and a thread of its own, an instance of a class (`<file>#<Component>`):
@@ -59,6 +59,8 @@ elements! {
     derive: leaf;
     /// A discover: each thing a record names that has no folder yet gets one, an instance of a class.
     discover: leaf;
+    /// A judge: when a turn or a task's turn of the thread ends, a model reads the trace with a rubric and records a verdict.
+    judge: leaf;
 }
 
 attributes! {
@@ -72,6 +74,7 @@ attributes! {
         monitor; match_; prompt;
         op; inputs;
         into_ = "into"; of; when; slug; props; name; max; visibility;
+        rubric; model;
     }
 }
 
@@ -86,6 +89,9 @@ pub const FOLLOW_FIELDS: &[&str] = &["monitor", "when"];
 pub const WAKE_FIELDS: &[&str] = &["match", "every", "prompt"];
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since"];
 pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
+pub const MONITOR_JUDGE_FIELDS: &[&str] = &["id", "of", "rubric", "model"];
+/// What a judge judges: each turn of the thread's agents, or each turn on a mounted task.
+pub const MONITOR_JUDGE_OF: &[&str] = &["turn", "task"];
 /// The most new folders a discover writes a tick.
 pub const DISCOVER_MAX: u32 = 50;
 /// Who may read a file a discover writes (docs/monitors.md § own thread or record).
@@ -110,6 +116,7 @@ const MONITOR: Vocabulary = Vocabulary {
         TagRule::new("wake", &["monitor"]).required(&["prompt"]).attrs(WAKE_FIELDS),
         TagRule::new("derive", &["monitor"]).key("id").required(&["id", "op", "inputs"]).attrs(DERIVE_FIELDS),
         TagRule::new("discover", &["monitor"]).required(&["slug", "class"]).attrs(DISCOVER_FIELDS),
+        TagRule::new("judge", &["monitor"]).key("id").required(&["id", "of", "rubric", "model"]).attrs(MONITOR_JUDGE_FIELDS),
     ],
     from_tree: monitor_of,
 };
@@ -496,6 +503,7 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
     let mut derives = Vec::new();
     let mut wakes = Vec::new();
     let mut discovers = Vec::new();
+    let mut judges = Vec::new();
     for c in &t.children {
         match c.tag {
             "source" => sources.push(source_of(c)?),
@@ -511,6 +519,7 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
             }
             "derive" => derives.push(derive_of(c)?),
             "discover" => discovers.push(discover_of(c)?),
+            "judge" => judges.push(judge_of(c)?),
             _ => {
                 word(c, "match", "match")?;
                 word(c, "prompt", "match")?;
@@ -534,7 +543,26 @@ fn monitor_of(t: &DocTree) -> Result<Json, String> {
     out.set("derives", Json::Arr(derives));
     out.set("wakes", Json::Arr(wakes));
     out.set("discovers", Json::Arr(discovers));
+    out.set("judges", Json::Arr(judges));
     Ok(out)
+}
+
+/// A judge of the monitor's thread (docs/monitors.md § a cloud thread's judge): when a turn or a task's turn ends, the
+/// model reads the trace with the rubric, and its verdict is a record of the thread (an opinion, never evidence).
+fn judge_of(t: &DocTree) -> Result<Json, String> {
+    for k in ["id", "rubric", "model"] {
+        word(t, k, "id")?;
+    }
+    let w = call(t, "id");
+    if !str_attr(t, "id").is_some_and(word_ok) {
+        return Err(format!("{w} id is a word (letters, digits, _ and -)"));
+    }
+    one_of(t, "of", MONITOR_JUDGE_OF)?;
+    if !str_attr(t, "rubric").is_some_and(|r| r.to_ascii_lowercase().ends_with(".md")) {
+        let shown = t.attr_of("rubric").map(Json::text).unwrap_or_else(|| "undefined".into());
+        return Err(format!("{w} rubric is a .md file (\"./rubric.md\"), not {shown}"));
+    }
+    Ok(said(t, MONITOR_JUDGE_FIELDS))
 }
 
 /// A monitor as the platform reads it: what the file does not say, filled (`via: "worker"`, `mode: "poll"`, the others
@@ -613,5 +641,10 @@ pub fn monitor_with_defaults(m: &Json) -> Json {
     out.set("derives", Json::Arr(derives));
     out.set("wakes", Json::Arr(wakes));
     out.set("discovers", Json::Arr(discovers));
+    let judges = list("judges")
+        .iter()
+        .map(|j| Json::obj().with("id", or_null(j, "id")).with("of", or_null(j, "of")).with("rubric", or_null(j, "rubric")).with("model", or_null(j, "model")))
+        .collect();
+    out.set("judges", Json::Arr(judges));
     out
 }

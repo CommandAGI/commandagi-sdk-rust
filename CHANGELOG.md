@@ -16,6 +16,10 @@ Added
 - A workflow step waits for an approval: `step([…]).approval("agent:reviewer role:release-manager")` names who may
   give it: a principal (`agent:<id>`, `person:<id>`), a role (`role:<name>`) or the holder of a grant that covers an
   address (`grant:<address>`). A note step takes none. The same as the TypeScript SDK.
+- `commandagi::design::monitors`: `judge().id("claims").of("task").rubric("./rubric.md").model("fireworks/glm-5p3")`, a
+  judge of the monitor's thread: when a turn (`of("turn")`) or a task's turn (`of("task")`) ends, the model reads the
+  trace with the rubric and its verdict is a record of the thread. `judges` is always a list. The same as the
+  TypeScript SDK.
 - A tactile skin on a face of a body: `tactile().id("pad").body("Jaw").at([-20, 0, 20]).normal([1, 0, 0]).along([0, 1, 0]).rows(4).cols(4).pitch(5)`
   (the document's `tactile` list). The same as the TypeScript SDK.
 - A scout's case may be checked by the kernel: `check(json(r#"{"kernel": {"as": "plate.3d.tsx", "expect": {"volume": 13928.8,
