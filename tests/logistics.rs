@@ -92,7 +92,7 @@ fn a_wrong_logistics_field_is_refused_by_name_and_attrs_cannot_say_what_an_argum
     use commandagi::design::schematic::*;
     let sheet = |p: El| bad(group("L", [p]));
     let u4 = || part("U4").pins(["1"]);
-    const PRICE_BREAKS: &str = "suppliers[0]: priceBreaks is a list of { quantity, unitPrice, unitPriceHigh? } (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it)";
+    const PRICE_BREAKS: &str = "suppliers[0]: priceBreaks is a list of { quantity, unitPrice, unitPriceHigh? } (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it; one break with no quantity is a single price)";
     let refused = [
         (u4().suppliers(json(r#"[{"name": "LCSC", "price": 3}]"#)), "suppliers[0]: price is not a term of an offer"),
         (u4().suppliers(json(r#"[{"name": "LCSC", "priceBreaks": [{"quantity": 0, "unitPrice": 1}]}]"#)), PRICE_BREAKS),
@@ -191,6 +191,11 @@ fn a_3d_documents_item_and_assemble_are_lists_of_the_document_and_body_engineeri
     assert!(refused(item().id("t").name("T").qty(0)).contains("qty"));
     assert!(refused(body().id("b").engineering(json(r#"{"lifecycle": {"status": "dead"}}"#))).contains("status"));
     assert!(refused(slot().name("items").value(json("[]"))).contains("items is not a slot"));
+    // A part's need and an offer's shared stock, through another supplier's service, are engineering fields too.
+    let pin = r#"{"process": "purchased", "need": {"spares": 334, "attrition": 0.05, "multiple": 3}, "suppliers": [{"name": "DigiKey", "via": "suppliers/jlcpcb.supplier.tsx", "service": "global-sourcing", "pool": "DigiKey", "preorder": -5, "incoming": [{"quantity": 3000, "date": "2026-11-05"}], "dates": {"stock": "2026-11-03"}, "priceBreaks": [{"unitPrice": 0.66}]}]}"#;
+    assert!(declare(part([item().id("pin").name("Pin").qty(1128).engineering(json(pin))]).name("P")).is_ok());
+    assert!(refused(item().id("pin").name("Pin").engineering(json(r#"{"need": {"multiple": 0}}"#))).contains("multiple"));
+    assert!(refused(item().id("pin").name("Pin").engineering(json(r#"{"need": {"panels": 2}}"#))).contains("panels"));
 }
 
 #[test]
@@ -234,4 +239,45 @@ fn an_offers_kind_confidence_tooling_and_lead_range_and_an_alternate_round_trip_
     assert!(got.contains("kind is stock, quote, listing or broker"), "{got}");
     let got = bad(group("L", [part("P1").pins(["1"]).alternates(json(r#"[{"manufacturer": "Y", "mpn": "Z", "grade": "A"}]"#))]));
     assert!(got.contains("alternates[0]: grade is not read"), "{got}");
+}
+
+#[test]
+fn a_shared_stock_a_preorder_count_an_offer_through_another_suppliers_service_stock_on_its_way_per_term_dates_a_single_price_and_a_parts_need() {
+    use commandagi::design::schematic::*;
+    const SUPPLIERS: &str = r#"[{"name": "JLCPCB parts library", "sku": "C530677", "currency": "USD", "priceBreaks": [{"quantity": 1, "unitPrice": 0.1114}], "stock": 1984, "preorder": 1816, "pool": "LCSC warehouse", "supplier": "suppliers/jlcpcb.supplier.tsx", "source": "JLC parts API", "date": "2026-11-03", "dates": {"priceBreaks": "2026-11-02"}}, {"name": "LCSC", "sku": "C530677", "currency": "USD", "priceBreaks": [{"quantity": 5, "unitPrice": 0.1105}], "stock": 1675, "pool": "LCSC warehouse", "source": "LCSC product API", "date": "2026-11-03"}, {"name": "DigiKey", "currency": "USD", "priceBreaks": [{"unitPrice": 0.66}], "stock": 0, "incoming": [{"quantity": 3000, "date": "2026-11-05"}], "service": "global-sourcing", "via": "suppliers/jlcpcb.supplier.tsx", "supplier": "suppliers/digikey.supplier.tsx", "source": "digikey.com, the quantity of the price not read", "date": "2026-11-03"}]"#;
+    const NEED: &str = r#"{"spares": 334, "attrition": 0.05}"#;
+    let g = graph_of(group("L", [part("P1").pins(["1"]).mpn("KH-205580-DZ").suppliers(json(SUPPLIERS)).need(json(NEED))]));
+    let inputs = node(&g, "P1").get("inputs").unwrap();
+    let want: Vec<(String, String)> = [
+        ("JLCPCB parts library Part", "C530677"),
+        ("JLCPCB parts library Terms", r#"{"currency":"USD","priceBreaks":[[1,0.1114]],"stock":1984,"preorder":1816,"pool":"LCSC warehouse","supplier":"suppliers/jlcpcb.supplier.tsx","source":"JLC parts API","date":"2026-11-03","dates":{"priceBreaks":"2026-11-02"}}"#),
+        ("LCSC Part", "C530677"),
+        ("LCSC Terms", r#"{"currency":"USD","priceBreaks":[[5,0.1105]],"stock":1675,"pool":"LCSC warehouse","source":"LCSC product API","date":"2026-11-03"}"#),
+        ("DigiKey Terms", r#"{"currency":"USD","priceBreaks":[[null,0.66]],"stock":0,"incoming":[{"quantity":3000,"date":"2026-11-05"}],"service":"global-sourcing","via":"suppliers/jlcpcb.supplier.tsx","supplier":"suppliers/digikey.supplier.tsx","source":"digikey.com, the quantity of the price not read","date":"2026-11-03"}"#),
+        ("Need", r#"{"spares":334,"attrition":0.05}"#),
+    ]
+    .iter()
+    .map(|(n, v)| (n.to_string(), v.to_string()))
+    .collect();
+    assert_eq!(props(inputs)[1..], want[..]);
+    let parse = |t: &str| Json::parse(t).unwrap();
+    let back = Json::obj().with("mpn", "KH-205580-DZ").with("need", parse(NEED)).with("suppliers", parse(SUPPLIERS));
+    assert_eq!(part_fields(inputs).text(), back.text());
+    let sheet = |p: El| bad(group("L", [p]));
+    let u4 = || part("U4").pins(["1"]);
+    assert!(commandagi::design::declare(group("L", [u4().suppliers(json(r#"[{"name": "X", "preorder": -3898}]"#))])).is_ok(), "more promised than held");
+    let refused = [
+        (u4().suppliers(json(r#"[{"name": "X", "preorder": 1.5}]"#)), "preorder is a whole number"),
+        (u4().suppliers(json(r#"[{"name": "X", "via": "suppliers/jlcpcb.supplier.tsx"}]"#)), "names that supplier's service"),
+        (u4().suppliers(json(r#"[{"name": "X", "incoming": [{"quantity": 3000, "date": "soon"}]}]"#)), "incoming is a list of { quantity, date }"),
+        (u4().suppliers(json(r#"[{"name": "X", "dates": {"colour": "2026-11-03"}}]"#)), "dates is { <term>: YYYY-MM-DD }"),
+        (u4().suppliers(json(r#"[{"name": "X", "priceBreaks": [{"unitPrice": 1}, {"quantity": 10, "unitPrice": 0.9}]}]"#)), "one break with no quantity is a single price"),
+        (u4().need(json(r#"{"spares": 1.5}"#)), "need.spares is a whole number"),
+        (u4().need(json(r#"{"attrition": 5}"#)), "need.attrition is a rate"),
+        (u4().need(json(r#"{"panel": 3}"#)), "need.panel is not read"),
+    ];
+    for (el, why) in refused {
+        let got = sheet(el);
+        assert!(got.contains(why), "{got:?} does not say {why:?}");
+    }
 }

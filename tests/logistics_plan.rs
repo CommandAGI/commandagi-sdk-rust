@@ -120,3 +120,54 @@ fn a_leg_that_says_quote_this_states_its_want_parcel_and_postal_codes() {
     assert!(bad(leg().carrier("UPS").quote("ups/03")).contains("quote needs its parcel"));
     assert!(bad(leg().carrier("UPS").quote("fastest").kg(2).mm([300, 250])).contains("mm is the parcel"));
 }
+
+#[test]
+fn buying_ahead_and_stock_on_hand_a_plan_buys_past_its_need_for_a_later_plan_which_counts_it_a_service_counted_in_business_days() {
+    let (_, ten) = document(
+        logistics([
+            source([
+                use_().offer("JLCPCB parts library"),
+                use_().offer("JLCPCB parts library").mpn("FT2232HL-TRAY"),
+                ahead().qty(157).for_("Helmet 100.logistics.tsx"),
+            ])
+            .part("FT2232HL-REEL")
+            .strategy("fill"),
+            source([ahead().qty(500).for_("Helmet 100.logistics.tsx").note("the reel's rest")]).part("TLV333IDCKR"),
+        ])
+        .quantity(10)
+        .build("2027-01-15"),
+    );
+    assert_eq!(
+        ten.get("sources").unwrap(),
+        &j(r#"[{"part":"FT2232HL-REEL","strategy":"fill","uses":[{"offer":"JLCPCB parts library"},{"offer":"JLCPCB parts library","mpn":"FT2232HL-TRAY"}],"ahead":{"qty":157,"for":"Helmet 100.logistics.tsx"}},{"part":"TLV333IDCKR","uses":[],"ahead":{"qty":500,"for":"Helmet 100.logistics.tsx","note":"the reel's rest"}}]"#)
+    );
+    assert!(ten.get("stocks").is_none(), "a plan that holds no stock states none");
+    let (_, hundred) = document(
+        logistics([stock().from("Helmet 10.logistics.tsx"), stock().part("KH-205580-DZ").qty(2000).arrives("2027-03-01").note("consigned at JLCPCB")]).quantity(100),
+    );
+    assert_eq!(
+        hundred.get("stocks").unwrap(),
+        &j(r#"[{"from":"Helmet 10.logistics.tsx"},{"part":"KH-205580-DZ","qty":2000,"arrives":"2027-03-01","note":"consigned at JLCPCB"}]"#)
+    );
+    let refused = [
+        (stock().from("a.logistics.tsx").qty(3), "takes what that plan bought ahead"),
+        (stock().part("X"), "names the part and its qty, or the plan it is from"),
+        (stock().part("X").qty(3).arrives("soon"), "arrives is a date"),
+        (source([ahead().qty(1.5).for_("b.logistics.tsx")]).part("X"), "ahead(): qty is a whole number"),
+        (source([]).part("X"), "names no use_() and no ahead()"),
+        (source([use_().offer("A")]).part("X"), "strategy is single, fill, split or dual"),
+    ];
+    for (el, why) in refused {
+        let got = declare(logistics([el])).unwrap_err();
+        assert!(got.contains(why), "{got:?} does not say {why:?}");
+    }
+    let (_, jlc) = document(
+        supplier([service([]).id("global-sourcing").review_days(1).review_days_high(3).lead_time_days(9).lead_time_days_high(20).business_days(true)]).name("JLCPCB"),
+    );
+    assert_eq!(
+        jlc.get("services").unwrap(),
+        &j(r#"[{"id":"global-sourcing","reviewDays":1,"reviewDaysHigh":3,"leadTimeDays":9,"leadTimeDaysHigh":20,"businessDays":true,"fees":[]}]"#)
+    );
+    let bad = declare(supplier([service([]).id("s").business_days("yes")]).name("X")).unwrap_err();
+    assert!(bad.contains("business_days is true or false"), "{bad}");
+}

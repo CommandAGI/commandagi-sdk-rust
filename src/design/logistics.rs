@@ -31,7 +31,33 @@
 //! A supplier's `service([fee()…]).id("global-sourcing")` is a way to buy through it (pre-order, global sourcing,
 //! consignment) with its review and buying days and its fees (per order, line or unit). A plan's `.build("2027-06-01")`
 //! is the day the parts must be at the builder, and `source([use_().offer("LCSC")…]).part(…).strategy("split")` says
-//! how one line is filled (single, fill, split, dual).
+//! how one line is filled (single, fill, split, dual). A service whose days are `.business_days(true)` counts Monday to
+//! Friday only.
+//!
+//! A plan may buy ahead for a later plan: `ahead().qty(157).for_(…)` in a `source([…])` buys `qty` more than this
+//! order needs, by the same offers, for the plan `for` names (a ref). That plan counts them as stock on hand:
+//! `stock().from(…)` names the earlier plan and takes what it bought ahead for this one (`part` narrows it to one line).
+//! Stock held otherwise (left from a build, consigned) is `stock().part(…).qty(…).arrives(…)`; `arrives` is the day it
+//! is there (with `from`, the earlier plan's build date). A `source` with only an `ahead()` keeps the default fill and
+//! needs no strategy:
+//!
+//! ```
+//! use commandagi::design::logistics::*;
+//!
+//! let ten = logistics([source([
+//!     use_().offer("JLCPCB parts library"),
+//!     use_().offer("JLCPCB parts library").mpn("FT2232HL-TRAY"),
+//!     ahead().qty(157).for_("Helmet 100.logistics.tsx"),
+//! ])
+//! .part("FT2232HL-REEL")
+//! .strategy("fill")])
+//! .name("helmet, 10")
+//! .quantity(10)
+//! .build("2027-01-15");
+//! let hundred = logistics([stock().from("Helmet 10.logistics.tsx")]).name("helmet, 100").quantity(100).build("2027-06-01");
+//! # commandagi::design::declare(ten).unwrap();
+//! # commandagi::design::declare(hundred).unwrap();
+//! ```
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, rust_name};
@@ -66,6 +92,10 @@ elements! {
     source: children;
     /// One offer a line is filled from: `.offer("LCSC")`, `.mpn(…)` for an alternate's, `.qty(…)` or `.share(…)`.
     use_ = "use": leaf;
+    /// Units bought past this order's need, for a later plan: `.qty(157).for_("Helmet 100.logistics.tsx")`.
+    ahead: leaf;
+    /// Stock this order already holds: `.from(…)` (what an earlier plan bought ahead for it), or `.part(…).qty(…)`.
+    stock: leaf;
 }
 
 attributes! {
@@ -76,6 +106,7 @@ attributes! {
         quantity; ref_ = "ref"; qty; supplier; cost; currency; to;
         id; review_days; review_days_high; lead_time_days_high; amount; per; each;
         build; part; strategy; offer; mpn; share; quote; kg; mm;
+        business_days; for_; from; arrives;
     }
 }
 
@@ -85,11 +116,13 @@ pub const PLACE_FIELDS: &[&str] = &["name", "lat", "lon", "country", "postal", "
 pub const SUPPLIER_FIELDS: &[&str] = &["name", "url", "leadTimeDays", "note"];
 pub const SHIPS_FIELDS: &[&str] = &["carrier", "service", "transitDays", "note"];
 pub const CONTACT_FIELDS: &[&str] = &["name", "role", "email", "phone"];
-pub const SERVICE_FIELDS: &[&str] = &["id", "name", "reviewDays", "reviewDaysHigh", "leadTimeDays", "leadTimeDaysHigh", "note"];
+pub const SERVICE_FIELDS: &[&str] = &["id", "name", "reviewDays", "reviewDaysHigh", "leadTimeDays", "leadTimeDaysHigh", "businessDays", "note"];
 pub const FEE_FIELDS: &[&str] = &["amount", "currency", "per", "each", "note"];
 pub const LOGISTICS_FIELDS: &[&str] = &["name", "quantity", "build"];
 pub const SOURCE_FIELDS: &[&str] = &["part", "strategy"];
 pub const USE_FIELDS: &[&str] = &["offer", "mpn", "qty", "share"];
+pub const AHEAD_FIELDS: &[&str] = &["qty", "for", "note"];
+pub const STOCK_FIELDS: &[&str] = &["part", "qty", "from", "arrives", "note"];
 const FEE_PER: &[&str] = &["order", "line", "unit"];
 const STRATEGIES: &[&str] = &["single", "fill", "split", "dual"];
 pub const BOM_FIELDS: &[&str] = &["ref", "qty"];
@@ -120,8 +153,10 @@ const LOGISTICS: Vocabulary = Vocabulary {
         TagRule::new("builder", &["logistics"]).single().required(&["name", "lat", "lon"]).attrs(PLACE_FIELDS),
         TagRule::new("route", &["logistics"]).required(&["supplier"]).attrs(&["supplier"]),
         TagRule::new("leg", &["route"]).required(&["carrier"]).attrs(LEG_FIELDS),
-        TagRule::new("source", &["logistics"]).required(&["part", "strategy"]).attrs(SOURCE_FIELDS),
+        TagRule::new("source", &["logistics"]).required(&["part"]).attrs(SOURCE_FIELDS),
         TagRule::new("use", &["source"]).required(&["offer"]).attrs(USE_FIELDS),
+        TagRule::new("ahead", &["source"]).single().required(&["qty", "for"]).attrs(AHEAD_FIELDS),
+        TagRule::new("stock", &["logistics"]).attrs(STOCK_FIELDS),
     ],
     from_tree: logistics_of,
 };
@@ -223,6 +258,9 @@ fn currency(t: &DocTree) -> Result<(), String> {
 fn service_of(t: &DocTree) -> Result<Json, String> {
     text(t, &["id", "name", "note"])?;
     count(t, &["reviewDays", "reviewDaysHigh", "leadTimeDays", "leadTimeDaysHigh"])?;
+    if matches!(t.attr_of("businessDays"), Some(v) if !matches!(v, Json::Bool(_))) {
+        return Err("service(): business_days is true or false".into());
+    }
     let mut fees = Vec::new();
     for f in t.children.iter().filter(|f| f.tag == "fee") {
         text(f, &["note"])?;
@@ -246,7 +284,8 @@ fn service_of(t: &DocTree) -> Result<Json, String> {
 
 fn source_of(t: &DocTree) -> Result<Json, String> {
     text(t, &["part"])?;
-    if !matches!(t.attr_of("strategy"), Some(Json::Str(s)) if STRATEGIES.contains(&s.as_str())) {
+    let named = t.children.iter().any(|u| u.tag == "use");
+    if (named || t.attr_of("strategy").is_some()) && !matches!(t.attr_of("strategy"), Some(Json::Str(s)) if STRATEGIES.contains(&s.as_str())) {
         return Err("source(): strategy is single, fill, split or dual".into());
     }
     let mut uses = Vec::new();
@@ -260,7 +299,44 @@ fn source_of(t: &DocTree) -> Result<Json, String> {
         }
         uses.push(fields(u, USE_FIELDS));
     }
-    Ok(fields(t, SOURCE_FIELDS).with("uses", uses))
+    let ahead = t.single("ahead");
+    if let Some(a) = ahead {
+        if !matches!(a.attr_of("qty").and_then(Json::as_f64), Some(n) if n >= 1.0 && n.fract() == 0.0) {
+            return Err("ahead(): qty is a whole number, 1 or more".into());
+        }
+        text(a, &["for", "note"])?;
+    }
+    if !named && ahead.is_none() {
+        let part = t.attr_of("part").and_then(Json::as_str).unwrap_or_default();
+        return Err(format!(r#"source().part("{part}"): names no use_() and no ahead()"#));
+    }
+    let out = fields(t, SOURCE_FIELDS).with("uses", uses);
+    Ok(match ahead {
+        Some(a) => out.with("ahead", fields(a, AHEAD_FIELDS)),
+        None => out,
+    })
+}
+
+fn is_day(v: &str) -> bool {
+    v.len() == 10 && v.chars().enumerate().all(|(i, c)| if i == 4 || i == 7 { c == '-' } else { c.is_ascii_digit() })
+}
+
+fn stock_of(t: &DocTree) -> Result<Json, String> {
+    text(t, &["part", "from", "note"])?;
+    if matches!(t.attr_of("arrives"), Some(v) if !matches!(v, Json::Str(d) if is_day(d))) {
+        return Err("stock(): arrives is a date, YYYY-MM-DD".into());
+    }
+    let (from, qty) = (t.attr_of("from"), t.attr_of("qty"));
+    if from.is_some() && qty.is_some() {
+        return Err("stock().from(…): takes what that plan bought ahead for this one: it states no qty".into());
+    }
+    if from.is_none() && (t.attr_of("part").is_none() || qty.is_none()) {
+        return Err("stock(): names the part and its qty, or the plan it is from (from)".into());
+    }
+    if matches!(qty, Some(v) if !matches!(v.as_f64(), Some(n) if n > 0.0)) {
+        return Err("stock(): qty is a number above 0".into());
+    }
+    Ok(fields(t, STOCK_FIELDS))
 }
 
 fn leg_of(c: &DocTree) -> Result<Json, String> {
@@ -305,7 +381,7 @@ fn is_want(w: &str) -> bool {
 
 fn logistics_of(t: &DocTree) -> Result<Json, String> {
     text(t, &["name", "build"])?;
-    if matches!(t.attr_of("build"), Some(Json::Str(b)) if !(b.len() == 10 && b.chars().enumerate().all(|(i, c)| if i == 4 || i == 7 { c == '-' } else { c.is_ascii_digit() }))) {
+    if matches!(t.attr_of("build"), Some(Json::Str(b)) if !is_day(b)) {
         return Err("logistics(): build is YYYY-MM-DD".into());
     }
     if matches!(t.attr_of("quantity"), Some(v) if !matches!(v.as_f64(), Some(n) if n >= 1.0 && n.fract() == 0.0)) {
@@ -315,6 +391,7 @@ fn logistics_of(t: &DocTree) -> Result<Json, String> {
     let mut boms = Vec::new();
     let mut routes = Vec::new();
     let mut sources = Vec::new();
+    let mut stocks = Vec::new();
     for c in &t.children {
         if c.tag == "bom" {
             text(c, &["ref"])?;
@@ -328,11 +405,14 @@ fn logistics_of(t: &DocTree) -> Result<Json, String> {
             routes.push(fields(c, &["supplier"]).with("legs", legs));
         } else if c.tag == "source" {
             sources.push(source_of(c)?);
+        } else if c.tag == "stock" {
+            stocks.push(stock_of(c)?);
         }
     }
     let mut out = out.with("boms", boms);
     if let Some(b) = t.single("builder") {
         out.set("builder", place(b, "name")?);
     }
-    Ok(out.with("routes", routes).with("sources", sources))
+    let out = out.with("routes", routes).with("sources", sources);
+    Ok(if stocks.is_empty() { out } else { out.with("stocks", stocks) })
 }

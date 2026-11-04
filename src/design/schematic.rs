@@ -71,8 +71,8 @@
 //!                                                                           package ("<n> pins, pitch <mm> mm, body
 //!                                                                           <l> x <w> mm"), read by the pinout and
 //!                                                                           footprint checks
-//! … .suppliers(json(…)).alternates(json(…)).datasheet(…)                   its logistics, as KiCad properties too
-//!   .lifecycle(json(…)).compliance(json(…)).shipping(json(…))               (`super::part_fields`: LCSC Part,
+//! … .suppliers(json(…)).alternates(json(…)).need(json(…)).datasheet(…)    its logistics, as KiCad properties too
+//!   .lifecycle(json(…)).compliance(json(…)).shipping(json(…))               (`super::part_fields`: LCSC Part, Need,
 //!                                                                           Datasheet, RoHS, HS Code …)
 //! attachment(name).role("schematic").file(path).mime(…)                     a KiCad file the circuit carries
 //! check().id(…).kind("erc").severity(…)                                     a check the circuit must pass, and a
@@ -207,6 +207,9 @@ attributes! {
         suppliers;
         /// A part's approved second sources (KiCad property `Alternates`): `json(r#"[{"manufacturer": "…", "mpn": "…"}]"#)`.
         alternates;
+        /// What one order of N products needs past qty × N (KiCad property `Need`):
+        /// `json(r#"{"spares": 334, "attrition": 0.05, "attritionMin": 10, "multiple": 50}"#)`.
+        need;
         /// A part's datasheet, a URL or a path (KiCad property `Datasheet`).
         datasheet;
         /// A part's lifecycle: `json(r#"{"status": "active", "onHand": 2, "reorderPoint": 5}"#)` (`Lifecycle`, `On Hand` …).

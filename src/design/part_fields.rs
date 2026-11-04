@@ -13,9 +13,10 @@
 //! .package_dimensions(…)                                             its datasheet package ("<n> pins, pitch <mm> mm,
 //!                                                                    body <l> x <w> mm")
 //! .suppliers(json(r#"[{"name", "sku", "url", "currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays",
-//!                      "leadTimeDaysHigh", "stock", "kind", "confidence", "samplesDays", "tooling", "service",
-//!                      "supplier", "source", "date"}]"#))
+//!                      "leadTimeDaysHigh", "stock", "preorder", "pool", "incoming", "kind", "confidence",
+//!                      "samplesDays", "tooling", "service", "via", "supplier", "source", "date", "dates"}]"#))
 //! .alternates(json(r#"[{"manufacturer", "mpn", "note", "approved", "differences", "datasheet", "suppliers"}]"#))
+//! .need(json(r#"{"spares", "attrition", "attritionMin", "multiple"}"#))   what one order needs past qty × N
 //! .datasheet("https://…")
 //! .lifecycle(json(r#"{"status", "lastTimeBuy", "onHand", "reorderPoint", "source", "date"}"#))
 //! .compliance(json(r#"{"rohs", "rohsExemption", "reach", "conflictMinerals", "eccn", "certifications"}"#))
@@ -23,8 +24,9 @@
 //! ```
 //!
 //! A supplier is two properties: `<name> Part` (its sku; `LCSC Part` is what JLCPCB's assembly BOM reads) and
-//! `<name> Terms` (the rest as compact JSON, a price break as `[quantity, unitPrice]`). `Datasheet` is KiCad's own
-//! field; `Alternates` is JSON; a facet's fields are one property each (`Lifecycle`, `RoHS`, `HS Code` …). The
+//! `<name> Terms` (the rest as compact JSON, a price break as `[quantity, unitPrice]`, or `[quantity, unitPrice,
+//! unitPriceHigh]`; a single price with no quantity as `[null, unitPrice]`). `Datasheet` is KiCad's own field;
+//! `Alternates` and `Need` are JSON; a facet's fields are one property each (`Lifecycle`, `RoHS`, `HS Code` …). The
 //! repository's decoder is `packages/domain/world/logistics.js`; the TypeScript and Python SDKs write and read the
 //! same forms.
 //!
@@ -122,7 +124,8 @@ const CHOICES: &[(&str, &[&str])] = &[
 ];
 const COUNTS: &[&str] = &["lifecycle.onHand", "lifecycle.reorderPoint"];
 const DATES: &[&str] = &["lifecycle.lastTimeBuy", "lifecycle.date"];
-const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "leadTimeDaysHigh", "stock", "kind", "confidence", "samplesDays", "tooling", "service", "supplier", "url", "source", "date"];
+const OFFER_TERMS: &[&str] = &["currency", "priceBreaks", "moq", "orderMultiple", "leadTimeDays", "leadTimeDaysHigh", "stock", "preorder", "pool", "incoming", "kind", "confidence", "samplesDays", "tooling", "service", "via", "supplier", "url", "source", "date", "dates"];
+const NEED_KEYS: &[&str] = &["spares", "attrition", "attritionMin", "multiple"];
 const OFFER_KINDS: &[&str] = &["stock", "quote", "listing", "broker"];
 const CONFIDENCES: &[&str] = &["firm", "indication"];
 const ALTERNATE_KEYS: &[&str] = &["manufacturer", "mpn", "note", "approved", "differences", "datasheet", "suppliers"];
@@ -130,7 +133,7 @@ const ALTERNATE_KEYS: &[&str] = &["manufacturer", "mpn", "note", "approved", "di
 /// `unitPrice` its low end (docs/formats.md § logistics).
 const BREAK_KEYS: &[&str] = &["quantity", "unitPrice", "unitPriceHigh"];
 /// The arguments a part's fields take (TypeScript names), in the order their forms are written.
-pub const FIELD_ARGUMENTS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "draw", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs", "suppliers", "alternates", "datasheet", "lifecycle", "compliance", "shipping"];
+pub const FIELD_ARGUMENTS: &[&str] = &["partNumber", "manufacturer", "mpn", "rating", "draw", "pinoutVerified", "footprintVerified", "packageDimensions", "attrs", "suppliers", "alternates", "need", "datasheet", "lifecycle", "compliance", "shipping"];
 /// Fields a part holds otherwise: its reference, its value, its footprint.
 const OWN_FIELDS: &[&str] = &["Reference", "Value", "Footprint"];
 
@@ -171,11 +174,12 @@ fn entries(v: &Json) -> &[(String, Json)] {
     }
 }
 
-/// One price break holds only `BREAK_KEYS`, a whole quantity from 1, and a price range that does not run backward.
-fn price_break(b: &Json) -> bool {
+/// One price break holds only `BREAK_KEYS`, a whole quantity from 1 (none when it is the offer's one break, a single
+/// price), and a price range that does not run backward.
+fn price_break(b: &Json, single: bool) -> bool {
     let Some(Json::Num(low)) = b.get("unitPrice") else { return false };
     let high = b.get("unitPriceHigh").is_none_or(|h| matches!(h, Json::Num(h) if h >= low));
-    whole(b.get("quantity"), 1.0) && *low >= 0.0 && high && entries(b).iter().all(|(k, _)| BREAK_KEYS.contains(&k.as_str()))
+    (whole(b.get("quantity"), 1.0) || single) && *low >= 0.0 && high && entries(b).iter().all(|(k, _)| BREAK_KEYS.contains(&k.as_str()))
 }
 
 /// The argument that says a KiCad property, or none when `attrs` may hold it.
@@ -186,6 +190,7 @@ fn argument_of(name: &str) -> Option<&'static str> {
     match name {
         "Datasheet" => return Some("datasheet"),
         "Alternates" => return Some("alternates"),
+        "Need" => return Some("need"),
         _ => {}
     }
     if let Some((arg, _)) = FACET_FIELDS.iter().find(|(_, fields)| fields.iter().any(|(_, p)| *p == name)) {
@@ -263,15 +268,32 @@ pub(crate) fn check_offers(at: &str, v: &Json) -> Result<Json, String> {
         if s.get("tooling").is_some() && !matches!(s.get("tooling"), Some(Json::Num(n)) if *n >= 0.0) && s.get("tooling").and_then(Json::as_str) != Some("unknown") {
             return Err(format!(r#"{at}: tooling is a cost, 0 or more, or "unknown""#));
         }
-        for k in ["service", "supplier"] {
+        for k in ["service", "via", "supplier", "pool"] {
             if s.get(k).is_some() && !is_text(s.get(k)) {
                 return Err(format!("{at}: {k} is text"));
             }
         }
+        if s.get("via").is_some() && s.get("service").is_none() {
+            return Err(format!("{at}: an offer bought through another supplier (via) names that supplier's service"));
+        }
+        if s.get("preorder").is_some() && !whole(s.get("preorder"), f64::NEG_INFINITY) {
+            return Err(format!("{at}: preorder is a whole number (negative when more is promised than held)"));
+        }
+        let lot = |l: &Json| matches!(l, Json::Obj(_)) && whole(l.get("quantity"), 1.0) && date(l.get("date")) && entries(l).iter().all(|(k, _)| k == "quantity" || k == "date");
+        if s.get("incoming").is_some() && !matches!(s.get("incoming"), Some(Json::Arr(l)) if l.iter().all(lot)) {
+            return Err(format!("{at}: incoming is a list of {{ quantity, date }} (a whole number from 1, YYYY-MM-DD)"));
+        }
+        let term_day = |(k, d): &(String, Json)| OFFER_TERMS.contains(&k.as_str()) && k != "date" && k != "dates" && date(Some(d));
+        if s.get("dates").is_some() && !matches!(s.get("dates"), Some(Json::Obj(e)) if e.iter().all(term_day)) {
+            return Err(format!("{at}: dates is {{ <term>: YYYY-MM-DD }} for the terms read on another day than date (stock, priceBreaks …)"));
+        }
         if let Some(b) = s.get("priceBreaks") {
-            let ok = matches!(b, Json::Arr(l) if l.iter().all(price_break));
+            let ok = matches!(b, Json::Arr(l) if {
+                let single = l.len() == 1 && matches!(l[0], Json::Obj(_)) && l[0].get("quantity").is_none();
+                l.iter().all(|b| price_break(b, single))
+            });
             if !ok {
-                return Err(format!("{at}: priceBreaks is a list of {{ quantity, unitPrice, unitPriceHigh? }} (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it)"));
+                return Err(format!("{at}: priceBreaks is a list of {{ quantity, unitPrice, unitPriceHigh? }} (quantity a whole number from 1, unitPrice 0 or more, unitPriceHigh not under it; one break with no quantity is a single price)"));
             }
         }
     }
@@ -313,6 +335,32 @@ pub(crate) fn check_alternates(at: &str, v: &Json) -> Result<Json, String> {
         if let Some(offers) = a.get("suppliers") {
             check_offers(&at, offers)?;
         }
+    }
+    Ok(v.clone())
+}
+
+/// What one order of N products needs past qty × N (spares, then attrition, then a multiple), checked; a wrong field is
+/// refused by name.
+pub(crate) fn check_need(at: &str, v: &Json) -> Result<Json, String> {
+    if !matches!(v, Json::Obj(_)) {
+        return Err(format!("{at}: need is {{ spares?, attrition?, attritionMin?, multiple? }}"));
+    }
+    for (k, _) in entries(v) {
+        if !NEED_KEYS.contains(&k.as_str()) {
+            return Err(format!("{at}: need.{k} is not read (it takes {})", NEED_KEYS.join(", ")));
+        }
+    }
+    if v.get("spares").is_some() && !whole(v.get("spares"), 0.0) {
+        return Err(format!("{at}: need.spares is a whole number, a count per order"));
+    }
+    if v.get("attrition").is_some() && !matches!(v.get("attrition"), Some(Json::Num(n)) if *n >= 0.0 && *n < 1.0) {
+        return Err(format!("{at}: need.attrition is a rate, 0 to under 1 (0.03)"));
+    }
+    if v.get("attritionMin").is_some() && !whole(v.get("attritionMin"), 0.0) {
+        return Err(format!("{at}: need.attritionMin is a whole number"));
+    }
+    if v.get("multiple").is_some() && !whole(v.get("multiple"), 1.0) {
+        return Err(format!("{at}: need.multiple is a whole number, 1 or more"));
     }
     Ok(v.clone())
 }
@@ -374,7 +422,11 @@ fn offer_forms(at: &str, v: &Json) -> Result<Vec<Json>, String> {
                 let Some(t) = s.get(k) else { continue };
                 let t = match (*k, t) {
                     ("priceBreaks", Json::Arr(breaks)) => {
-                        Json::Arr(breaks.iter().map(|b| Json::Arr(BREAK_KEYS.iter().filter_map(|k| b.get(k).cloned()).collect())).collect())
+                        let form = |b: &Json| {
+                            let quantity = b.get("quantity").cloned().unwrap_or(Json::Null);
+                            Json::Arr([quantity].into_iter().chain(BREAK_KEYS[1..].iter().filter_map(|k| b.get(k).cloned())).collect())
+                        };
+                        Json::Arr(breaks.iter().map(form).collect())
                     }
                     _ => t.clone(),
                 };
@@ -433,6 +485,10 @@ pub(crate) fn part_field_forms(at: &str, el: &El) -> Result<Vec<Json>, String> {
     if let Some(v) = el.attr_of("alternates") {
         check_alternates(at, v)?;
         forms.push(field_form("Alternates", &v.text()));
+    }
+    if let Some(v) = el.attr_of("need") {
+        check_need(at, v)?;
+        forms.push(field_form("Need", &v.text()));
     }
     if let Some(v) = el.attr_of("datasheet") {
         if !is_text(Some(v)) {
@@ -499,7 +555,7 @@ pub fn part_fields(inputs: &Json) -> Json {
                             breaks
                                 .iter()
                                 .map(|b| match b {
-                                    Json::Arr(qp) if (2..=3).contains(&qp.len()) => BREAK_KEYS.iter().zip(qp).fold(Json::obj(), |o, (k, x)| o.with(k, x.clone())),
+                                    Json::Arr(qp) if (2..=3).contains(&qp.len()) => BREAK_KEYS.iter().zip(qp).filter(|(_, x)| **x != Json::Null).fold(Json::obj(), |o, (k, x)| o.with(k, x.clone())),
                                     other => other.clone(),
                                 })
                                 .collect(),
@@ -511,6 +567,9 @@ pub fn part_fields(inputs: &Json) -> Json {
             }
             Some("alternates") => {
                 out.set("alternates", Json::parse(value).unwrap_or(Json::Null));
+            }
+            Some("need") => {
+                out.set("need", Json::parse(value).unwrap_or(Json::Null));
             }
             Some("datasheet") => {
                 out.set("datasheet", value);
