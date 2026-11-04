@@ -6527,10 +6527,24 @@ impl ToJson for ConductorElectrical {
 pub enum MaterialPreset {
     /// `"aluminum"`
     Aluminum,
+    /// `"anodized-aluminum"`
+    AnodizedAluminum,
     /// `"steel"`
     Steel,
+    /// `"stainless-steel"`
+    StainlessSteel,
     /// `"plastic"`
     Plastic,
+    /// `"abs"`
+    Abs,
+    /// `"pbt"`
+    Pbt,
+    /// `"pc"`
+    Pc,
+    /// `"petg"`
+    Petg,
+    /// `"pla"`
+    Pla,
     /// `"brass"`
     Brass,
     /// `"copper"`
@@ -6539,6 +6553,10 @@ pub enum MaterialPreset {
     Chrome,
     /// `"rubber"`
     Rubber,
+    /// `"glass"`
+    Glass,
+    /// `"pcb"`
+    Pcb,
     /// `"custom"`
     Custom,
 }
@@ -6547,27 +6565,113 @@ impl ToJson for MaterialPreset {
     fn to_json(&self) -> Json {
         Json::from(match self {
             MaterialPreset::Aluminum => "aluminum",
+            MaterialPreset::AnodizedAluminum => "anodized-aluminum",
             MaterialPreset::Steel => "steel",
+            MaterialPreset::StainlessSteel => "stainless-steel",
             MaterialPreset::Plastic => "plastic",
+            MaterialPreset::Abs => "abs",
+            MaterialPreset::Pbt => "pbt",
+            MaterialPreset::Pc => "pc",
+            MaterialPreset::Petg => "petg",
+            MaterialPreset::Pla => "pla",
             MaterialPreset::Brass => "brass",
             MaterialPreset::Copper => "copper",
             MaterialPreset::Chrome => "chrome",
             MaterialPreset::Rubber => "rubber",
+            MaterialPreset::Glass => "glass",
+            MaterialPreset::Pcb => "pcb",
             MaterialPreset::Custom => "custom",
         })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SurfaceTextureKind {
+    /// `"grain"`
+    Grain,
+    /// `"bead-blast"`
+    BeadBlast,
+    /// `"brushed"`
+    Brushed,
+    /// `"layer-lines"`
+    LayerLines,
+}
+
+impl ToJson for SurfaceTextureKind {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            SurfaceTextureKind::Grain => "grain",
+            SurfaceTextureKind::BeadBlast => "bead-blast",
+            SurfaceTextureKind::Brushed => "brushed",
+            SurfaceTextureKind::LayerLines => "layer-lines",
+        })
+    }
+}
+
+/// A surface's small relief, drawn as a bump and never built as geometry: moulded grain (a VDI 3400 texture), bead blasting, a brushed finish, a printer's layer lines.
+#[derive(Clone, Debug)]
+pub struct SurfaceTexture {
+    pub kind: SurfaceTextureKind,
+    /// The relief's period: a grain's cell, a layer's height, a brush stroke's width.
+    /// Unit: mm.
+    pub scale: f64,
+    /// The relief's height, peak to valley.
+    /// Unit: mm.
+    pub depth: f64,
+    /// The direction of the brush strokes or the build direction of the layers (a unit vector, the body's frame).
+    /// Default: `[0,0,1]`.
+    pub direction: Option<[f64; 3]>,
+}
+
+impl ToJson for SurfaceTexture {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("kind", self.kind.to_json());
+        o.set("scale", self.scale.to_json());
+        o.set("depth", self.depth.to_json());
+        if let Some(v) = &self.direction {
+            o.set("direction", v.to_json());
+        }
+        o
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct MaterialDef {
     pub preset: MaterialPreset,
-    /// Hex color string, e.g. "#9aa6b4".
+    /// Hex color string, e.g. "#9aa6b4": the base colour (a metal's reflectance, a plastic's diffuse colour).
     pub color: String,
     pub metalness: f64,
+    /// The microfacet roughness, 0 a mirror.
     pub roughness: f64,
+    /// environment map intensity
     pub env_intensity: f64,
     /// Surface opacity 0..1 (1 = fully opaque; <1 renders the body translucent). Optional/defaulted.
     pub opacity: Option<f64>,
+    /// The index of refraction of a dielectric (1.5 for most plastics and glass).
+    /// Default: `1.5`.
+    pub ior: Option<f64>,
+    /// The share of light that passes through (glass 1, an opal diffuser between).
+    /// Default: `0`.
+    pub transmission: Option<f64>,
+    /// The thickness a transmissive body's light passes through.
+    /// Unit: mm.
+    pub thickness: Option<f64>,
+    /// A clear lacquer over the base (a solder mask's gloss, a car's clear coat).
+    /// Default: `0`.
+    pub clearcoat: Option<f64>,
+    /// Default: `0`.
+    pub clearcoat_roughness: Option<f64>,
+    /// Anisotropy of the highlight along the texture's direction (a brushed metal).
+    /// Default: `0`.
+    pub anisotropy: Option<f64>,
+    /// Hex colour of the light the surface gives off (an LED, a screen).
+    pub emissive: Option<String>,
+    /// Default: `0`.
+    pub emissive_intensity: Option<f64>,
+    /// The surface's small relief.
+    pub texture: Option<SurfaceTexture>,
 }
 
 impl ToJson for MaterialDef {
@@ -6581,6 +6685,33 @@ impl ToJson for MaterialDef {
         o.set("envIntensity", self.env_intensity.to_json());
         if let Some(v) = &self.opacity {
             o.set("opacity", v.to_json());
+        }
+        if let Some(v) = &self.ior {
+            o.set("ior", v.to_json());
+        }
+        if let Some(v) = &self.transmission {
+            o.set("transmission", v.to_json());
+        }
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
+        if let Some(v) = &self.clearcoat {
+            o.set("clearcoat", v.to_json());
+        }
+        if let Some(v) = &self.clearcoat_roughness {
+            o.set("clearcoatRoughness", v.to_json());
+        }
+        if let Some(v) = &self.anisotropy {
+            o.set("anisotropy", v.to_json());
+        }
+        if let Some(v) = &self.emissive {
+            o.set("emissive", v.to_json());
+        }
+        if let Some(v) = &self.emissive_intensity {
+            o.set("emissiveIntensity", v.to_json());
+        }
+        if let Some(v) = &self.texture {
+            o.set("texture", v.to_json());
         }
         o
     }

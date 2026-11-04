@@ -44,7 +44,7 @@ fn a_part_declares_the_documents_graph() {
         .plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#)),
         extrude().id("extrude1").name("Extrude1").profile(json(r#"{"sketch": "sketch1"}"#)).distance(6).operation("new"),
         fillet().id("fillet1").name("Fillet1").radius(1).edges(json(r#"[{"kind": "edge", "signature": {"point": [20, 0, 6]}}]"#)).consumes(["extrude1"]).suppressed(true),
-        body().id("extrude1").material("aluminium-6061"),
+        body().id("extrude1").material(json(r#"{"preset": "aluminum"}"#)),
         slot().name("environment").value(json(r#"{"gravity": [0, 0, -9.81]}"#)),
     ])
     .name("Plate");
@@ -79,7 +79,7 @@ fn a_part_declares_the_documents_graph() {
     assert_eq!(node(&g, "plane_xy").get("inputs").unwrap().text(), r#"{"origin":[0,0,0],"normal":[0,0,1],"xAxis":[1,0,0],"builtin":"XY"}"#);
     assert_eq!(
         node(&g, "bodyMeta").text(),
-        with_meta(r#"{"id":"bodyMeta","type":"3d.bodyMeta","inputs":{"extrude1":{"material":"aluminium-6061"}}}"#, Json::obj().with("sources", Json::obj().with("extrude1", site(l0 + 15, 9))))
+        with_meta(r#"{"id":"bodyMeta","type":"3d.bodyMeta","inputs":{"extrude1":{"material":{"preset":"aluminum"}}}}"#, Json::obj().with("sources", Json::obj().with("extrude1", site(l0 + 15, 9))))
     );
     assert_eq!(node(&g, "environment").get("inputs").unwrap().text(), r#"{"gravity":[0,0,-9.81]}"#);
 }
@@ -651,4 +651,39 @@ fn a_contact_is_the_dynamics_contacts_list_and_the_twin_reads_as_the_golden() {
     };
     assert!(bad(twin(friction, r#"["normal", "slip"]"#)).contains(&says));
     assert!(bad(twin(0.9, r#"["torque"]"#)).contains("report"));
+}
+
+// materials.json is the golden of the three SDKs (materials.golden.json in the TypeScript SDK): the physically based
+// materials a body() declares, read as the bodies' meta, and a value out of range refused by name.
+#[test]
+fn a_body_material_is_a_physically_based_material_and_reads_as_the_golden() {
+    let golden = Json::parse(include_str!("materials.json")).unwrap();
+    let Some(Json::Obj(bodies)) = golden.get("bodies") else { panic!("the golden has bodies") };
+    let doc = |case: Option<String>| {
+        let els: Vec<El> = bodies
+            .iter()
+            .enumerate()
+            .flat_map(|(i, (id, b))| {
+                let name = match b.get("name") {
+                    Some(Json::Str(s)) => s.clone(),
+                    _ => panic!("a golden body has a name"),
+                };
+                let material = match (&case, id.as_str()) {
+                    (Some(text), "case") => text.clone(),
+                    _ => b.get("material").unwrap().text(),
+                };
+                [
+                    box_().id(id).name(&name).center([i as i64 * 20, 0, 5]).size([10, 10, 10]).operation("new"),
+                    body().id(id).name(&name).material(json(&material)),
+                ]
+            })
+            .collect();
+        part(els).name("Materials")
+    };
+    let g = graph(doc(None));
+    assert_eq!(node(&g, "bodyMeta").get("inputs"), golden.get("bodies"));
+    let refused = golden.get("refused").unwrap();
+    let (Some(Json::Str(says)), Some(Json::Num(roughness))) = (refused.get("says"), refused.get("roughness")) else { panic!("the golden says what is refused") };
+    assert!(bad(doc(Some(format!(r#"{{"preset": "anodized-aluminum", "roughness": {roughness}}}"#)))).contains(says.as_str()));
+    assert!(bad(doc(Some(r#"{"preset": "anodized-aluminum", "texture": {"kind": "knurl", "scale": 1, "depth": 0.1}}"#.into()))).contains("kind"));
 }

@@ -689,6 +689,9 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                         if k == "engineering" {
                             *v = check_value(el, "PartEngineering", v, "engineering")?;
                         }
+                        if k == "material" {
+                            *v = check_value(el, "BodyMaterial", v, "material")?;
+                        }
                     }
                     bodies.push((id.clone(), Json::Obj(body)));
                     body_sources.put(id, el);
