@@ -30,6 +30,8 @@
 //!     .respondent.filed_for.criminal.source.duty_id.article … .id?
 //! ```
 
+use super::company_formation::FORMATION_TAGS;
+pub use super::company_formation::{registered_agent, FormationAttrs};
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
 use super::{Declared, Family};
@@ -114,7 +116,7 @@ pub(super) struct TagSpec {
     pub(super) many: &'static [(&'static str, &'static str)],
 }
 
-const fn spec(tag: &'static str, props: &'static [(&'static str, Kind)], required: &'static [&'static str]) -> TagSpec {
+pub(crate) const fn spec(tag: &'static str, props: &'static [(&'static str, Kind)], required: &'static [&'static str]) -> TagSpec {
     TagSpec { tag, props, required, one: &[], many: &[] }
 }
 
@@ -125,7 +127,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters")],
-        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper")],
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("registeredAgents", "RegisteredAgent")],
     },
     spec(
         "Entity",
@@ -139,6 +141,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
             ("ids", Record),
             ("operatesIn", Texts),
             ("conditions", Record),
+            ("dissolved", Text),
         ],
         &["jurisdiction"],
     ),
@@ -162,6 +165,13 @@ const BUSINESS_TAGS: &[TagSpec] = &[
             ("expires", Text),
             ("renewal", Text),
             ("noticeDays", Amount),
+            // A filing's (company_formation.rs).
+            ("rule", Text),
+            ("period", Text),
+            ("due", Text),
+            ("submitted", Text),
+            ("accepted", Text),
+            ("confirmation", Text),
         ],
         required: &["kind", "file"],
         one: &[],
@@ -270,7 +280,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -352,6 +362,9 @@ pub fn company_of(node: &BusinessNode) -> Json {
             if let Some(c) = e.prop("conditions") {
                 out.set("conditions", c.clone());
             }
+            if let Some(d) = e.prop("dissolved") {
+                out.set("dissolved", d.clone());
+            }
             out
         }
     };
@@ -401,9 +414,15 @@ pub fn company_of(node: &BusinessNode) -> Json {
         .collect();
     let company = if subsidiaries.is_empty() { company } else { company.with("subsidiaries", subsidiaries) };
     let company = if papers.is_empty() { company } else { company.with("papers", papers) };
-    match finance_of(node) {
+    let company = match finance_of(node) {
         Some(finance) => company.with("finance", finance),
         None => company,
+    };
+    let agents: Vec<Json> = node.many("registeredAgents").iter().map(|x| Json::Obj(x.props.clone())).collect();
+    if agents.is_empty() {
+        company
+    } else {
+        company.with("registeredAgents", agents)
     }
 }
 
