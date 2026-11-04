@@ -517,6 +517,7 @@ fn a_splines_inner_tangents_and_a_path_pattern_along_a_curve() {
         count: Some(6),
         align_to_path: Some(true),
         suppressed: None,
+        operation: None,
         consumes: None,
     };
     let bead = SphereProps {
@@ -686,4 +687,35 @@ fn a_body_material_is_a_physically_based_material_and_reads_as_the_golden() {
     let (Some(Json::Str(says)), Some(Json::Num(roughness))) = (refused.get("says"), refused.get("roughness")) else { panic!("the golden says what is refused") };
     assert!(bad(doc(Some(format!(r#"{{"preset": "anodized-aluminum", "roughness": {roughness}}}"#)))).contains(says.as_str()));
     assert!(bad(doc(Some(r#"{"preset": "anodized-aluminum", "texture": {"kind": "knurl", "scale": 1, "depth": 0.1}}"#.into()))).contains("kind"));
+}
+
+// pattern_operation.json is the golden of the three SDKs (pattern-operation.golden.json in the TypeScript SDK): a
+// pattern says `operation` and `consumes` like the feature it repeats, or says neither.
+#[test]
+fn a_pattern_takes_operation_and_consumes_and_reads_as_the_golden() {
+    let golden = Json::parse(include_str!("pattern_operation.json")).unwrap();
+    let twin = |operation: &str| {
+        part([
+            box_().id("a").name("A").center([0, 0, 5]).size([40, 40, 10]).operation("new"),
+            box_().id("b").name("B").center([0, 0, 25]).size([40, 40, 10]).operation("new"),
+            cylinder().id("cut").name("Cut").center([10, 0, -5]).axis([0, 0, 1]).radius(2).height(50).operation("cut").consumes(["a"]),
+            circular_pattern().id("ring").seed_feature("cut").axis(json(r#"{"type": "datumAxis", "axis": "Z"}"#)).count(4).operation(operation).consumes(["a"]),
+            linear_pattern().id("row").seed_feature("cut").direction([1, 0, 0]).spacing(10).count(3),
+        ])
+        .name("Two boxes")
+    };
+    let g = graph(twin("cut"));
+    let nodes = golden.get("nodes").unwrap();
+    assert_eq!(node(&g, "ring").get("inputs"), nodes.get("ring"));
+    assert_eq!(node(&g, "row").get("inputs"), nodes.get("row"));
+    let refused = golden.get("refused").unwrap();
+    let says = match refused.get("says") {
+        Some(Json::Str(s)) => s.clone(),
+        _ => panic!("the golden says what is refused"),
+    };
+    let operation = match refused.get("operation") {
+        Some(Json::Str(s)) => s.clone(),
+        _ => panic!("the golden has a refused operation"),
+    };
+    assert!(bad(twin(&operation)).contains(&says));
 }

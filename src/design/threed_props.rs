@@ -2348,6 +2348,8 @@ pub struct LinearPatternProps {
     pub spacing2: Option<f64>,
     /// How many there are in the second direction.
     pub count2: Option<i64>,
+    /// How the copies combine with the bodies they act on. Absent: the repeated feature's own operation. A pattern of a cut cuts only the bodies it consumes (`consumes`; absent: the bodies the repeated feature consumes).
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2379,6 +2381,9 @@ impl ToJson for LinearPatternProps {
         }
         if let Some(v) = &self.count2 {
             o.set("count2", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
@@ -2421,6 +2426,8 @@ pub struct CircularPatternProps {
     /// Unit: rad.
     /// Default: `6.283185307179586`.
     pub angle: Option<f64>,
+    /// How the copies combine with the bodies they act on. Absent: the repeated feature's own operation. A pattern of a cut cuts only the bodies it consumes (`consumes`; absent: the bodies the repeated feature consumes).
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2441,6 +2448,9 @@ impl ToJson for CircularPatternProps {
         }
         if let Some(v) = &self.angle {
             o.set("angle", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
@@ -2481,6 +2491,8 @@ pub struct PathPatternProps {
     pub count: Option<i64>,
     /// Turn each copy as the path turns from its start: on a sketch, about the sketch's normal; on a curve in space, by the curve's rotation-minimizing frame (no roll about the path).
     pub align_to_path: Option<bool>,
+    /// How the copies combine with the bodies they act on. Absent: the repeated feature's own operation. A pattern of a cut cuts only the bodies it consumes (`consumes`; absent: the bodies the repeated feature consumes).
+    pub operation: Option<BooleanMode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2501,6 +2513,9 @@ impl ToJson for PathPatternProps {
         }
         if let Some(v) = &self.align_to_path {
             o.set("alignToPath", v.to_json());
+        }
+        if let Some(v) = &self.operation {
+            o.set("operation", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
