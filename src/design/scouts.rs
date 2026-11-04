@@ -91,7 +91,7 @@ pub const WORKLOAD_NEEDS: &[&str] = &["tools", "structured", "image"];
 /// The checks a case may name, cheapest first (a judge's rubric only where no check exists).
 pub const CHECK_KINDS: &[&str] = &["exact", "oneOf", "number", "contains", "regex", "json", "letter", "literal", "tool", "program", "kernel"];
 /// What a `kernel` check may expect of a solid (`<name>.3d.tsx`), and of a schematic (`<name>.sch.tsx`).
-pub const SOLID_MEASURES: &[&str] = &["volume", "bbox", "bodies", "holes"];
+pub const SOLID_MEASURES: &[&str] = &["volume", "bbox", "bodies", "holes", "mass", "gap", "gaps", "faces"];
 pub const CIRCUIT_MEASURES: &[&str] = &["parts", "nets", "connections"];
 
 pub const REPLACEMENT_FIELDS: &[&str] = &["product", "vendor", "url", "asOf", "by", "readme"];
@@ -285,6 +285,88 @@ fn kernel_file(name: &str) -> Option<bool> {
     }
 }
 
+const SIZE_FORM: &str = "a size is a number, { nominal, upper, lower }, { nominal, class } or { min, max }";
+const HOLE_FORM: &str = "holes is a count, or a list of groups { count, diameter, through?, depth?, axis?, at?, position? }";
+const GAPS_FORM: &str = "gaps is a list of { between: [body, body], gap }";
+const FACES_FORM: &str = "faces is a list of { name?, between: [face, face], distance }, a face being { body?, at: [x, y, z], normal? }";
+
+fn is_count(v: &Json) -> bool {
+    matches!(v, Json::Num(n) if *n >= 0.0 && n.fract() == 0.0)
+}
+
+fn is_point(v: &Json) -> bool {
+    matches!(v, Json::Arr(xs) if xs.len() == 3 && xs.iter().all(is_number))
+}
+
+fn is_direction(v: &Json) -> bool {
+    is_point(v) && matches!(v, Json::Arr(xs) if xs.iter().any(|x| !matches!(x, Json::Num(n) if *n == 0.0)))
+}
+
+fn is_text(v: &Json) -> bool {
+    matches!(v, Json::Str(s) if !s.is_empty())
+}
+
+/// Whether every key of an object is one of `names`.
+fn only_fields(v: &Json, names: &[&str]) -> bool {
+    matches!(v, Json::Obj(entries) if entries.iter().all(|(k, _)| names.contains(&k.as_str())))
+}
+
+/// What is wrong with a size a kernel check states (a number, deviations, a class by name or a range), or None. A class
+/// is resolved at its nominal.
+fn size_problem(v: &Json) -> Option<String> {
+    if let Json::Num(n) = v {
+        return if n.is_finite() && *n >= 0.0 { None } else { Some("a size is not below 0".into()) };
+    }
+    let Json::Obj(entries) = v else { return Some(SIZE_FORM.into()) };
+    if let Some((key, _)) = entries.iter().find(|(k, _)| !["nominal", "upper", "lower", "class", "min", "max"].contains(&k.as_str())) {
+        return Some(format!("a size has no field {key} (nominal, upper, lower, class, min, max)"));
+    }
+    let number_field = |k: &str| v.get(k).map(|x| matches!(x, Json::Num(n) if n.is_finite()));
+    if let Some(nominal) = v.get("nominal") {
+        if v.get("min").is_some() || v.get("max").is_some() {
+            return Some("a size is a nominal with deviations or a class, or a range, not both".into());
+        }
+        let Json::Num(nominal) = nominal else { return Some(SIZE_FORM.into()) };
+        if !nominal.is_finite() || *nominal < 0.0 {
+            return Some(SIZE_FORM.into());
+        }
+        if let Some(class) = v.get("class") {
+            if v.get("upper").is_some() || v.get("lower").is_some() {
+                return Some("give the class or the deviations, not both".into());
+            }
+            return super::tolerances::tolerance_limits(*nominal, &Json::obj().with("class", class.clone())).err();
+        }
+        for k in ["upper", "lower"] {
+            if number_field(k) == Some(false) {
+                return Some(format!("{k} is a number of millimetres"));
+            }
+        }
+        if let (Some(Json::Num(u)), Some(Json::Num(l))) = (v.get("upper"), v.get("lower")) {
+            if u < l {
+                return Some("the upper deviation is below the lower".into());
+            }
+        }
+        return None;
+    }
+    if v.get("class").is_some() || v.get("upper").is_some() || v.get("lower").is_some() {
+        return Some("deviations and a class go with a nominal".into());
+    }
+    if v.get("min").is_none() && v.get("max").is_none() {
+        return Some(SIZE_FORM.into());
+    }
+    for k in ["min", "max"] {
+        if number_field(k) == Some(false) {
+            return Some(format!("{k} is a number of millimetres"));
+        }
+    }
+    if let (Some(Json::Num(lo)), Some(Json::Num(hi))) = (v.get("min"), v.get("max")) {
+        if lo > hi {
+            return Some("the range's min is above its max".into());
+        }
+    }
+    None
+}
+
 /// A `kernel` check: the file it measures, and only the measures that file's kind has.
 fn kernel_check(t: &DocTree, k: &Json) -> Result<(), String> {
     let solid = match (k, k.get("as")) {
@@ -303,19 +385,121 @@ fn kernel_check(t: &DocTree, k: &Json) -> Result<(), String> {
     let Some(Json::Obj(expect)) = k.get("expect").filter(|e| matches!(e, Json::Obj(x) if !x.is_empty())) else {
         return Err(format!("{} check: kernel expect names at least one of {}", call(t), allowed.join(", ")));
     };
+    let refuse = |message: String| -> Result<(), String> { Err(format!("{} check: kernel {}", call(t), message)) };
+    let size = |what: String, v: Option<&Json>| -> Result<(), String> {
+        match v.map_or(Some(SIZE_FORM.to_string()), size_problem) {
+            Some(problem) => refuse(format!("{what}: {problem}")),
+            None => Ok(()),
+        }
+    };
     for (key, v) in expect {
         if !allowed.contains(&key.as_str()) {
             return Err(format!("{} check: a {} has no measure {} ({})", call(t), if solid { "solid" } else { "schematic" }, key, allowed.join(", ")));
         }
-        let count = matches!(v, Json::Num(n) if *n >= 0.0 && n.fract() == 0.0);
-        if ["bodies", "holes", "parts", "nets"].contains(&key.as_str()) && !count {
-            return Err(format!("{} check: kernel {} is a count", call(t), key));
+        if ["bodies", "parts", "nets"].contains(&key.as_str()) && !is_count(v) {
+            return refuse(format!("{key} is a count"));
         }
-        if key == "volume" && !matches!(v, Json::Num(n) if *n > 0.0 && n.is_finite()) {
-            return Err(format!("{} check: kernel volume is mm³, more than 0", call(t)));
+        if key == "holes" {
+            match v {
+                Json::Arr(groups) if !groups.is_empty() => {
+                    for (i, h) in groups.iter().enumerate() {
+                        let at = format!("holes[{i}]");
+                        if !matches!(h, Json::Obj(_)) {
+                            return refuse(HOLE_FORM.into());
+                        }
+                        if let Json::Obj(fields) = h {
+                            if let Some((f, _)) = fields.iter().find(|(f, _)| !["count", "diameter", "through", "depth", "axis", "at", "position"].contains(&f.as_str())) {
+                                return refuse(format!("{at} has no field {f}"));
+                            }
+                        }
+                        if !h.get("count").is_some_and(is_count) {
+                            return refuse(format!("{at} count is a count"));
+                        }
+                        if h.get("diameter").is_none() {
+                            return refuse(format!("{at} needs a diameter"));
+                        }
+                        size(format!("{at} diameter"), h.get("diameter"))?;
+                        if h.get("depth").is_some() {
+                            size(format!("{at} depth"), h.get("depth"))?;
+                        }
+                        if h.get("through").is_some_and(|x| !matches!(x, Json::Bool(_))) {
+                            return refuse(format!("{at} through is true or false"));
+                        }
+                        if h.get("axis").is_some_and(|x| !is_direction(x)) {
+                            return refuse(format!("{at} axis is a direction [x, y, z]"));
+                        }
+                        if h.get("at").is_some_and(|x| !matches!(x, Json::Arr(ps) if !ps.is_empty() && ps.iter().all(is_point))) {
+                            return refuse(format!("{at} at is a list of points [x, y, z]"));
+                        }
+                        if h.get("position").is_some_and(|x| !matches!(x, Json::Num(n) if *n > 0.0 && n.is_finite())) {
+                            return refuse(format!("{at} position is mm above 0"));
+                        }
+                    }
+                }
+                _ if is_count(v) => {}
+                _ => return refuse(HOLE_FORM.into()),
+            }
         }
-        if key == "bbox" && !matches!(v, Json::Arr(xs) if xs.len() == 3 && xs.iter().all(|x| matches!(x, Json::Num(n) if *n >= 0.0 && n.is_finite()))) {
-            return Err(format!("{} check: kernel bbox is [x, y, z] mm", call(t)));
+        if key == "volume" {
+            match v {
+                Json::Num(n) if !(*n > 0.0 && n.is_finite()) => return refuse("volume is mm³, more than 0".into()),
+                Json::Num(_) => {}
+                other => size("volume".into(), Some(other))?,
+            }
+        }
+        if key == "bbox" {
+            let Json::Arr(sides) = v else { return refuse("bbox is [x, y, z] mm".into()) };
+            if sides.len() != 3 {
+                return refuse("bbox is [x, y, z] mm".into());
+            }
+            for (i, s) in sides.iter().enumerate() {
+                size(format!("bbox[{i}]"), Some(s))?;
+            }
+        }
+        if key == "mass" {
+            let positive = |f: &str| matches!(v.get(f), Some(Json::Num(n)) if *n > 0.0 && n.is_finite());
+            let signed = |f: &str| v.get(f).is_none_or(is_number);
+            if !(only_fields(v, &["nominal", "upper", "lower", "density"]) && positive("nominal") && positive("density") && signed("upper") && signed("lower")) {
+                return refuse("mass is { nominal, upper, lower, density } in grams and g/cm³".into());
+            }
+        }
+        if key == "gap" {
+            size("gap".into(), Some(v))?;
+        }
+        if key == "gaps" {
+            let Json::Arr(pairs) = v else { return refuse(GAPS_FORM.into()) };
+            if pairs.is_empty() {
+                return refuse(GAPS_FORM.into());
+            }
+            for (i, g) in pairs.iter().enumerate() {
+                let ok = only_fields(g, &["between", "gap"])
+                    && matches!(g.get("between"), Some(Json::Arr(names)) if names.len() == 2 && names.iter().all(is_text) && names[0] != names[1]);
+                if !ok {
+                    return refuse(GAPS_FORM.into());
+                }
+                size(format!("gaps[{i}] gap"), g.get("gap"))?;
+            }
+        }
+        if key == "faces" {
+            let Json::Arr(rows) = v else { return refuse(FACES_FORM.into()) };
+            if rows.is_empty() {
+                return refuse(FACES_FORM.into());
+            }
+            let face = |s: &Json| {
+                only_fields(s, &["body", "at", "normal"])
+                    && s.get("at").is_some_and(is_point)
+                    && s.get("body").is_none_or(is_text)
+                    && s.get("normal").is_none_or(is_direction)
+            };
+            for (i, f) in rows.iter().enumerate() {
+                let ok = only_fields(f, &["name", "between", "distance"])
+                    && f.get("name").is_none_or(is_text)
+                    && matches!(f.get("between"), Some(Json::Arr(ends)) if ends.len() == 2 && ends.iter().all(face));
+                if !ok {
+                    return refuse(FACES_FORM.into());
+                }
+                size(format!("faces[{i}] distance"), f.get("distance"))?;
+            }
         }
         let pin = |p: &Json| matches!(p, Json::Str(s) if s.split('.').count() == 2 && s.split('.').all(|x| !x.is_empty() && !x.contains(char::is_whitespace)));
         if key == "connections" && !matches!(v, Json::Arr(gs) if !gs.is_empty() && gs.iter().all(|g| matches!(g, Json::Arr(ps) if ps.len() >= 2 && ps.iter().all(pin)))) {

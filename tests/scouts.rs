@@ -123,6 +123,33 @@ fn a_tool_case_offers_its_tools_and_their_answers() {
     }
 }
 
+// kernel_specs.json is the golden of the three SDKs: the spec grader's ten hand-checked parts, a face distance, an ISO 286
+// class by name and a gap by body pair, and what is refused.
+#[test]
+fn a_kernel_check_takes_the_spec_graders_fields_the_same_as_the_other_sdks() {
+    let golden = Json::parse(include_str!("kernel_specs.json")).unwrap();
+    let rows = |key: &str| match golden.get(key) {
+        Some(Json::Arr(rows)) => rows.clone(),
+        _ => panic!("the golden has a list {key}"),
+    };
+    let build = |kernel: &Json| {
+        let check = Json::obj().with("kernel", kernel.clone());
+        declare(scout([workload([case().id("c").from_("synthetic").prompt("p").check(check)]).id("w")]).budget(1))
+    };
+    assert_eq!(rows("valid").len(), 13);
+    for row in rows("valid") {
+        let kernel = row.get("kernel").unwrap();
+        let Declared::Document { document, .. } = build(kernel).unwrap() else { panic!("a comparison is a document") };
+        assert_eq!(first_workload_cases(&document)[0].get("check").and_then(|c| c.get("kernel")), Some(kernel), "{}", row.get("name").unwrap().text());
+    }
+    for row in rows("invalid") {
+        let name = row.get("name").unwrap().text();
+        let want = row.get("error").and_then(Json::as_str).unwrap();
+        let got = build(row.get("kernel").unwrap()).err().unwrap_or_else(|| panic!("{name} was not refused"));
+        assert!(got.to_string().contains(want), "{name}: {got}");
+    }
+}
+
 #[test]
 fn a_replacement_analysis_declares_its_layers_capabilities_and_decision() {
     let (format, doc, _) = document(
