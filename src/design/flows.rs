@@ -55,7 +55,7 @@ attributes! {
     pub trait FlowsAttrs {
         name; description; of; id; ref_; rate_per_hour; currency; order; kind; tool; fixture; by; minutes;
         setup_minutes; instruction; note; value; unit; nominal; min; max; plus; minus; method; sampling; acceptance;
-        channel; command; after; surprise; surprise_to; type_; private; default_; required; equals; tolerance; within;
+        channel; command; after; surprise; surprise_to; approval; type_; private; default_; required; equals; tolerance; within;
     }
 }
 
@@ -68,7 +68,7 @@ pub const FLOW_SURPRISE: &[&str] = &["parent", "agent", "person"];
 pub const FLOW_FIELDS: &[&str] = &["name", "description", "of"];
 pub const FLOW_INPUT_FIELDS: &[&str] = &["name", "type", "private", "default", "required", "description"];
 pub const FLOW_TOOL_FIELDS: &[&str] = &["id", "ref", "name", "ratePerHour", "currency", "description"];
-pub const FLOW_STEP_FIELDS: &[&str] = &["id", "order", "kind", "tool", "fixture", "by", "minutes", "setupMinutes", "ratePerHour", "currency", "instruction", "note", "channel", "ref", "command", "skill", "after", "surprise", "surpriseTo"];
+pub const FLOW_STEP_FIELDS: &[&str] = &["id", "order", "kind", "tool", "fixture", "by", "minutes", "setupMinutes", "ratePerHour", "currency", "instruction", "note", "channel", "ref", "command", "skill", "after", "surprise", "surpriseTo", "approval"];
 pub const FLOW_PARAM_FIELDS: &[&str] = &["name", "value", "unit", "description"];
 pub const FLOW_MEASURE_FIELDS: &[&str] = &["id", "name", "nominal", "min", "max", "plus", "minus", "unit", "method", "sampling", "acceptance"];
 pub const FLOW_VISIT_FIELDS: &[&str] = &["tool", "minutes", "setupMinutes", "ratePerHour", "currency", "instruction"];
@@ -118,6 +118,20 @@ fn need(cond: bool, message: impl FnOnce() -> String) -> Result<(), String> {
 }
 fn is_id(v: Option<&Json>) -> bool {
     matches!(v, Some(Json::Str(s)) if !s.is_empty() && s.chars().next().unwrap().is_ascii_alphanumeric() && s.chars().all(|ch| ch.is_ascii_alphanumeric() || "._-".contains(ch)))
+}
+/// One approver of a step: `agent:<id>` or `person:<id>` (a principal), `role:<name>`, or `grant:<address>` (whoever
+/// holds a grant in force that covers it). The same form as flows.ts `APPROVER`.
+fn is_approver(w: &str) -> bool {
+    let Some((kind, rest)) = w.split_once(':') else { return false };
+    match kind {
+        "agent" | "person" => (1..=64).contains(&rest.len()) && rest.chars().all(|c| c.is_ascii_alphanumeric() || "._@-".contains(c)),
+        "role" => (1..=64).contains(&rest.len()) && rest.starts_with(|c: char| c.is_ascii_lowercase()) && rest.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+        "grant" => match rest.split_once("://") {
+            Some((scheme, path)) => scheme.starts_with(|c: char| c.is_ascii_lowercase()) && scheme.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "+.-".contains(c)) && !path.is_empty(),
+            None => false,
+        },
+        _ => false,
+    }
 }
 fn said(v: Option<&Json>) -> String {
     v.map(Json::text).unwrap_or_else(|| "undefined".into())
@@ -228,6 +242,18 @@ fn step_ok(t: &DocTree) -> Result<(), String> {
     let surprise = t.attr_of("surprise").and_then(Json::as_str);
     need(surprise.is_none() || surprise == Some("parent") || matches!(t.attr_of("surpriseTo"), Some(Json::Str(s)) if !s.trim().is_empty()), || format!("{w}: surprise {} names who handles it (surpriseTo: an agent or a person)", said(t.attr_of("surprise"))))?;
     need(surprise != Some("parent") || t.attr_of("surpriseTo").is_none(), || format!("{w}: a surprise that goes to the parent names no surpriseTo"))?;
+    if t.attr_of("approval").is_some() {
+        let names = || format!("{w}: approval names who may approve the step (agent:<id>, person:<id>, role:<name> or grant:<address>, space separated)");
+        let Some(Json::Str(raw)) = t.attr_of("approval") else { return Err(names()) };
+        need(!raw.trim().is_empty(), names)?;
+        let who: Vec<&str> = raw.split_whitespace().collect();
+        for a in &who {
+            need(is_approver(a), || format!("{w}: approval names a principal (agent:<id>, person:<id>), a role (role:<name>) or a grant (grant:<address>), not {a:?}"))?;
+        }
+        let mut seen = std::collections::HashSet::new();
+        need(who.iter().all(|a| seen.insert(*a)), || format!("{w}: approval names an approver twice"))?;
+        need(t.attr_of("kind").and_then(Json::as_str) != Some("note"), || format!("{w}: a note step does nothing, so it waits for no approval"))?;
+    }
     if t.attr_of("after").is_some() {
         let Some(Json::Str(raw)) = t.attr_of("after") else { return Err(format!("{w}: after names the steps this one follows (their ids, space separated)")) };
         need(!raw.trim().is_empty(), || format!("{w}: after names the steps this one follows (their ids, space separated)"))?;

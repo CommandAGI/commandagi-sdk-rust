@@ -87,6 +87,26 @@ fn a_workflow_is_its_inputs_actions_expectations_edges_and_surprise_route() {
 }
 
 #[test]
+fn a_step_that_waits_for_an_approval_names_a_principal_a_role_or_a_grant() {
+    let approval = "agent:reviewer person:ada role:release-manager grant:local://desk/home/worlds/shop/world.tsx#arm-1";
+    let (_, doc) = document(flow([step([expect().name("exit").equals(0)]).id("ship").kind("command").channel("desk").command("ls").surprise("parent").approval(approval)]).name("Ship"));
+    assert!(doc.text().contains(&format!(r#""approval":"{approval}""#)), "{}", doc.text());
+    let acting = |a: &str| flow([step([expect().name("e").equals(1)]).id("a").kind("command").channel("c").command("ls").surprise("parent").approval(a)]);
+    let cases: Vec<(El, &str)> = vec![
+        (acting("person"), r#"step().id("a"): approval names a principal (agent:<id>, person:<id>), a role (role:<name>) or a grant (grant:<address>), not "person""#),
+        (acting("agents"), r#"not "agents""#),
+        (acting("grant:shop"), r#"not "grant:shop""#),
+        (acting(" "), r#"step().id("a"): approval names who may approve the step"#),
+        (acting("agent:a agent:a"), r#"step().id("a"): approval names an approver twice"#),
+        (flow([step([]).id("a").kind("note").approval("agent:a")]), r#"step().id("a"): a note step does nothing, so it waits for no approval"#),
+    ];
+    for (root, why) in cases {
+        let got = declare(root).unwrap_err();
+        assert!(got.contains(why), "{got} names {why}");
+    }
+}
+
+#[test]
 fn a_wrong_field_of_a_flow_is_refused_by_name() {
     let bad = |root: El| declare(root).unwrap_err();
     let cases: Vec<(El, &str)> = vec![
