@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A definition's declared bounds and interlocks (`ontology.rs`): `bound().channel().field().min().max().max_rate()
+  .max_speed()` folds into its channel's `bounds`, and `interlock().name().channel().requires().why()` into the
+  definition's `interlocks`; a world's `interlock().unit()` guards one of its units by another's state. The host's
+  admission gate holds them for every channel, driver or not. A `bounds` or `interlocks` attribute is refused.
 - A company's governance, compliance, IP and insurance (`company_governance.rs`, re-exported by `business`):
   `seat()`, `compliance()`, `obligation()`, `evidence()`, `ip_asset()`, `assignment()` and `policy()` in a
   `company()`, and `vote()` in a `paper()` (which gains `body`, `threshold` and `quorum`); their attributes are

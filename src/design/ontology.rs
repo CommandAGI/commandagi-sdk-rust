@@ -20,8 +20,12 @@
 //!
 //! ```text
 //! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, group().uid …,
-//!   .links?.policies?                                                     unit().uid …, view(), scene([body().id …])
-//! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …
+//!   .links?.policies?                                                     unit().uid …, view(), scene([body().id …]),
+//!                                                                         interlock().name.unit.channel.requires.why
+//! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …,
+//!                                                                         bound().channel.field.min?.max?.max_rate?
+//!                                                                         .max_speed?, interlock().name.channel
+//!                                                                         .requires.why.verbs?.when?
 //! dashboard([…]).name …                              <name>.dashboard.rs  param().id.type_ …, one layout: split([a, b])
 //!                                                                         .axis.ratio of two split|pane().id.kind …, or
 //!                                                                         one pane() (repeat("live-stream"): one pane
@@ -44,6 +48,12 @@
 //! document (`{format, document, sources}`, each element's site keyed by its tree path) beside an empty graph; for a
 //! node graph, the editor's own op graph, each node with `meta.source` and each wire's site in its target's
 //! `meta.sources["wire:<port>"]`. A code form declares; it never enforces: the host reads a definition's bounds.
+//!
+//! Bounds and interlocks are what the host's admission gate holds every command to, driver or not (docs/devices.md §
+//! the admission gate). A `bound()` names its channel and a field the channel's commands set; it folds into that
+//! channel's `bounds`. An `interlock()` refuses a command on its `channel` unless each of `requires` holds on another
+//! channel's last known state, and an unknown state refuses. A world's `interlock()` names the unit it guards (`unit`):
+//! `bound().channel("joints").field("fr3_joint1").min(-2.9007).max(2.9007).max_rate(2.62)`.
 
 use super::documents::{declare_document, js_string, tree_of_element, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, rust_name};
@@ -69,6 +79,10 @@ elements! {
     device: children;
     /// A channel of a device or a firmware (`firmware::firmware`): `.id("joints").dir("duplex").medium("records")`.
     channel: leaf;
+    /// A bound of a channel of a device: `.channel("joints").field("fr3_joint1").min(-2.9).max(2.9).max_rate(2.62)`.
+    bound: leaf;
+    /// An interlock of a device or a world: `.name("…").channel("shuttle").requires(json(…)).why("…")`.
+    interlock: leaf;
     /// A dashboard: its params, its one layout, its regions.
     dashboard: children;
     /// A dashboard's param: `.id("log").type_("file")`.
@@ -114,6 +128,8 @@ attributes! {
         /// is the hardware revision it is.
         firmware;
         notes; status; suggest; speed; source; title; value; rank;
+        // A bound's and an interlock's.
+        channel; field; min; max; max_rate; max_speed; requires; when; why;
         // A dashboard's, a param's, a pane's and a region's.
         focus; accept; default; required; axis; ratio; side; tab; open; collapsed; selected; path; view; world; param;
         file; group; pad;
@@ -142,6 +158,11 @@ pub const GROUP_FIELDS: &[&str] = &["uid", "name", "description", "group", "size
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 /// `policies`: the world's follow policies (docs/follow.md): one unit's robot follows another's joints, by angle.
 const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links", "policies"];
+/// A `bound()`'s attributes: the channel it bounds, the field, and its limits.
+const BOUND_FIELDS: &[&str] = &["channel", "field", "min", "max", "maxRate", "maxSpeed", "why"];
+/// An `interlock()`'s attributes in a world; a definition's names no `unit`.
+const INTERLOCK_FIELDS: &[&str] = &["name", "unit", "channel", "verbs", "when", "requires", "why"];
+const DEVICE_INTERLOCK_FIELDS: &[&str] = &["name", "channel", "verbs", "when", "requires", "why"];
 const GEO_FIELDS: &[&str] = &["id", "name", "createdAt", "updatedAt", "description", "defaultWorkspace", "metadata"];
 /// A node's attributes that are not its ports.
 const NODE_ATTRS: &[&str] = &["id", "type", "label", "x", "y", "disabled", "output", "meta", "inputs"];
@@ -159,6 +180,7 @@ const WORLD: Vocabulary = Vocabulary {
         TagRule::new("view", &["world"]).single(),
         TagRule::new("scene", &["world"]).single(),
         TagRule::new("body", &["scene"]).key("id").required(&["id"]),
+        TagRule::new("interlock", &["world"]).key("name").required(&["name", "unit", "channel", "requires", "why"]).attrs(INTERLOCK_FIELDS),
     ],
     from_tree: world_of,
 };
@@ -167,7 +189,12 @@ const DEVICE: Vocabulary = Vocabulary {
     format: "device",
     noun: "a device definition",
     root: "device",
-    tags: &[TagRule::new("device", &[]).required(&["name"]), TagRule::new("channel", &["device"]).key("id").required(&["id"])],
+    tags: &[
+        TagRule::new("device", &[]).required(&["name"]),
+        TagRule::new("channel", &["device"]).key("id").required(&["id"]),
+        TagRule::new("bound", &["device"]).required(&["channel", "field"]).attrs(BOUND_FIELDS),
+        TagRule::new("interlock", &["device"]).key("name").required(&["name", "channel", "requires", "why"]).attrs(DEVICE_INTERLOCK_FIELDS),
+    ],
     from_tree: device_of,
 };
 
@@ -285,6 +312,10 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
         }
         out.set("scene", s);
     }
+    let interlocks: Vec<Json> = kids(t, "interlock").map(DocTree::record).collect();
+    if !interlocks.is_empty() {
+        out.set("interlocks", Json::Arr(interlocks));
+    }
     Ok(out)
 }
 
@@ -294,10 +325,37 @@ fn device_of(t: &DocTree) -> Result<Json, String> {
     if t.attr_of("channels").is_some() {
         return Err("device(): write each channel as a channel() element, not a channels attribute".into());
     }
-    let channels: Vec<Json> = kids(t, "channel").map(DocTree::record).collect();
+    if t.attr_of("interlocks").is_some() {
+        return Err("device(): write each interlock as an interlock() element, not an interlocks attribute".into());
+    }
+    let mut channels: Vec<Json> = kids(t, "channel").map(DocTree::record).collect();
+    if let Some(c) = channels.iter().find(|c| c.get("bounds").is_some()) {
+        let id = text(c.get("id"));
+        return Err(format!("channel().id({id}): write each bound as a bound().channel({id}) element, not a bounds attribute"));
+    }
+    for b in kids(t, "bound") {
+        let Some(c) = channels.iter_mut().find(|c| c.get("id") == b.attr_of("channel")) else {
+            return Err(format!("bound().field({}): channel {} is not a channel() of this device", text(b.attr_of("field")), text(b.attr_of("channel"))));
+        };
+        let bound = Json::Obj(omit(&b.attrs, &["channel"]));
+        match c.get("bounds") {
+            Some(Json::Arr(list)) => {
+                let mut list = list.clone();
+                list.push(bound);
+                c.set("bounds", Json::Arr(list));
+            }
+            _ => {
+                c.set("bounds", Json::Arr(vec![bound]));
+            }
+        }
+    }
+    let interlocks: Vec<Json> = kids(t, "interlock").map(DocTree::record).collect();
     let mut out = t.record();
     if !channels.is_empty() {
         out.set("channels", Json::Arr(channels));
+    }
+    if !interlocks.is_empty() {
+        out.set("interlocks", Json::Arr(interlocks));
     }
     Ok(out)
 }

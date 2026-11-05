@@ -111,6 +111,34 @@ fn a_device_definitions_channels_are_channel_elements() {
 }
 
 #[test]
+fn bounds_and_interlocks_are_elements() {
+    let requires = r#"[{"channel": "switches", "field": "home", "eq": true}]"#;
+    let (_, def, _) = document(
+        device([
+            channel().id("gate").dir("duplex").medium("records").format("json-records"),
+            channel().id("switches").dir("out").medium("records").format("json-records"),
+            bound().channel("gate").field("lift").min(0).max(420).max_rate(200),
+            interlock().name("gate-closes-only-with-shuttle-home").channel("gate").when(json(r#"{"field": "lift", "lt": 420}"#)).requires(json(requires)).why("the gate would close on the tray"),
+        ])
+        .name("Hatch"),
+    );
+    assert_eq!(
+        def,
+        j(r#"{"name": "Hatch",
+              "channels": [{"id": "gate", "dir": "duplex", "medium": "records", "format": "json-records", "bounds": [{"field": "lift", "min": 0, "max": 420, "maxRate": 200}]},
+                           {"id": "switches", "dir": "out", "medium": "records", "format": "json-records"}],
+              "interlocks": [{"name": "gate-closes-only-with-shuttle-home", "channel": "gate", "when": {"field": "lift", "lt": 420}, "requires": [{"channel": "switches", "field": "home", "eq": true}], "why": "the gate would close on the tray"}]}"#)
+    );
+    assert!(bad(device([bound().channel("x").field("f").max(1)]).name("A")).contains("is not a channel() of this device"));
+    let (_, w, _) = document(
+        world([unit().uid("tray").name("tray").device("d"), interlock().name("shuttle-needs-hatch-open").unit("tray").channel("shuttle").requires(json(r#"[{"unit": "hatch", "channel": "gate", "field": "open", "eq": true}]"#)).why("the tray would strike the gate")])
+            .name("Unit")
+            .kind("physical"),
+    );
+    assert_eq!(w.get("interlocks").and_then(|l| if let Json::Arr(l) = l { l[0].get("unit").cloned() } else { None }), Some(Json::Str("tray".into())));
+}
+
+#[test]
 fn a_definition_names_its_firmware_and_a_firmware_declares_its_channels() {
     let cam = || channel().id("cam").dir("out").medium("video").format("video");
     let (_, def, _) = document(device([cam()]).name("Cam").firmware("../../firmware/cam").revision("rev-a"));
