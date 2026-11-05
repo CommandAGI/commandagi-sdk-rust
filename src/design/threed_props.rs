@@ -191,6 +191,67 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("ellipseArc", "EllipseArcProps"),
 ];
 
+/// One value of a host code part's JSON output that drives a field of a feature.
+#[derive(Clone, Debug)]
+pub struct HostCodeBinding {
+    /// The JSON output, as `outputs` names it.
+    pub output: String,
+    /// The value's dot path in that JSON (`boards.front.x`, `poses.0.z`).
+    pub key: String,
+    /// The feature whose field it drives.
+    pub target: String,
+    /// The field's dot path, as a parameter's binding names it (`placement.position.2`).
+    pub field: String,
+}
+
+impl ToJson for HostCodeBinding {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("output", self.output.to_json());
+        o.set("key", self.key.to_json());
+        o.set("target", self.target.to_json());
+        o.set("field", self.field.to_json());
+        o
+    }
+}
+
+/// What a host code part writes and reads (`<code host={…}>`; docs/formats.md § a host code part).
+#[derive(Clone, Debug)]
+pub struct HostCode {
+    /// The files the program writes, relative to the document: `.step` (each one body, the first takes the code part's id) and `.json` (values `bind` reads). At least one `.step`.
+    pub outputs: Vec<String>,
+    /// Other files the program reads, relative to the document: their bytes are part of the cache key.
+    pub reads: Option<Vec<String>>,
+    /// Secrets the program is given as environment variables, by name: each must be named by the grant too.
+    pub secrets: Option<Vec<String>>,
+    /// The longest the program may run, in seconds (default 300).
+    pub timeout: Option<f64>,
+    /// Values of the JSON outputs that drive the document's fields, as a parameter's bindings do.
+    pub bind: Option<Vec<HostCodeBinding>>,
+}
+
+impl ToJson for HostCode {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("outputs", self.outputs.to_json());
+        if let Some(v) = &self.reads {
+            o.set("reads", v.to_json());
+        }
+        if let Some(v) = &self.secrets {
+            o.set("secrets", v.to_json());
+        }
+        if let Some(v) = &self.timeout {
+            o.set("timeout", v.to_json());
+        }
+        if let Some(v) = &self.bind {
+            o.set("bind", v.to_json());
+        }
+        o
+    }
+}
+
 /// A PART AUTHORED AS CODE (docs/wave-h.md §3): a `.ts` / `.tsx` / `.js` / `.jsx` / `.py` file, beside the document, that declares features with the CommandAGI SDK (or JSCAD, replicad or CadQuery through its importers). Opening the part runs the file in the sandbox with `inputs` and puts what it declares in this feature's place: the file's result takes this feature's id, so a feature that `consumes` it follows the code part. It is the one feature of its file that is saved.
 #[derive(Clone, Debug)]
 pub struct CodeProps {
@@ -202,6 +263,8 @@ pub struct CodeProps {
     pub source: String,
     /// What the file runs with (its declared `params` by name).
     pub inputs: Option<Json>,
+    /// RUN BY THE LOCAL HOST in the folder's own environment (its `.venv` or uv project), not in the sandbox: the file is a program that writes files (docs/code-sandbox.md § a host code part). Its STEP outputs are this part's bodies, its JSON outputs drive fields through `bind`. Absent: the file declares features in the sandbox.
+    pub host: Option<HostCode>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -218,6 +281,9 @@ impl ToJson for CodeProps {
         o.set("source", self.source.to_json());
         if let Some(v) = &self.inputs {
             o.set("inputs", v.to_json());
+        }
+        if let Some(v) = &self.host {
+            o.set("host", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
