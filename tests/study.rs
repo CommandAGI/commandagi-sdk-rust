@@ -164,7 +164,7 @@ impl Unknown for El {
 }
 
 #[test]
-fn an_arm_design_study_is_its_varied_links_offset_and_tip_workspace_payload_and_objectives() {
+fn an_arm_design_study_is_its_varied_links_offset_and_tip_workspace_payload_obstacles_and_objectives() {
     let (_, doc, _) = document(
         study([
             vary().id("upper").joint("elbow_flex").axis("x").values([-112.57, -125.0]),
@@ -173,6 +173,8 @@ fn an_arm_design_study_is_its_varied_links_offset_and_tip_workspace_payload_and_
             vary().id("tool").field("tip_mm").axis("z").values([-98.1274, -120.0]),
             workspace().min([-100, -100, 20]).max([100, 50, 100]).step(25).down(true),
             payload().mass(0.5).gravity([0.0, 0.0, -9.81]),
+            obstacle().id("fixture").min([-160, -40, 0]).max([-120, 40, 60]),
+            obstacle().id("bin").min([60, -60, 0]).max([140, 20, 90]).wall(4),
             criterion().id("covers").quantity("coverage").limit(0.9),
             objective().quantity("coverage").goal("max"),
             objective().quantity("manipulability.min").goal("max"),
@@ -190,6 +192,7 @@ fn an_arm_design_study_is_its_varied_links_offset_and_tip_workspace_payload_and_
             {"id":"tool","field":"tip_mm","axis":"z","values":[-98.1274,-120]}],
           "workspace":{"min":[-100,-100,20],"max":[100,50,100],"step":25,"down":true},
           "payload":{"mass":0.5,"gravity":[0,0,-9.81]},
+          "obstacles":[{"id":"fixture","min":[-160,-40,0],"max":[-120,40,60]},{"id":"bin","min":[60,-60,0],"max":[140,20,90],"wall":4}],
           "criteria":[{"id":"covers","quantity":"coverage","limit":0.9}],
           "objectives":[{"quantity":"coverage","goal":"max"},{"quantity":"manipulability.min","goal":"max"}]}"#,
     )

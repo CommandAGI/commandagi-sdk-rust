@@ -29,7 +29,7 @@
 //! `step-response` (a joint servo's tuning: `step()`, `gains()`, `response()`, in `units("rad-s")`; its `part` is a
 //! `definition.tsx` or a unit of a world, `world.tsx#<uid>`, whose calibration's gains then apply) and `arm-design` (a
 //! sweep of an arm's link lengths, offsets and tool against a workspace: `vary()`, `workspace()`, `payload()`,
-//! `objective()`, in `units("mm-kg-s")`; its `part` is a `definition.tsx` in the study's folder). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
+//! `obstacle()`, `objective()`, in `units("mm-kg-s")`; its `part` is a `definition.tsx` in the study's folder). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
 //! its attributes (methods in snake case of the native names: `.load_case("clamp")` on a criterion is `loadCase`). A
 //! load's tag is its `type`. A face pick is the 3D document's pick, written as `json(r#"…"#)`. Nothing adds a
 //! default: the runner says what it assumes. A tag of one kind is refused in a study of another, by name.
@@ -41,7 +41,8 @@
 //!   "force" | "pressure", id, faces, total | value }] }], mesh?, solver?, criteria?: [{ id, quantity, limit, region?,
 //!   loadCase?, step?, note? }], revise?: [{ parameter, min, max }], steps?: [{ id, joint, from, to }], gains?: [{ joint,
 //!   kp?, kv? }], response?: { duration, dt?, band? }, vary?: [{ id, field?, joint?, axis, values }], workspace?: { min,
-//!   max, step, down? }, payload?: { mass, gravity }, objectives?: [{ quantity, goal }] }
+//!   max, step, down? }, payload?: { mass, gravity }, obstacles?: [{ id, min, max, wall? }], objectives?: [{ quantity,
+//!   goal }] }
 //! ```
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
@@ -94,6 +95,9 @@ elements! {
     workspace: leaf;
     /// The load at the tool point: `payload().mass(0.5).gravity([0.0, 0.0, -9.81])` (kg, m/s²).
     payload: leaf;
+    /// What no link may meet, a box in the model frame: `obstacle().id("fixture").min([60, -60, 0]).max([140, 20, 90])`
+    /// (mm); with `.wall(4)` a bin open at its top, its floor and four walls 4 mm thick.
+    obstacle: leaf;
     /// What ranks two variants that pass the same criteria, in the order written: `objective().quantity("coverage").goal("max")`.
     objective: leaf;
 }
@@ -189,6 +193,8 @@ attributes! {
         gravity;
         /// An objective's goal: `"max"` or `"min"`.
         goal;
+        /// A bin's wall and floor thickness (mm).
+        wall;
     }
 }
 
@@ -243,6 +249,7 @@ pub const STUDY_TAGS: &[StudyTag] = &[
     tag("vary", "vary", true, false, A),
     tag("workspace", "workspace", false, false, A),
     tag("payload", "payload", false, false, A),
+    tag("obstacle", "obstacles", true, false, A),
     tag("objective", "objectives", true, false, A),
 ];
 
@@ -279,6 +286,7 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("vary", IN_STUDY).key("id").required(&["id", "axis", "values"]).attrs(&["id", "field", "joint", "axis", "values"]),
         TagRule::new("workspace", IN_STUDY).single().required(&["min", "max", "step"]).attrs(&["min", "max", "step", "down"]),
         TagRule::new("payload", IN_STUDY).single().required(&["mass", "gravity"]).attrs(&["mass", "gravity"]),
+        TagRule::new("obstacle", IN_STUDY).key("id").required(&["id", "min", "max"]).attrs(&["id", "min", "max", "wall"]),
         TagRule::new("objective", IN_STUDY).key("quantity").required(&["quantity", "goal"]).attrs(&["quantity", "goal"]),
     ],
     from_tree: study_from_tree,
