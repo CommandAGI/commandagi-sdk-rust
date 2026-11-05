@@ -27,7 +27,9 @@
 //! One root, `study([…]).kind(…).part(…).units(…)`, for every kind of study. A kind has its own tags: this module
 //! knows `structural` (FEA), `flow` (CFD: `fluid()`, `inlet()`, `outlet()`, `flow_mesh()`, in `units("m-kg-s")`) and
 //! `step-response` (a joint servo's tuning: `step()`, `gains()`, `response()`, in `units("rad-s")`; its `part` is a
-//! `definition.tsx` or a unit of a world, `world.tsx#<uid>`, whose calibration's gains then apply). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
+//! `definition.tsx` or a unit of a world, `world.tsx#<uid>`, whose calibration's gains then apply) and `arm-design` (a
+//! sweep of an arm's link lengths, offsets and tool against a workspace: `vary()`, `workspace()`, `payload()`,
+//! `objective()`, in `units("mm-kg-s")`; its `part` is a `definition.tsx` in the study's folder). `criterion()` and `revise()` are every kind's. A record is an element and its fields are
 //! its attributes (methods in snake case of the native names: `.load_case("clamp")` on a criterion is `loadCase`). A
 //! load's tag is its `type`. A face pick is the 3D document's pick, written as `json(r#"…"#)`. Nothing adds a
 //! default: the runner says what it assumes. A tag of one kind is refused in a study of another, by name.
@@ -38,7 +40,8 @@
 //! { kind, part, units, title?, material?, fixtures?: [{ id, type, faces, region?, stiffness?, axis? }], loadCases?: [{ id, loads: [{ type:
 //!   "force" | "pressure", id, faces, total | value }] }], mesh?, solver?, criteria?: [{ id, quantity, limit, region?,
 //!   loadCase?, step?, note? }], revise?: [{ parameter, min, max }], steps?: [{ id, joint, from, to }], gains?: [{ joint,
-//!   kp?, kv? }], response?: { duration, dt?, band? } }
+//!   kp?, kv? }], response?: { duration, dt?, band? }, vary?: [{ id, field?, joint?, axis, values }], workspace?: { min,
+//!   max, step, down? }, payload?: { mass, gravity }, objectives?: [{ quantity, goal }] }
 //! ```
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
@@ -84,6 +87,15 @@ elements! {
     tune: leaf;
     /// A step-response study's window: `response().duration(1).dt(0.001).band(0.02)` (s, s, a fraction of the step).
     response: leaf;
+    /// An arm-design study's sweep of one component of a link's origin (`vary().id("upper").joint("elbow_flex").axis("x")
+    /// .values([-112.57, -140.0])`, mm), of its offset (`.field("offset_mm")`) or of the tool point (`.field("tip_mm")`, no joint).
+    vary: leaf;
+    /// The grid an arm must reach: `workspace().min([-100, -100, 20]).max([100, 50, 100]).step(25).down(true)` (mm).
+    workspace: leaf;
+    /// The load at the tool point: `payload().mass(0.5).gravity([0.0, 0.0, -9.81])` (kg, m/s²).
+    payload: leaf;
+    /// What ranks two variants that pass the same criteria, in the order written: `objective().quantity("coverage").goal("max")`.
+    objective: leaf;
 }
 
 attributes! {
@@ -163,8 +175,20 @@ attributes! {
         duration;
         dt;
         band;
-        /// The step a criterion reads (none: every step).
+        /// The step a criterion reads (none: every step); a workspace's grid spacing (mm).
         step;
+        /// What a `vary()` sets: `"origin_mm"` (none named), `"offset_mm"` or `"tip_mm"`.
+        field;
+        /// The values a `vary()` sweeps (mm).
+        values;
+        /// A workspace reached with the tool pointing down.
+        down;
+        /// A payload's mass (kg).
+        mass;
+        /// Gravity in the definition's model frame (m/s²).
+        gravity;
+        /// An objective's goal: `"max"` or `"min"`.
+        goal;
     }
 }
 
@@ -174,9 +198,11 @@ pub(crate) const FAMILY: Family = Family { module: "study", roots: &["study"], d
 pub const STUDY_UNITS: &str = "mm-N-MPa-t";
 pub const STUDY_ROOT_FIELDS: &[&str] = &["kind", "part", "units", "title"];
 /// The kinds a study may name.
-pub const STUDY_KINDS: &[&str] = &["structural", "flow", "step-response"];
+pub const STUDY_KINDS: &[&str] = &["structural", "flow", "step-response", "arm-design"];
 /// The unit set of a step-response study: radians and seconds.
 pub const STEP_RESPONSE_UNITS: &str = "rad-s";
+/// The unit set of an arm-design study: millimetres, kilograms, seconds.
+pub const ARM_DESIGN_UNITS: &str = "mm-kg-s";
 
 /// A tag of a study: the field of its parent record it fills, whether that field is a list, whether the tag is the
 /// record's `type` (a load is `force()` or `pressure()`, both in `loads`), and its kind (none: every kind's).
@@ -195,6 +221,7 @@ const fn tag(tag: &'static str, field: &'static str, list: bool, typed: bool, ki
 const S: Option<&str> = Some("structural");
 const F: Option<&str> = Some("flow");
 const R: Option<&str> = Some("step-response");
+const A: Option<&str> = Some("arm-design");
 pub const STUDY_TAGS: &[StudyTag] = &[
     tag("criterion", "criteria", true, false, None),
     tag("revise", "revise", true, false, None),
@@ -213,6 +240,10 @@ pub const STUDY_TAGS: &[StudyTag] = &[
     tag("gains", "gains", true, false, R),
     tag("tune", "tune", true, false, R),
     tag("response", "response", false, false, R),
+    tag("vary", "vary", true, false, A),
+    tag("workspace", "workspace", false, false, A),
+    tag("payload", "payload", false, false, A),
+    tag("objective", "objectives", true, false, A),
 ];
 
 const IN_STUDY: &[&str] = &["study"];
@@ -245,6 +276,10 @@ pub const STUDY: Vocabulary = Vocabulary {
         TagRule::new("gains", IN_STUDY).key("joint").required(&["joint"]).attrs(&["joint", "kp", "kv"]),
         TagRule::new("tune", IN_STUDY).key("joint").required(&["joint"]).attrs(&["joint", "kp", "kv"]),
         TagRule::new("response", IN_STUDY).single().required(&["duration"]).attrs(&["duration", "dt", "band"]),
+        TagRule::new("vary", IN_STUDY).key("id").required(&["id", "axis", "values"]).attrs(&["id", "field", "joint", "axis", "values"]),
+        TagRule::new("workspace", IN_STUDY).single().required(&["min", "max", "step"]).attrs(&["min", "max", "step", "down"]),
+        TagRule::new("payload", IN_STUDY).single().required(&["mass", "gravity"]).attrs(&["mass", "gravity"]),
+        TagRule::new("objective", IN_STUDY).key("quantity").required(&["quantity", "goal"]).attrs(&["quantity", "goal"]),
     ],
     from_tree: study_from_tree,
 };

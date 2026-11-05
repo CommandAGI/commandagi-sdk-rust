@@ -140,7 +140,7 @@ fn a_step_response_study_names_its_steps_gains_and_window() {
 #[test]
 fn a_study_refuses_by_name_what_it_has_no_words_for() {
     assert_eq!(bad(study([]).kind("structural")), "study() needs part");
-    assert_eq!(bad(study([]).kind("thermal").part("a.3d.tsx")), r#"study() kind is one of structural, flow, step-response, not "thermal""#);
+    assert_eq!(bad(study([]).kind("thermal").part("a.3d.tsx")), r#"study() kind is one of structural, flow, step-response, arm-design, not "thermal""#);
     assert_eq!(bad(of(vec![force().id("f").faces(face("{}")).total([0, 0, 1])])), "force() stands in load_case(), not in study()");
     assert_eq!(bad(of(vec![fixture().id("a").type_("fixed")])), r#"fixture().id("a") needs faces"#);
     assert_eq!(bad(of(vec![mesh().order(2).size(2).poisson(0.3)])), "mesh(): poisson is not read (order, size, refine)");
@@ -161,4 +161,39 @@ impl Unknown for El {
     fn youngs_modulus(self, v: impl Into<Value>) -> El {
         self.with_attr("youngsModulus", v)
     }
+}
+
+#[test]
+fn an_arm_design_study_is_its_varied_links_offset_and_tip_workspace_payload_and_objectives() {
+    let (_, doc, _) = document(
+        study([
+            vary().id("upper").joint("elbow_flex").axis("x").values([-112.57, -125.0]),
+            vary().id("forearm").joint("wrist_flex").axis("x").values([-134.9, -150.0]),
+            vary().id("wrist").field("offset_mm").joint("wrist_roll").axis("y").values([0, 10]),
+            vary().id("tool").field("tip_mm").axis("z").values([-98.1274, -120.0]),
+            workspace().min([-100, -100, 20]).max([100, 50, 100]).step(25).down(true),
+            payload().mass(0.5).gravity([0.0, 0.0, -9.81]),
+            criterion().id("covers").quantity("coverage").limit(0.9),
+            objective().quantity("coverage").goal("max"),
+            objective().quantity("manipulability.min").goal("max"),
+        ])
+        .kind("arm-design")
+        .part("devices/so101-reach/definition.tsx")
+        .units(ARM_DESIGN_UNITS),
+    );
+    // The TypeScript SDK's study.test.ts declares this document for the same elements, key for key.
+    let golden = Json::parse(
+        r#"{"kind":"arm-design","part":"devices/so101-reach/definition.tsx","units":"mm-kg-s",
+          "vary":[{"id":"upper","joint":"elbow_flex","axis":"x","values":[-112.57,-125]},
+            {"id":"forearm","joint":"wrist_flex","axis":"x","values":[-134.9,-150]},
+            {"id":"wrist","field":"offset_mm","joint":"wrist_roll","axis":"y","values":[0,10]},
+            {"id":"tool","field":"tip_mm","axis":"z","values":[-98.1274,-120]}],
+          "workspace":{"min":[-100,-100,20],"max":[100,50,100],"step":25,"down":true},
+          "payload":{"mass":0.5,"gravity":[0,0,-9.81]},
+          "criteria":[{"id":"covers","quantity":"coverage","limit":0.9}],
+          "objectives":[{"quantity":"coverage","goal":"max"},{"quantity":"manipulability.min","goal":"max"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(doc.text(), golden.text());
+    assert!(bad(study([step().id("a").joint("j").from(0).to(1)]).kind("arm-design").part("definition.tsx")).contains("step() belongs to a step-response study, not to a arm-design one"));
 }
