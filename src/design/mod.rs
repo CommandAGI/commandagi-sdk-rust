@@ -43,6 +43,7 @@ pub(crate) mod circuit_checks;
 pub mod documents;
 pub mod element;
 pub mod evals;
+pub mod facts;
 pub mod fab;
 pub mod firmware;
 pub mod flows;

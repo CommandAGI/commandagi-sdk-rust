@@ -31,7 +31,7 @@ use super::Json;
 elements! {
     /// A seat of a body (the board, the officers, a committee): `.body("board").title("director").holder("…vcf")`.
     seat = "Seat": leaf;
-    /// The compliance register's settings: the company's industry codes.
+    /// The compliance register's settings: the company's industry codes and how far ahead it looks (`.horizon("18 months")`).
     compliance = "Compliance": leaf;
     /// An obligation of the company's own (a certification, a contract's report): `.id("…").name("…").due("…")`.
     obligation = "Obligation": leaf;
@@ -52,7 +52,7 @@ attributes! {
     /// (`.due()` is `FormationAttrs`'s, `.currency()` `FinanceAttrs`'s).
     pub trait GovernanceAttrs {
         holder; start; end; appointed_by; industries; every; url; authority; obligation; done; stage; number; filed;
-        registered; owner; classes; person; signed; carrier; limit; broker; threshold; quorum; choice;
+        registered; owner; claimants; classes; person; horizon; signed; carrier; limit; broker; threshold; quorum; choice;
     }
 }
 
@@ -63,7 +63,7 @@ const fn leaf(tag: &'static str, props: &'static [(&'static str, Kind)], require
 /// The tags' attributes.
 pub(crate) const GOVERNANCE_TAGS: &[TagSpec] = &[
     leaf("Seat", &[("body", Text), ("title", Text), ("holder", Text), ("start", Text), ("end", Text), ("appointedBy", Text)], &["body", "title", "holder"]),
-    leaf("Compliance", &[("industries", Texts)], &[]),
+    leaf("Compliance", &[("industries", Texts), ("horizon", Text)], &[]),
     leaf("Obligation", &[("id", Text), ("name", Text), ("authority", Text), ("url", Text), ("due", Text), ("every", Text), ("note", Text)], &["id", "name", "due"]),
     leaf("Evidence", &[("obligation", Text), ("due", Text), ("done", Text), ("file", Text), ("note", Text)], &["obligation", "due"]),
     leaf(
@@ -78,6 +78,7 @@ pub(crate) const GOVERNANCE_TAGS: &[TagSpec] = &[
             ("registered", Text),
             ("expires", Text),
             ("owner", Text),
+            ("claimants", Texts),
             ("classes", Texts),
             ("file", Text),
         ],
@@ -113,10 +114,11 @@ pub(crate) fn governance_of(node: &BusinessNode, mut company: Json) -> Json {
     }
     if node.one("compliance").is_some() || !node.many("obligations").is_empty() || !node.many("evidence").is_empty() {
         let industries = node.one("compliance").and_then(|n| n.prop("industries")).cloned().unwrap_or(Json::Arr(Vec::new()));
-        company.set(
-            "compliance",
-            Json::obj().with("industries", industries).with("obligations", props_of(node, "obligations")).with("evidence", props_of(node, "evidence")),
-        );
+        let mut compliance = Json::obj().with("industries", industries);
+        if let Some(h) = node.one("compliance").and_then(|n| n.prop("horizon")) {
+            compliance.set("horizon", h.clone());
+        }
+        company.set("compliance", compliance.with("obligations", props_of(node, "obligations")).with("evidence", props_of(node, "evidence")));
     }
     if !node.many("ipAssets").is_empty() || !node.many("assignments").is_empty() {
         company.set("ip", Json::obj().with("assets", props_of(node, "ipAssets")).with("assignments", props_of(node, "assignments")));

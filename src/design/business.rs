@@ -36,6 +36,7 @@ use super::company_governance::{governance_of, GOVERNANCE_TAGS};
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
 use super::people_ops::{team_of, PEOPLE_OPS_TAGS};
+use super::facts::fact_marker;
 use super::{Declared, Family};
 pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
 pub use super::people_ops::{band, benefit, checklist, role, team, PeopleOpsAttrs};
@@ -74,6 +75,10 @@ elements! {
     version = "Version": leaf;
     /// A brand of the company: its own `.brand.rs`, `.file("brands/Northwind.brand.rs")` (`super::brands`).
     brand = "Brand": leaf;
+    /// What the company sells or makes: `.name("…").maker("Exocortex Labs").seller("CommandAGI Inc.")` (the merchant of record).
+    product = "Product": leaf;
+    /// The company's relationships (suppliers, manufacturers, funders, channels): `.file("relationships/relationships.csv")`.
+    relationships = "Relationships": leaf;
     /// An RFC draft: its options.
     rfc = "Rfc": children;
     /// One option of an RFC: its changes.
@@ -100,6 +105,7 @@ attributes! {
         interest; description; amount; harm_ids; days;
         ownership; since; method; status; parties; effective; renewal; notice_days;
         party; signer; capacity; date; note;
+        maker; seller;
     }
 }
 
@@ -137,9 +143,9 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         tag: "Company",
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
-        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance")],
+        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships")],
         many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand"),
-            ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy")],
+            ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy"), ("products", "Product")],
     },
     spec(
         "Entity",
@@ -196,6 +202,8 @@ const BUSINESS_TAGS: &[TagSpec] = &[
     spec("Signature", &[("party", Text), ("signer", Text), ("capacity", Text), ("date", Text), ("method", Text), ("evidence", Text)], &["party"]),
     spec("Version", &[("file", Text), ("date", Text), ("note", Text)], &["file"]),
     spec("Brand", &[("file", Text)], &["file"]),
+    spec("Product", &[("id", Text), ("name", Text), ("about", Text), ("maker", Text), ("seller", Text), ("status", Text), ("file", Text)], &["name"]),
+    spec("Relationships", &[("file", Text)], &["file"]),
     TagSpec {
         tag: "Rfc",
         props: &[("id", Text), ("procedure", Text), ("title", Text), ("body", Text), ("target", Text), ("engineJson", Text)],
@@ -271,8 +279,11 @@ impl BusinessNode {
     }
 }
 
-/// An attribute's value, checked against its kind.
+/// An attribute's value, checked against its kind; or an unknown or approximate fact of one (`super::facts`).
 fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
+    if let Some(fact) = fact_marker(v, &format!("{}(): {}", fn_name(tag), rust_name(prop)), |x| value(tag, prop, kind, x))? {
+        return Ok(fact);
+    }
     let bad = |what: &str| format!("{}(): {} is {what}, not {}", fn_name(tag), rust_name(prop), v.text());
     let ok = match (kind, v) {
         (Text, Json::Str(_)) | (Bool, Json::Bool(_)) | (Record, Json::Obj(_)) | (Data, _) => true,
@@ -444,6 +455,12 @@ pub fn company_of(node: &BusinessNode) -> Json {
     };
     let brands: Vec<Json> = node.many("brands").iter().map(|x| Json::Obj(x.props.clone())).collect();
     let company = if brands.is_empty() { company } else { company.with("brands", brands) };
+    let products: Vec<Json> = node.many("products").iter().map(|x| Json::Obj(x.props.clone())).collect();
+    let company = if products.is_empty() { company } else { company.with("products", products) };
+    let company = match node.one("relationships").and_then(|n| n.prop("file")) {
+        Some(file) => company.with("relationships", file.clone()),
+        None => company,
+    };
     governance_of(node, company)
 }
 

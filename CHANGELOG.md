@@ -8,6 +8,12 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A fact a company or a brand does not know is `facts::unknown("<why>")`, and one it knows only roughly
+  `facts::about(<value>)`. Any attribute takes either, a required one too.
+- `product()` (`.maker()`, `.seller()`) and `relationships()` in a `company()`; `compliance().horizon(…)`;
+  `ip_asset().claimants([…])`.
+- A brand's `site().url(…).host(…).project(…)` for a site hosted elsewhere; `domain().transfer_lock(…)`;
+  `mailbox().address(…).kind(…)`.
 - A board's `fab()` states the house's other least dimensions, as KiCad's board setup states them:
   `.min_via_diameter()`, `.min_hole_clearance()` (copper to a hole), `.min_hole_to_hole()` and
   `.min_edge_clearance()` (mm), and `.via_in_pad()` (true or false: the house fills and caps a via in a pad, so a
@@ -188,6 +194,10 @@ Fixed
   whose `a` or `b` the placement leaves out (`omit`) goes with it; a `moves` entry that moves only its `a` along the
   joint (a latch closed, a lid opened) shifts its `limits` by that value, so the sweep still stops where the file
   says. Needs a host of this version (`commandagi check` links the placed files).
+
+Removed
+
+- `domain().mail()`: a domain receives mail when the brand names a `mailbox()` at it.
 
 ## 0.6.8 (2026-10-23)
 

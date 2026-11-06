@@ -9,8 +9,11 @@
 //!     brand_surface([
 //!         alias().name("Northwind Survey").kind("legal"),
 //!         logo().file("../design/logo.svg").kind("mark").background("light"),
-//!         domain().name("northwind.example").registrar("Porkbun LLC").expires("2027-05-18").auto_renew(true).mail(true),
+//!         domain().name("northwind.example").registrar("Porkbun LLC").expires("2027-05-18").auto_renew(true)
+//!             .transfer_lock(commandagi::design::facts::about("2026-12-30")),
 //!         site().folder("../site/"),
+//!         site().host("cloudflare-pages").project("northwind-www").url("https://www.northwind.example"),
+//!         mailbox().address("support@northwind.example").kind("support"),
 //!         handle().platform("x").handle("northwindsurvey"),
 //!         mark().title("NORTHWIND").jurisdiction("US").number("99123456"),
 //!     ])
@@ -29,6 +32,7 @@
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements, rust_name};
+use super::facts::fact_marker;
 use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
@@ -39,10 +43,12 @@ elements! {
     alias = "Alias": leaf;
     /// A logo: `.file("logo.svg").kind("mark").background("light")`, a ref from the brand file's folder.
     logo = "Logo": leaf;
-    /// A domain: `.name("northwind.example").registrar(…).expires("2027-05-18").site(…).mail(true)`.
+    /// A domain: `.name("northwind.example").registrar(…).expires("2027-05-18").site(…).transfer_lock(…)`.
     domain = "Domain": leaf;
-    /// A site: `.folder("../site/")`, the folder with its `site.json`.
+    /// A site: `.folder("../site/")`, the folder with its `site.json`; or one hosted elsewhere, `.url(…).host(…).project(…)`.
     site = "Site": leaf;
+    /// An address the brand receives mail at: `.address("support@northwind.example").kind("support")`.
+    mailbox = "Mailbox": leaf;
     /// A social handle: `.platform("x").handle("northwindsurvey").connection("x")`.
     handle = "Handle": leaf;
     /// A mark the company records as an IP asset: `.title("NORTHWIND").jurisdiction("US").number(…)`.
@@ -54,8 +60,8 @@ attributes! {
     pub trait BrandAttrs {
         name; tagline; about; voice; design_system;
         kind; locale; file; background;
-        registrar; expires; auto_renew; site; mail;
-        folder; platform; handle; url; connection;
+        registrar; expires; auto_renew; site; transfer_lock;
+        folder; host; project; address; platform; handle; url; connection;
         title; jurisdiction; number;
     }
 }
@@ -65,8 +71,9 @@ pub(crate) const FAMILY: Family = Family { module: "brands", roots: &["BrandSurf
 pub const BRAND_FIELDS: &[&str] = &["name", "tagline", "about", "voice", "designSystem"];
 pub const ALIAS_FIELDS: &[&str] = &["name", "kind", "locale"];
 pub const LOGO_FIELDS: &[&str] = &["file", "kind", "background"];
-pub const DOMAIN_FIELDS: &[&str] = &["name", "registrar", "expires", "autoRenew", "site", "mail"];
-pub const SITE_FIELDS: &[&str] = &["folder"];
+pub const DOMAIN_FIELDS: &[&str] = &["name", "registrar", "expires", "autoRenew", "site", "transferLock"];
+pub const SITE_FIELDS: &[&str] = &["folder", "url", "host", "project"];
+pub const MAILBOX_FIELDS: &[&str] = &["address", "kind"];
 pub const HANDLE_FIELDS: &[&str] = &["platform", "handle", "url", "connection"];
 pub const MARK_FIELDS: &[&str] = &["title", "jurisdiction", "number"];
 
@@ -76,6 +83,7 @@ const LISTS: &[(&str, &str, &[&str])] = &[
     ("logos", "Logo", LOGO_FIELDS),
     ("domains", "Domain", DOMAIN_FIELDS),
     ("sites", "Site", SITE_FIELDS),
+    ("mailboxes", "Mailbox", MAILBOX_FIELDS),
     ("handles", "Handle", HANDLE_FIELDS),
     ("marks", "Mark", MARK_FIELDS),
 ];
@@ -90,7 +98,8 @@ const BRAND: Vocabulary = Vocabulary {
         TagRule::new("Alias", ROOT).required(&["name"]).attrs(ALIAS_FIELDS),
         TagRule::new("Logo", ROOT).key("file").required(&["file"]).attrs(LOGO_FIELDS),
         TagRule::new("Domain", ROOT).key("name").required(&["name"]).attrs(DOMAIN_FIELDS),
-        TagRule::new("Site", ROOT).key("folder").required(&["folder"]).attrs(SITE_FIELDS),
+        TagRule::new("Site", ROOT).attrs(SITE_FIELDS),
+        TagRule::new("Mailbox", ROOT).key("address").required(&["address"]).attrs(MAILBOX_FIELDS),
         TagRule::new("Handle", ROOT).required(&["platform", "handle"]).attrs(HANDLE_FIELDS),
         TagRule::new("Mark", ROOT).required(&["title"]).attrs(MARK_FIELDS),
     ],
@@ -101,18 +110,31 @@ fn declare(root: El) -> Result<Declared, String> {
     declare_document(&root, &BRAND)
 }
 
-/// Each attribute's type: text, a flag (`auto_renew`, `mail`), or the voice's words.
+/// One attribute's type: text, a flag (`auto_renew`), or the voice's words; or an unknown or approximate fact of one.
+fn check_one(tag: &str, k: &str, v: &Json) -> Result<Json, String> {
+    let f = super::element::fn_name(tag);
+    if let Some(fact) = fact_marker(v, &format!("{f}(): {}", rust_name(k)), |x| check_one(tag, k, x))? {
+        return Ok(fact);
+    }
+    let (ok, what) = match k {
+        "autoRenew" => (matches!(v, Json::Bool(_)), "true or false"),
+        "voice" => (matches!(v, Json::Arr(xs) if xs.iter().all(|x| matches!(x, Json::Str(_)))), "a list of words"),
+        _ => (matches!(v, Json::Str(_)), "text"),
+    };
+    if ok {
+        Ok(v.clone())
+    } else {
+        Err(format!("{f}(): {} is {what}", rust_name(k)))
+    }
+}
+
 fn check(t: &DocTree) -> Result<(), String> {
     for node in std::iter::once(t).chain(t.children.iter()) {
         for (k, v) in &node.attrs {
-            let (ok, what) = match k.as_str() {
-                "autoRenew" | "mail" => (matches!(v, Json::Bool(_)), "true or false"),
-                "voice" => (matches!(v, Json::Arr(xs) if xs.iter().all(|x| matches!(x, Json::Str(_)))), "a list of words"),
-                _ => (matches!(v, Json::Str(_)), "text"),
-            };
-            if !ok {
-                return Err(format!("{}(): {} is {what}", super::element::fn_name(node.tag), rust_name(k)));
-            }
+            check_one(node.tag, k, v)?;
+        }
+        if node.tag == "Site" && ["folder", "url", "project"].iter().all(|k| node.attr_of(k).is_none()) {
+            return Err("site() names its folder, or the url or project of a site hosted elsewhere".into());
         }
     }
     Ok(())
