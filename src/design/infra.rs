@@ -16,7 +16,7 @@
 //! use commandagi::design::infra::*;
 //!
 //! fn document() -> El {
-//!     session([uses().monitor("../../../social/x/nvidia")])
+//!     session([uses().script("../../../social/x/nvidia/nvidia.script.tsx")])
 //!         .name("x-web").site("https://x.com").kind("browser-profile").profile("x-web").refreshed("2026-10-12")
 //! }
 //! # commandagi::design::declare(document()).unwrap();
@@ -37,7 +37,7 @@
 //! credential. A vantage is a device, a place and a session, never a fake person, so the vocabulary has no words for
 //! one: a field it does not list is refused by name.
 //!
-//! The CommandAGI platform runs only a TSX file: its monitors read `vantage.tsx` and `session.tsx`, and `make
+//! The CommandAGI platform runs only a TSX file: its scripts read `vantage.tsx` and `session.tsx`, and `make
 //! infra-plan` reads `exit.tsx`. A `.rs` file runs in the local sandbox.
 
 use super::documents::{declare_document, js_string, DocTree, TagRule, Vocabulary};
@@ -50,9 +50,9 @@ elements! {
     exit: leaf;
     /// One observer of the account: a device, a place and a session.
     vantage: leaf;
-    /// One logged-in state: `uses()` for each monitor that reads through it.
+    /// One logged-in state: `uses()` for each script that reads through it.
     session: children;
-    /// A monitor that reads through a session: `.monitor("../../../social/x/nvidia")`.
+    /// A script that reads through a session: `.script("../../../social/x/nvidia/nvidia.script.tsx")`.
     uses: leaf;
 }
 
@@ -61,7 +61,7 @@ attributes! {
     pub trait InfraAttrs {
         name; provider; region; country; continent; size; image; protocol; enabled; price; max_monthly_usd;
         path; host; unit; snapshot; exit; location; locale; timezone; session; device; clock;
-        site; kind; profile; refreshed; note; monitor;
+        site; kind; profile; refreshed; note; script;
     }
 }
 
@@ -106,7 +106,7 @@ const SESSION: Vocabulary = Vocabulary {
     root: "session",
     tags: &[
         TagRule::new("session", &[]).required(&["name", "site", "kind"]).attrs(SESSION_FIELDS),
-        TagRule::new("uses", &["session"]).key("monitor").required(&["monitor"]).attrs(&["monitor"]),
+        TagRule::new("uses", &["session"]).key("script").required(&["script"]).attrs(&["script"]),
     ],
     from_tree: session_of,
 };
@@ -354,7 +354,7 @@ fn session_of(t: &DocTree) -> Result<Json, String> {
     if written("refreshed") && !is_day(text(t, "refreshed")) {
         return Err(format!("{} refreshed is a day (\"2026-10-12\"), not {}", at(t), Json::from(text(t, "refreshed")).text()));
     }
-    let uses: Vec<Json> = t.children.iter().map(|c| Json::obj().with("monitor", c.attr_of("monitor").cloned().unwrap_or(Json::Null))).collect();
+    let uses: Vec<Json> = t.children.iter().map(|c| Json::obj().with("script", c.attr_of("script").cloned().unwrap_or(Json::Null))).collect();
     let mut out = said(t, SESSION_FIELDS);
     out.set("uses", Json::Arr(uses));
     Ok(out)
@@ -387,7 +387,7 @@ pub fn vantage_with_defaults(d: &Json) -> Json {
 /// A session as a source reads it: what the file does not say, filled.
 pub fn session_with_defaults(d: &Json) -> Json {
     let uses = match d.get("uses") {
-        Some(Json::Arr(items)) => items.iter().filter_map(|u| u.get("monitor").cloned()).collect(),
+        Some(Json::Arr(items)) => items.iter().filter_map(|u| u.get("script").cloned()).collect(),
         _ => Vec::new(),
     };
     let mut out = filled(d, SESSION_FIELDS);

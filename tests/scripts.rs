@@ -27,7 +27,7 @@ fn with_attrs(mut el: El, attrs: &Json) -> El {
 /// The document back to code: each list's entries as their elements, in the vocabulary's order.
 fn code_of(doc: &Json) -> El {
     let mut parts = Vec::new();
-    for (list, part) in [("sources", source as fn() -> El), ("tails", tail), ("derives", derive), ("wakes", wake), ("discovers", discover), ("judges", judge)] {
+    for (list, part) in [("sources", source as fn() -> El), ("tails", tail), ("derives", derive), ("wakes", wake), ("discovers", discover), ("judges", judge), ("params", param)] {
         let Some(Json::Arr(entries)) = doc.get(list) else { panic!("{list} is a list") };
         parts.extend(entries.iter().map(|e| with_attrs(part(), e)));
     }
@@ -68,7 +68,7 @@ fn a_script_is_its_parts_both_ways() {
              "tails": [{"of": "../../central-banks/fed/fed.script.tsx", "when": {"class": "fomc.*"}}],
              "derives": [],
              "wakes": [{"when": {"class": "sec.filing.8-k*"}, "prompt": "Say what the report changes."}],
-             "discovers": [], "judges": []}"#)
+             "discovers": [], "judges": [], "params": []}"#)
     );
     assert_eq!(document(code_of(&doc)).1, doc, "both ways");
     let full = script_with_defaults(&doc);
@@ -85,7 +85,7 @@ fn a_script_is_its_parts_both_ways() {
 #[test]
 fn an_empty_script_its_file_name_and_a_part_that_names_another_stream() {
     let (_, doc) = document(script([]));
-    assert_eq!(doc, j(r#"{"sources": [], "tails": [], "derives": [], "wakes": [], "discovers": [], "judges": []}"#));
+    assert_eq!(doc, j(r#"{"sources": [], "tails": [], "derives": [], "wakes": [], "discovers": [], "judges": [], "params": []}"#));
     for name in ["nvidia.script.tsx", "a.script.jsx", "b.script.py", "c.script.rs"] {
         assert!(script_file_ok(name), "{name}");
     }
@@ -184,6 +184,50 @@ fn a_judge_names_what_it_judges_its_rubric_and_its_model() {
     let (_, doc) = document(script([judge().id("claims").of("task").rubric("./rubric.md").model("fireworks/glm-5p3")]));
     assert_eq!(script_with_defaults(&doc).get("judges"), Some(&j(r#"[{"id": "claims", "of": "task", "rubric": "./rubric.md", "model": "fireworks/glm-5p3"}]"#)));
     refused(judge().id("j").of("thread").rubric("r.md").model("m"), r#"of is "turn", "task""#);
+}
+
+#[test]
+fn a_template_declares_its_params_each_a_typed_param_its_placeholders_name_both_ways() {
+    let (_, doc) = document(
+        script([
+            param().id("cik").type_("string").label("the company's CIK"),
+            param().id("ticker").type_("string").required(false).default("NVDA"),
+            source().id("filings").adapter("sec-filings").params(json(r#"{"cik": "${cik}"}"#)).every("30m"),
+        ])
+        .title("${name} (${ticker})"),
+    );
+    assert_eq!(document(code_of(&doc)).1, doc, "both ways");
+    assert_eq!(
+        script_with_defaults(&doc).get("params"),
+        Some(&j(r#"[{"id": "cik", "type": "string", "label": "the company's CIK", "default": null, "required": true, "choices": null, "accept": null},
+                    {"id": "ticker", "type": "string", "label": null, "default": "NVDA", "required": false, "choices": null, "accept": null}]"#))
+    );
+    let p = || param().id("p").type_("string");
+    refused(param().id("p").type_("date"), r#"type is "file""#);
+    refused(param().id("a-b").type_("string"), "id is letters, digits and _");
+    refused(param().id("p").type_("choice"), "a choice names its choices");
+    declare(script([param().id("p").type_("choice").choices(json(r#"["a", "b"]"#))])).unwrap();
+    let e = declare(script([p(), param().id("p").type_("number")])).unwrap_err();
+    assert!(e.contains(r#"two param() in script() have id "p""#) || e.contains("declared twice"), "{e}");
+}
+
+#[test]
+fn a_placeholder_as_a_whole_value_passes_the_file_checks() {
+    // A template's ${name} is a file once its copy fills it.
+    assert_eq!(tail_ref_problem("${of}"), None);
+    let (_, doc) = document(script([
+        param().id("of").type_("file"),
+        param().id("cls").type_("string"),
+        tail().of("${of}"),
+        derive().id("d").op("last").inputs(json(r#"{"a": "${of}"}"#)),
+        discover().of("${of}").slug("data.cve").class("${cls}"),
+    ]));
+    assert_eq!(doc.get("discovers").and_then(|d| match d {
+        Json::Arr(a) => a[0].get("class").cloned(),
+        _ => None,
+    }), Some(Json::Str("${cls}".into())));
+    refused(tail().of("../${of}"), "names a file");
+    refused(discover().slug("cve").class("${a-b}"), "class is the class file");
 }
 
 // script_wake.json is the golden of the three SDKs (sdk/typescript/src/design/script-wake.golden.json,

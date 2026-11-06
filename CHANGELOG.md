@@ -18,7 +18,15 @@ Added
   `source()`, `tail().of(..).when(..)` (a script file, a run's `records.jsonl` or a series such as `fred:DGS10`, never
   a folder: `tail_ref_problem`), `derive()`, `wake()` (`.when(..)`, a record predicate, or `.every(..)`, never both),
   `discover()` and `judge()`; a source, a tail and a derive say `.stream(..)`, which `script_with_defaults` fills as
-  `records`. The same document as the TypeScript SDK's `scripts.ts` (one golden fixture, `tests/script_wake.json`). `monitors.rs`
+  `records`. The same document as the TypeScript SDK's `scripts.ts` (one golden fixture, `tests/script_wake.json`).
+- A script's `param().id(..).type_(..).label(..).default(..).required(..).choices(..).accept(..)` (`SCRIPT_PARAM_FIELDS`,
+  `SCRIPT_PARAM_TYPES`: file, device, world, unit, channel, run, stream, number, string, choice) makes it a template;
+  its document's `params` is always a list, and `script_with_defaults` fills `label`, `default`, `choices` and
+  `accept` as null and `required` as true. A choice names its choices; a param declared twice is refused. A
+  placeholder `${name}` as a whole value passes a tail's, a derive's port's and a discover's file checks
+  (`tail_ref_problem`, a discover's `class`): its copy fills it. The same as the TypeScript SDK's `scripts.ts`.
+- A session names the scripts that read through it: `session([uses().script("<ref to a script file>")])` (document
+  `uses: [{"script": …}]`, `session_with_defaults` `uses: [<ref>, …]`), in place of `uses().monitor("<folder>")`.
   goes when the platform reads scripts only.
 - A company's deals (`company_deals.rs`, re-exported by `business`): `deal().id().title().counterparty().stage()
   .value().currency().expected().closed().owner().since().source().note()` in a `company()`, its sales pipeline. The
@@ -208,6 +216,9 @@ Fixed
 Removed
 
 - `domain().mail()`: a domain receives mail when the brand names a `mailbox()` at it.
+- The monitors vocabulary (`commandagi::design::monitors`, `monitors.rs`: `monitor()`, `follows()`,
+  `monitor_with_defaults`): scripts (`commandagi::design::scripts`) replace it. A session's `uses().monitor(..)` is
+  `uses().script(..)`.
 
 ## 0.6.8 (2026-10-23)
 

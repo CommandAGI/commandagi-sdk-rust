@@ -25,7 +25,9 @@
 //! names the stream of the run a part appends to (absent: `records`). A discover's `into` is written `into_`
 //! (`Into::into` has the name). Nothing adds a default: what the file does not say, the document does not have;
 //! [`script_with_defaults`] gives the document as the platform reads it. A script's `sameAs`, `sources`, `tails`,
-//! `derives`, `wakes`, `discovers` and `judges` are always lists.
+//! `derives`, `wakes`, `discovers`, `judges` and `params` are always lists. A script with `param()` parts is a
+//! template: each `${id}` placeholder is filled when it is copied, and a placeholder as a whole value passes the checks
+//! of the file it will name.
 //!
 //! A `derive` folds the records of other files into this script's, each port named to a file it tails (`"./"`: its own
 //! records); a `discover` gives each thing its records name a folder and a script of its own, an instance of a class
@@ -67,6 +69,8 @@ elements! {
     discover: leaf;
     /// A judge: when a turn or a task's turn ends, a model reads the trace with a rubric and records a verdict.
     judge: leaf;
+    /// A template's parameter: its `${id}` placeholders are filled when the template is copied.
+    param: leaf;
 }
 
 attributes! {
@@ -83,6 +87,8 @@ attributes! {
         op; inputs;
         into_ = "into"; of; when; slug; props; name; max; visibility;
         rubric; model;
+        /// A param's.
+        type_; label; default; required; choices; accept;
     }
 }
 
@@ -100,6 +106,10 @@ pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "p
 pub const JUDGE_FIELDS: &[&str] = &["id", "of", "rubric", "model"];
 /// What a judge judges: each turn of the thread's agents, or each turn on a mounted task.
 pub const JUDGE_OF: &[&str] = &["turn", "task"];
+/// A template's parameter (docs/scripts.md § the catalogue): its `${id}` placeholders are filled when it is copied.
+pub const SCRIPT_PARAM_FIELDS: &[&str] = &["id", "type", "label", "default", "required", "choices", "accept"];
+/// What a parameter is: the same types a dashboard template's parameters have.
+pub const SCRIPT_PARAM_TYPES: &[&str] = &["file", "device", "world", "unit", "channel", "run", "stream", "number", "string", "choice"];
 /// The most new folders a discover writes a tick.
 pub const DISCOVER_MAX: u32 = 50;
 /// Who may read a file a discover writes (docs/scripts.md § a script file).
@@ -125,6 +135,7 @@ const SCRIPT: Vocabulary = Vocabulary {
         TagRule::new("wake", &["script"]).required(&["prompt"]).attrs(WAKE_FIELDS),
         TagRule::new("discover", &["script"]).required(&["slug", "class"]).attrs(DISCOVER_FIELDS),
         TagRule::new("judge", &["script"]).key("id").required(&["id", "of", "rubric", "model"]).attrs(JUDGE_FIELDS),
+        TagRule::new("param", &["script"]).key("id").required(&["id", "type"]).attrs(SCRIPT_PARAM_FIELDS),
     ],
     // A tail names a file by its ref: the platform checks that the file is there and has a run.
     from_tree: script_of,
@@ -159,6 +170,11 @@ fn series_ok(r: &str) -> bool {
         && !id.contains(|c: char| c.is_whitespace() || c == '/')
 }
 
+/// A template's parameter as a whole value: `${of}`.
+fn placeholder_ok(r: &str) -> bool {
+    r.strip_prefix("${").and_then(|x| x.strip_suffix('}')).is_some_and(ident_ok)
+}
+
 /// A tailed file: a script file or a run's records file, by a ref or an address.
 fn tailed_file_ok(r: &str) -> bool {
     let last = r.rsplit('/').next().unwrap_or(r);
@@ -168,7 +184,8 @@ fn tailed_file_ok(r: &str) -> bool {
 /// Why a ref cannot be what a tail (a derive's port, a discover's `of`) reads, or none: it names a file, never a
 /// folder. The TypeScript SDK's `tailRefProblem`.
 pub fn tail_ref_problem(r: &str) -> Option<String> {
-    if series_ok(r) || tailed_file_ok(r) {
+    // A template's placeholder is a file once its copy fills it (docs/scripts.md § the catalogue).
+    if series_ok(r) || tailed_file_ok(r) || placeholder_ok(r) {
         return None;
     }
     if r == "." || r == "./" {
@@ -531,7 +548,7 @@ fn discover_of(t: &DocTree) -> Result<Json, String> {
     if !slug_ok {
         return Err(format!("{w} slug is a data path (data.cve) or {{ paths: [...], pattern }}, not {}", shown("slug")));
     }
-    if !str_attr(t, "class").is_some_and(class_ref_ok) {
+    if !str_attr(t, "class").is_some_and(|c| class_ref_ok(c) || placeholder_ok(c)) {
         return Err(format!("{w} class is the class file and its exported name (\"../exploit.tsx#Exploit\"), not {}", shown("class")));
     }
     if str_attr(t, "name").is_some_and(|n| !data_path_ok(n)) {
@@ -619,6 +636,7 @@ fn script_of(t: &DocTree) -> Result<Json, String> {
     let mut wakes = Vec::new();
     let mut discovers = Vec::new();
     let mut judges = Vec::new();
+    let mut params: Vec<Json> = Vec::new();
     for c in &t.children {
         match c.tag {
             "source" => sources.push(source_of(c)?),
@@ -626,7 +644,14 @@ fn script_of(t: &DocTree) -> Result<Json, String> {
             "derive" => derives.push(derive_of(c)?),
             "wake" => wakes.push(wake_of(c)?),
             "discover" => discovers.push(discover_of(c)?),
-            _ => judges.push(judge_of(c)?),
+            "judge" => judges.push(judge_of(c)?),
+            _ => {
+                let p = param_of(c)?;
+                if params.iter().any(|q| q.get("id") == p.get("id")) {
+                    return Err(format!("{} is declared twice", call(c, "id")));
+                }
+                params.push(p);
+            }
         }
     }
     let mut out = said(t, SCRIPT_FIELDS);
@@ -636,7 +661,39 @@ fn script_of(t: &DocTree) -> Result<Json, String> {
     out.set("wakes", Json::Arr(wakes));
     out.set("discovers", Json::Arr(discovers));
     out.set("judges", Json::Arr(judges));
+    out.set("params", Json::Arr(params));
     Ok(out)
+}
+
+/// A template's parameter, as a dashboard template's `param()` is.
+fn param_of(t: &DocTree) -> Result<Json, String> {
+    let w = call(t, "id");
+    let id_ok = str_attr(t, "id").is_some_and(|i| i.len() <= 40 && ident_ok(i));
+    if !id_ok {
+        let shown = t.attr_of("id").map(Json::text).unwrap_or_else(|| "undefined".into());
+        return Err(format!("{w} id is letters, digits and _, not {shown}"));
+    }
+    one_of(t, "type", SCRIPT_PARAM_TYPES)?;
+    word(t, "label", "id")?;
+    if let Some(d) = t.attr_of("default").filter(|v| !matches!(v, Json::Null)) {
+        if !matches!(d, Json::Str(_)) && !matches!(d, Json::Num(n) if n.is_finite()) {
+            return Err(format!("{w} default is a text or a number, not {}", d.text()));
+        }
+    }
+    if t.attr_of("required").is_some_and(|v| !matches!(v, Json::Null | Json::Bool(_))) {
+        return Err(format!("{w} required is true or false"));
+    }
+    for k in ["choices", "accept"] {
+        if let Some(v) = t.attr_of(k).filter(|v| !matches!(v, Json::Null)) {
+            if !matches!(v, Json::Arr(a) if !a.is_empty() && a.iter().all(|x| x.as_str().is_some_and(|s| !s.is_empty()))) {
+                return Err(format!("{w} {k} is a list of texts"));
+            }
+        }
+    }
+    if str_attr(t, "type") == Some("choice") && !has(t, "choices") {
+        return Err(format!("{w} a choice names its choices"));
+    }
+    Ok(said(t, SCRIPT_PARAM_FIELDS))
 }
 
 /// A judge of the script's run (docs/scripts.md § how a trigger runs a script): when a span of the thread's trace ends,
@@ -738,6 +795,19 @@ pub fn script_with_defaults(m: &Json) -> Json {
         .iter()
         .map(|j| Json::obj().with("id", or_null(j, "id")).with("of", or_null(j, "of")).with("rubric", or_null(j, "rubric")).with("model", or_null(j, "model")))
         .collect();
+    let params = list("params")
+        .iter()
+        .map(|p| {
+            Json::obj()
+                .with("id", or_null(p, "id"))
+                .with("type", or_null(p, "type"))
+                .with("label", or_null(p, "label"))
+                .with("default", or_null(p, "default"))
+                .with("required", p.get("required").cloned().unwrap_or(Json::Bool(true)))
+                .with("choices", or_null(p, "choices"))
+                .with("accept", or_null(p, "accept"))
+        })
+        .collect();
     let mut out = Json::obj();
     for k in SCRIPT_FIELDS {
         out.set(k, if *k == "sameAs" { m.get(k).cloned().unwrap_or_else(|| Json::Arr(Vec::new())) } else { or_null(m, k) });
@@ -748,5 +818,6 @@ pub fn script_with_defaults(m: &Json) -> Json {
     out.set("wakes", Json::Arr(wakes));
     out.set("discovers", Json::Arr(discovers));
     out.set("judges", Json::Arr(judges));
+    out.set("params", Json::Arr(params));
     out
 }

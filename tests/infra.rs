@@ -93,13 +93,13 @@ fn a_bad_vantage_is_refused() {
 }
 
 #[test]
-fn a_session_names_its_monitors_and_holds_no_credential() {
-    let (format, doc) = document(session([uses().monitor("../../../social/x/nvidia")]).name("x-web").site("https://x.com").kind("browser-profile").profile("x-web").refreshed("2026-10-12"));
+fn a_session_names_its_scripts_and_holds_no_credential() {
+    let (format, doc) = document(session([uses().script("../../../social/x/nvidia/nvidia.script.tsx")]).name("x-web").site("https://x.com").kind("browser-profile").profile("x-web").refreshed("2026-10-12"));
     assert_eq!(format, "session");
-    assert_eq!(doc, parsed(r#"{"name":"x-web","site":"https://x.com","kind":"browser-profile","profile":"x-web","refreshed":"2026-10-12","uses":[{"monitor":"../../../social/x/nvidia"}]}"#));
+    assert_eq!(doc, parsed(r#"{"name":"x-web","site":"https://x.com","kind":"browser-profile","profile":"x-web","refreshed":"2026-10-12","uses":[{"script":"../../../social/x/nvidia/nvidia.script.tsx"}]}"#));
     assert_eq!(
         session_with_defaults(&doc),
-        parsed(r#"{"name":"x-web","site":"https://x.com","kind":"browser-profile","host":null,"profile":"x-web","snapshot":null,"refreshed":"2026-10-12","note":null,"uses":["../../../social/x/nvidia"]}"#)
+        parsed(r#"{"name":"x-web","site":"https://x.com","kind":"browser-profile","host":null,"profile":"x-web","snapshot":null,"refreshed":"2026-10-12","note":null,"uses":["../../../social/x/nvidia/nvidia.script.tsx"]}"#)
     );
 }
 
@@ -117,5 +117,5 @@ fn a_bad_session_is_refused() {
     let vm = || session([]).name("vm").site("https://x.com").kind("vm-snapshot");
     refused(vm(), "a vm-snapshot names its snapshot");
     refused(vm().snapshot("s").profile("p"), "a vm-snapshot has a snapshot, not a profile");
-    refused(session([uses().monitor("a"), uses().monitor("a")]).name("x-web").site("https://x.com").kind("browser-profile").profile("x-web"), r#"two uses() in session() have monitor "a""#);
+    refused(session([uses().script("a"), uses().script("a")]).name("x-web").site("https://x.com").kind("browser-profile").profile("x-web"), r#"two uses() in session() have script "a""#);
 }
