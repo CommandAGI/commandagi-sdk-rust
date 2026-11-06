@@ -233,6 +233,41 @@ fn a_geo_projects_shock_scenario_model_and_parameter_set_are_their_envelopes() {
 }
 
 #[test]
+fn a_geo_projects_layer_formula_view_report_and_graph_are_their_envelopes() {
+    let scale = r##"{"kind": "linear", "ramp": [{"t": 0, "color": "#e9e9ec"}, {"t": 1, "color": "#141418"}]}"##;
+    let (format, layer, _) = document(
+        geolayer([reference().role("source").path("datasets/energy/throughput.dataset")])
+            .id("l")
+            .name("chokepoints")
+            .renderer("point")
+            .category("Energy")
+            .source_dataset("datasets/energy/throughput.dataset")
+            .scale(json(scale))
+            .opacity(1)
+            .units("mb/d"),
+    );
+    assert_eq!(format, "geolayer");
+    assert_eq!(
+        layer,
+        j(r##"{"type": "geoeconomics/layer", "schemaVersion": "1.0", "id": "l", "name": "chokepoints",
+              "references": [{"role": "source", "path": "datasets/energy/throughput.dataset"}],
+              "data": {"renderer": "point", "category": "Energy", "sourceDataset": "datasets/energy/throughput.dataset",
+                       "scale": {"kind": "linear", "ramp": [{"t": 0, "color": "#e9e9ec"}, {"t": 1, "color": "#141418"}]}, "opacity": 1, "units": "mb/d"}}"##)
+    );
+    let (_, formula, _) = document(geoformula([]).id("f").name("output-per-gdp").inputs(json(r#"{"gdp": "datasets/gdp.dataset"}"#)).expression("1 / gdp").output_unit("share").missing_value("skip"));
+    assert_eq!(formula, j(r#"{"type": "geoeconomics/formula", "schemaVersion": "1.0", "id": "f", "name": "output-per-gdp",
+              "data": {"inputs": {"gdp": "datasets/gdp.dataset"}, "expression": "1 / gdp", "outputUnit": "share", "missingValue": "skip"}}"#));
+    let (_, view, _) = document(geoview([]).id("v").name("global-energy").camera(json(r#"{"centerLng": 45, "centerLat": 25, "scale": 340}"#)).enabled_layers(json(r#"["layers/energy/oil.geolayer.rs"]"#)));
+    assert_eq!(view, j(r#"{"type": "geoeconomics/view", "schemaVersion": "1.0", "id": "v", "name": "global-energy",
+              "data": {"camera": {"centerLng": 45, "centerLat": 25, "scale": 340}, "enabledLayers": ["layers/energy/oil.geolayer.rs"]}}"#));
+    let (_, report, _) = document(georeport([]).id("r").name("impact").blocks(json(r##"[{"kind": "markdown", "text": "# Impact"}]"##)));
+    assert_eq!(report, j(r##"{"type": "geoeconomics/report", "schemaVersion": "1.0", "id": "r", "name": "impact", "data": {"blocks": [{"kind": "markdown", "text": "# Impact"}]}}"##));
+    let (_, graph, _) = document(geograph([]).id("g").name("links").nodes(json(r#"[{"id": "a", "label": "A"}]"#)).edges(json(r#"[{"from": "a", "to": "a"}]"#)));
+    assert_eq!(graph, j(r#"{"type": "geoeconomics/graph", "schemaVersion": "1.0", "id": "g", "name": "links",
+              "data": {"nodes": [{"id": "a", "label": "A"}], "edges": [{"from": "a", "to": "a"}]}}"#));
+}
+
+#[test]
 fn a_node_graph_is_the_editors_op_graph_with_wires_into_ports_and_the_literal_kept() {
     let g = node().id("g").type_("gradient").x(40).y(80).shade_a(40);
     let into_b = wire().from("g:out").to("b:in");

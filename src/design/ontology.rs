@@ -36,6 +36,11 @@
 //! geomodel([…]).id.name.runtime.version …            <name>.geomodel.rs   parameter().name.default.min.max.label?,
 //!                                                                         reference()
 //! geoparams([…]).id.name.for_model.values            <name>.geoparams.rs  reference()
+//! geolayer([…]).id.name.renderer.category.scale …    <name>.geolayer.rs   reference()
+//! geoformula([…]).id.name.inputs.expression …        <name>.geoformula.rs reference()
+//! geoview([…]).id.name.camera.timeline …             <name>.geoview.rs    reference()
+//! georeport([…]).id.name.blocks                      <name>.georeport.rs  reference()
+//! geograph([…]).id.name.nodes.edges                  <name>.geograph.rs   reference()
 //! opgraph([…]).name                                  <name>.opgraph.rs    node().id.type_.x.y …ports, wire().from.to
 //! ```
 //!
@@ -116,6 +121,16 @@ elements! {
     parameter: leaf;
     /// A geo project's parameter set: `.for_model("commodity-shock").values(json(…))`.
     geoparams: children;
+    /// A geo project's layer: `.renderer("point").category("Energy").source_dataset("…").scale(json(…))`.
+    geolayer: children;
+    /// A geo project's formula: `.inputs(json(…)).expression("industrial / gdp").output_unit("share of GDP")`.
+    geoformula: children;
+    /// A geo project's saved view: its camera, the layers drawn, a selection, a time and a comparison.
+    geoview: children;
+    /// A geo project's report: `.blocks(json(…))`, its prose and refs in order.
+    georeport: children;
+    /// A geo project's graph: `.nodes(json(…)).edges(json(…))`.
+    geograph: children;
     /// A node graph: its nodes and wires.
     opgraph: children;
     /// A node of a node graph: `.id("blur").type_("blur").x(300).y(80)`, its ports' values beside.
@@ -155,13 +170,17 @@ attributes! {
         event_type; targets; duration_months; magnitude; probability; implementation_lag_months; enabled; affected_variables;
         transmission_channels; baseline_date; time_horizon; parent_scenario; events; models; parameter_sets; tags; runtime;
         version; compatible_events; assumptions; limitations; citations; validation; for_model; values;
+        // A geo project's layer's, formula's, view's, report's and graph's.
+        renderer; category; source_dataset; source_formula; opacity; visible; filter; normalize_by; zoom_range; expression;
+        output_unit; missing_value; camera; enabled_layers; layer_overrides; selection; timeline; comparison; blocks; nodes;
+        edges;
         // A node graph's and a node's (the ports of the node-graph editor's own node types are fields too).
         meta; inputs; output; disabled; x; y; to; shade_a; shade_b; angle; seed; density; radius; freq; octave;
     }
 }
 
 pub(crate) const FAMILY: Family =
-    Family { module: "ontology", roots: &["world", "device", "dashboard", "geoproject", "shock", "scenario", "geomodel", "geoparams", "opgraph"], declare };
+    Family { module: "ontology", roots: &["world", "device", "dashboard", "geoproject", "shock", "scenario", "geomodel", "geoparams", "geolayer", "geoformula", "geoview", "georeport", "geograph", "opgraph"], declare };
 
 /// The graph id and domain a node graph has unless its file says another (the node-graph editor's new graph).
 pub const NODE_GRAPH_ID: &str = "nodegraph";
@@ -250,6 +269,36 @@ const SHOCK_DATA: &[&str] = &["eventType", "targets", "start", "durationMonths",
 const SCENARIO_DATA: &[&str] = &["baselineDate", "timeHorizon", "parentScenario", "events", "models", "parameterSets", "tags"];
 const GEOMODEL_DATA: &[&str] = &["runtime", "version", "compatibleEvents", "assumptions", "limitations", "citations", "validation"];
 const GEOPARAMS_DATA: &[&str] = &["forModel", "values"];
+const GEOLAYER_DATA: &[&str] = &["renderer", "category", "sourceDataset", "sourceFormula", "scale", "opacity", "visible", "units", "filter", "normalizeBy", "zoomRange"];
+const GEOFORMULA_DATA: &[&str] = &["inputs", "expression", "outputUnit", "missingValue"];
+const GEOVIEW_DATA: &[&str] = &["camera", "enabledLayers", "layerOverrides", "selection", "timeline", "comparison"];
+const GEOREPORT_DATA: &[&str] = &["blocks"];
+const GEOGRAPH_DATA: &[&str] = &["nodes", "edges"];
+
+/// A geo document whose fields are all attributes, with `<reference>` children (the root's attributes are given whole).
+macro_rules! geo_document {
+    ($name:ident, $format:literal, $noun:literal, $attrs:expr, $of:ident, $type_:literal, $data:ident) => {
+        const $name: Vocabulary = Vocabulary {
+            format: $format,
+            noun: $noun,
+            root: $format,
+            tags: &[
+                TagRule::new($format, &[]).required(&["id", "name"]).attrs($attrs),
+                TagRule::new("reference", &[$format]).key("path").required(&["role", "path"]).attrs(&["role", "path", "hash"]),
+            ],
+            from_tree: $of,
+        };
+        fn $of(t: &DocTree) -> Result<Json, String> {
+            geo_file_of(t, $type_, $data, None)
+        }
+    };
+}
+
+geo_document!(GEOLAYER, "geolayer", "a geo layer", &["id", "name", "metadata", "renderer", "category", "sourceDataset", "sourceFormula", "scale", "opacity", "visible", "units", "filter", "normalizeBy", "zoomRange"], geolayer_of, "geoeconomics/layer", GEOLAYER_DATA);
+geo_document!(GEOFORMULA, "geoformula", "a geo formula", &["id", "name", "metadata", "inputs", "expression", "outputUnit", "missingValue"], geoformula_of, "geoeconomics/formula", GEOFORMULA_DATA);
+geo_document!(GEOVIEW, "geoview", "a geo view", &["id", "name", "metadata", "camera", "enabledLayers", "layerOverrides", "selection", "timeline", "comparison"], geoview_of, "geoeconomics/view", GEOVIEW_DATA);
+geo_document!(GEOREPORT, "georeport", "a geo report", &["id", "name", "metadata", "blocks"], georeport_of, "geoeconomics/report", GEOREPORT_DATA);
+geo_document!(GEOGRAPH, "geograph", "a geo graph", &["id", "name", "metadata", "nodes", "edges"], geograph_of, "geoeconomics/graph", GEOGRAPH_DATA);
 
 const SHOCK: Vocabulary = Vocabulary {
     format: "shock",
@@ -309,7 +358,7 @@ const OPGRAPH: Vocabulary = Vocabulary {
 };
 
 /// The vocabularies of the ontology's files.
-pub const ONTOLOGY: &[&Vocabulary] = &[&WORLD, &DEVICE, &DASHBOARD, &GEO, &SHOCK, &SCENARIO, &GEOMODEL, &GEOPARAMS, &OPGRAPH];
+pub const ONTOLOGY: &[&Vocabulary] = &[&WORLD, &DEVICE, &DASHBOARD, &GEO, &SHOCK, &SCENARIO, &GEOMODEL, &GEOPARAMS, &GEOLAYER, &GEOFORMULA, &GEOVIEW, &GEOREPORT, &GEOGRAPH, &OPGRAPH];
 
 /// Declare a world, a definition, a dashboard or a geo project (a document), or a node graph (a graph).
 fn declare(root: El) -> Result<Declared, String> {
