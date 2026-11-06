@@ -347,6 +347,27 @@ impl ToJson for TopoRefKind {
 /// A point or vector in 3D.
 pub type Vec3 = [f64; 3];
 
+/// A box in model coordinates, by two opposite corners.
+#[derive(Clone, Debug)]
+pub struct TopoBox {
+    /// The least corner.
+    /// Unit: mm.
+    pub min: Vec3,
+    /// The greatest corner.
+    /// Unit: mm.
+    pub max: Vec3,
+}
+
+impl ToJson for TopoBox {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("min", self.min.to_json());
+        o.set("max", self.max.to_json());
+        o
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TopoSignature {
     /// Faces: a point on the face (anywhere on it) or its centre; the face nearest to it wins. Edges: the midpoint. Vertices: the position.
@@ -355,6 +376,8 @@ pub struct TopoSignature {
     pub normal: Option<Vec3>,
     /// Face area (faces only).
     pub area: Option<f64>,
+    /// Faces: the box of its boundary, when its surface does not tell it from a neighbour's (a STEP file's freeform face: a fillet's torus, a B-spline). The face whose boundary has this box wins.
+    pub box_: Option<TopoBox>,
     /// Edge length (edges only).
     pub length: Option<f64>,
     /// Edge chord direction, normalized (edges only).
@@ -371,6 +394,9 @@ impl ToJson for TopoSignature {
         }
         if let Some(v) = &self.area {
             o.set("area", v.to_json());
+        }
+        if let Some(v) = &self.box_ {
+            o.set("box", v.to_json());
         }
         if let Some(v) = &self.length {
             o.set("length", v.to_json());

@@ -83,6 +83,13 @@
 //! port().id().body().at().axis().hold() …       where a rod's end can be held (`ports`): a pad, a joint, a socket, a row
 //! library().id().match_().engineering(…).sizes(…)   the data of every library fastener piece whose designation
 //!                                                matches (`library`): its supplier and price, given once
+//! linear_dimension().id().a(…).b(…) … | radial_dimension() | size_dimension() | angular_dimension()
+//!   | note().id().text().anchor(…) | datum_feature().id().letter().anchor(…) | datum_target()
+//!   | feature_control_frame().id().characteristic().tolerance().datums(…).anchor(…) | surface_finish()
+//!                                                an annotation (`annotations`): the function is its type, each
+//!                                                method the field of the same name (`3d-core/annotations.ts`); an
+//!                                                anchor is {"type": "point" | "topo" | "group" | "of" | "geometry", …}.
+//!                                                The calls, whatever their types, are the list in the order written
 //! slot().name(…).value(…)                       any other field of the document, whole
 //! ```
 //!
@@ -152,6 +159,24 @@ elements! {
     port: leaf;
     /// The data of every library fastener piece whose designation matches: `library().id("shcs").match_("ISO 4762 * A2-70")`.
     library: leaf;
+    /// A distance between two anchors: `linear_dimension().id("d1").a(json(…)).b(json(…)).axis("x")`.
+    linear_dimension = "linearDimension": leaf;
+    /// A diameter or a radius: `radial_dimension().id("d2").measure("diameter").center(json(…)).value(5)`.
+    radial_dimension = "radialDimension": leaf;
+    /// A size that is no diameter or radius (a thickness, a cone's angle): `size_dimension().id("t").measure("thickness").of(json(…)).value(10)`.
+    size_dimension = "sizeDimension": leaf;
+    /// An angle at a vertex, or between two features: `angular_dimension().id("d4").a(json(…)).b(json(…)).value(1.57)`.
+    angular_dimension = "angularDimension": leaf;
+    /// A note with an optional leader: `note().id("n1").text("BREAK SHARP EDGES").anchor(json(…))`.
+    note: leaf;
+    /// A datum feature label: `datum_feature().id("A").letter("A").anchor(json(…))`.
+    datum_feature = "datumFeature": leaf;
+    /// A datum target (A1): `datum_target().id("A1").letter("A").target("1").placed(json(…))`.
+    datum_target = "datumTarget": leaf;
+    /// A geometric tolerance: `feature_control_frame().id("f1").characteristic("position").tolerance(0.1).anchor(json(…))`.
+    feature_control_frame = "featureControlFrame": leaf;
+    /// A surface finish: `surface_finish().id("s1").roughness(1.6).anchor(json(…))`.
+    surface_finish = "surfaceFinish": leaf;
     /// A feature of a type the kernel does not know: `feature().type_("rotate").id(…)`.
     feature: leaf;
     /// A sketch: its points, segments, constraints and projections.
@@ -289,6 +314,12 @@ attributes! {
         match_; sizes;
         /// A contact pair's touch, its own friction and restitution, and what a run records of it.
         collide; friction; restitution; report;
+        /// An annotation's fields (`3d-core/annotations.ts`): where its text sits, a dimension's limits, notes, formats,
+        /// measure, rim, vertex and angle, a note's text, leader and property, a datum's letter and target, a frame's
+        /// characteristic, zone, datums and modifiers, a finish's roughness and requirement.
+        text_at; notes; formats; measure; spherical; of; datum; rim; angle_selection; vertex; text; leader_to; property;
+        letter; placed; on; characteristic; diameter_zone; datums; modifiers; zone; unequal; projected; per_unit; maximum;
+        segment_of; roughness; requirement;
     }
 }
 
@@ -356,28 +387,43 @@ fn sheet_view_problems(sheet: &Json) -> Vec<String> {
     out
 }
 /// Elements that are the items of a list the document holds: the tag, the document field (its node), the port of that
-/// node that holds the list, and the definition each item is checked against (`threed_schema()` `$defs`).
-pub const THREED_LISTS: &[(&str, &str, &str, &str)] =
+/// node that holds the list, the definition each item is checked against (`threed_schema()` `$defs`), and its kind.
+/// Several tags may make one list: the kind then names its items, each tag is its item's `type` (`note()` is
+/// `{"type": "note", …}`), and the items are in the order their elements are written, whatever their tags.
+pub const THREED_LISTS: &[(&str, &str, &str, &str, Option<&str>)] =
     &[
-        ("joint", "dynamics", "joints", "DynamicsJoint"),
-        ("contact", "dynamics", "contacts", "DynamicsContact"),
-        ("mate", "assembly", "mates", "Mate"),
-        ("sheet", "drawings", "value", "DrawingSheet"),
-        ("check", "checks", "value", "DesignCheck"),
-        ("accept", "accepted", "value", "AcceptedFinding"),
-        ("permitted", "permitted", "value", "PermittedFinding"),
-        ("fastener", "fasteners", "value", "FastenerStack"),
-        ("tactile", "tactile", "value", "TactileSkin"),
-        ("port", "ports", "value", "Port"),
-        ("item", "items", "value", "ProductItem"),
-        ("assemble", "assemblySteps", "value", "AssemblyStep"),
-        ("library", "library", "value", "LibraryData"),
-        ("product", "products", "value", "ProductFacts"),
+        ("joint", "dynamics", "joints", "DynamicsJoint", None),
+        ("contact", "dynamics", "contacts", "DynamicsContact", None),
+        ("mate", "assembly", "mates", "Mate", None),
+        ("sheet", "drawings", "value", "DrawingSheet", None),
+        ("check", "checks", "value", "DesignCheck", None),
+        ("accept", "accepted", "value", "AcceptedFinding", None),
+        ("permitted", "permitted", "value", "PermittedFinding", None),
+        ("fastener", "fasteners", "value", "FastenerStack", None),
+        ("tactile", "tactile", "value", "TactileSkin", None),
+        ("port", "ports", "value", "Port", None),
+        ("item", "items", "value", "ProductItem", None),
+        ("assemble", "assemblySteps", "value", "AssemblyStep", None),
+        ("library", "library", "value", "LibraryData", None),
+        ("product", "products", "value", "ProductFacts", None),
+        ("linearDimension", "annotations", "value", "LinearDimension", Some("annotation")),
+        ("radialDimension", "annotations", "value", "RadialDimension", Some("annotation")),
+        ("sizeDimension", "annotations", "value", "SizeDimension", Some("annotation")),
+        ("angularDimension", "annotations", "value", "AngularDimension", Some("annotation")),
+        ("note", "annotations", "value", "Note", Some("annotation")),
+        ("datumFeature", "annotations", "value", "DatumFeature", Some("annotation")),
+        ("datumTarget", "annotations", "value", "DatumTarget", Some("annotation")),
+        ("featureControlFrame", "annotations", "value", "FeatureControlFrame", Some("annotation")),
+        ("surfaceFinish", "annotations", "value", "SurfaceFinish", Some("annotation")),
     ];
+/// The annotations of a 3D document, by tag: each tag is its annotation's `type` (`3d-core/annotations.ts`).
+pub const THREED_ANNOTATIONS: &[&str] =
+    &["linearDimension", "radialDimension", "sizeDimension", "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish"];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
     "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "point", "constraint",
-    "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input",
+    "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input", "linearDimension", "radialDimension", "sizeDimension",
+    "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish",
 ];
 /// A sketch's segment kinds, by tag.
 pub const SKETCH_SEGMENTS: &[&str] = &["line", "circle", "arc", "spline", "ellipse", "ellipseArc"];
@@ -393,7 +439,7 @@ const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
-    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products",
+    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products", "annotations",
 ];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];
@@ -699,15 +745,27 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                 t if THREED_LISTS.iter().any(|l| l.0 == t) => {
                     no_children(el)?;
                     let id = id_of(el)?;
-                    let kind = THREED_LISTS.iter().position(|l| l.0 == t).unwrap_or_default();
-                    if !lists.iter().any(|l| l.0 == kind) {
-                        lists.push((kind, Vec::new(), Sources::new()));
+                    let row = THREED_LISTS.iter().position(|l| l.0 == t).unwrap_or_default();
+                    let (_, node, port, def, kind) = THREED_LISTS[row];
+                    // Each list by its node and port: the tags that share one (the annotations) fill it in the order written.
+                    if !lists.iter().any(|l| THREED_LISTS[l.0].1 == node && THREED_LISTS[l.0].2 == port) {
+                        lists.push((row, Vec::new(), Sources::new()));
                     }
-                    let Some(held) = lists.iter_mut().find(|l| l.0 == kind) else { return Ok(()) };
+                    let Some(held) = lists.iter_mut().find(|l| THREED_LISTS[l.0].1 == node && THREED_LISTS[l.0].2 == port) else { return Ok(()) };
                     if held.1.iter().any(|x| x.get("id").and_then(Json::as_str) == Some(id.as_str())) {
-                        return Err(format!("two {}() elements are called {id}", fn_name(t)));
+                        return Err(match kind {
+                            Some(k) => format!("two {k}s are called {id}"),
+                            None => format!("two {}() elements are called {id}", fn_name(t)),
+                        });
                     }
-                    let item = check_value(el, THREED_LISTS[kind].3, &Json::Obj(fields(el, &[])?), "")?;
+                    let mut said = fields(el, &[])?;
+                    if let Some(k) = kind {
+                        if el.attr_of("type").is_some() {
+                            return Err(format!("{}: the tag is the {k}'s type", at(el)));
+                        }
+                        said.insert(0, ("type".into(), Json::from(t)));
+                    }
+                    let item = check_value(el, def, &Json::Obj(said), "")?;
                     if t == "sheet" {
                         let problems = sheet_view_problems(&item);
                         if !problems.is_empty() {
@@ -715,7 +773,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                         }
                     }
                     held.1.push(item);
-                    held.2.put(format!("{t}:{id}"), el);
+                    held.2.put(format!("{}:{id}", kind.unwrap_or(t)), el);
                 }
                 "slot" => {
                     no_children(el)?;
@@ -724,7 +782,9 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
                         _ => return Err(format!("{} needs the name of a document field", at(el))),
                     };
                     if NOT_SLOTS.contains(&field.as_str()) {
-                        return Err(format!("{}: {field} is not a slot (it has its own element or attribute)", at(el)));
+                        let tags: Vec<String> = THREED_LISTS.iter().filter(|l| l.1 == field && l.2 == "value").map(|l| format!("{}()", fn_name(l.0))).collect();
+                        let said = if tags.is_empty() { "(it has its own element or attribute)".to_string() } else { format!("(its items are written as their own elements: {})", tags.join(", ")) };
+                        return Err(format!("{}: {field} is not a slot {said}", at(el)));
                     }
                     for (k, _) in &el.attrs {
                         if k != "name" && k != "value" {
@@ -880,8 +940,8 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
         let inputs = Json::obj().with("origin", v3(origin)).with("normal", v3(normal)).with("xAxis", v3(x_axis)).with("builtin", *builtin);
         nodes.push((id.to_string(), node(id, "plane", Some(label), inputs, None)));
     }
-    for (kind, items, sources) in lists {
-        let (tag, field, port, _) = THREED_LISTS[kind];
+    for (row, items, sources) in lists {
+        let (tag, field, port, _, _) = THREED_LISTS[row];
         if !nodes.iter().any(|(id, _)| id == field) {
             claim(&mut owner, field, format!("the document's {field} ({}())", fn_name(tag)))?;
             nodes.push((field.to_string(), node(field, &format!("3d.{field}"), None, Json::obj(), None)));

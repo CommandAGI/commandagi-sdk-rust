@@ -240,7 +240,7 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
     use commandagi::design::schema::{describe_issue, validate};
     let text = include_str!("../src/design/threed_schema.json");
     let known = [r#""pattern":"\\S""#, r#""pattern":"^[A-Za-z0-9_.-]+$""#, r#""pattern":"^(?:[A-Z]{2}|unknown)$""#, r#""pattern":"^[A-Z]{3}$""#, r#""pattern":"^\\d{4}-\\d{2}-\\d{2}$""#];
-    assert_eq!(text.matches(r#""pattern""#).count(), known.iter().map(|k| text.matches(k).count()).sum::<usize>());
+    assert_eq!(text.matches(r#""pattern":"#).count(), known.iter().map(|k| text.matches(k).count()).sum::<usize>());
     let none = Json::parse("{}").unwrap();
     let id = Json::parse(r#"{"type":"string","pattern":"^[A-Za-z0-9_.-]+$"}"#).unwrap();
     assert!(validate(&id, &Json::from("clear-1.a_b"), &none, "id").unwrap().is_empty());
@@ -718,4 +718,55 @@ fn a_pattern_takes_operation_and_consumes_and_reads_as_the_golden() {
         _ => panic!("the golden has a refused operation"),
     };
     assert!(bad(twin(&operation)).contains(&says));
+}
+
+// sdk/typescript threed.test.ts reads the same annotations and refuses them with the same sentences.
+#[test]
+fn each_annotation_is_a_call_whose_function_is_its_type_and_the_calls_are_the_annotations_in_order() {
+    let top = r#"{"type":"topo","ref":{"kind":"face","signature":{"point":[0,0,10]}}}"#;
+    let bore = r#"{"type":"group","items":[{"type":"topo","ref":{"kind":"face","signature":{"point":[5,0,5]}}},{"type":"topo","ref":{"kind":"face","signature":{"point":[-5,0,5]}}}]}"#;
+    let axis = r#"{"type":"geometry","shape":{"kind":"line","from":[0,0,0],"to":[0,0,10]}}"#;
+    let g = graph(
+        part([
+            box_().id("b").center([0, 0, 5]).size([40, 20, 10]).operation("new"),
+            linear_dimension().id("d1").a(json(r#"{"type":"point","at":[0,0,0]}"#)).b(json(r#"{"type":"point","at":[40,0,0]}"#)).axis("x").tolerance(json(r#"{"upper":0.1,"lower":-0.1}"#)).limits(true),
+            radial_dimension().id("d2").measure("diameter").of(json(bore)).center(json(r#"{"type":"point","at":[0,0,5]}"#)).value(5).datum("B"),
+            size_dimension().id("d3").measure("thickness").of(json(top)).value(10).notes(["statistical"]),
+            angular_dimension().id("d4").a(json(top)).b(json(bore)).value(1.5),
+            note().id("n1").text("BREAK SHARP EDGES").anchor(json(r#"{"type":"part"}"#)).leader_to([10, 10, 20]).property("semantic text"),
+            datum_feature().id("A").letter("A").anchor(json(top)),
+            datum_target().id("A1").letter("A").target("1").placed(json(r#"{"shape":"circle","origin":[0,0,10],"axis":[0,0,1],"refDirection":[1,0,0],"sizes":{"target diameter":4}}"#)),
+            feature_control_frame()
+                .id("f1")
+                .characteristic("position")
+                .tolerance(0.1)
+                .diameter_zone(true)
+                .modifier("M")
+                .datums(json(r#"[{"letter":"A"},{"letter":"B","modifiers":["translation"]}]"#))
+                .anchor(json(r#"{"type":"of","id":"d2"}"#))
+                .projected(json(r#"{"length":8}"#))
+                .segment_of(json(r#"{"to":"f0","relation":"composite"}"#)),
+            surface_finish().id("s1").roughness(1.6).requirement("required").process("milled").anchor(json(axis)),
+        ])
+        .name("Bracket"),
+    );
+    let annotations = node(&g, "annotations").get("inputs").and_then(|i| i.get("value")).unwrap();
+    let expected = format!(
+        r#"[{{"type":"linearDimension","id":"d1","a":{{"type":"point","at":[0,0,0]}},"b":{{"type":"point","at":[40,0,0]}},"axis":"x","tolerance":{{"upper":0.1,"lower":-0.1}},"limits":true}},{{"type":"radialDimension","id":"d2","measure":"diameter","of":{bore},"center":{{"type":"point","at":[0,0,5]}},"value":5,"datum":"B"}},{{"type":"sizeDimension","id":"d3","measure":"thickness","of":{top},"value":10,"notes":["statistical"]}},{{"type":"angularDimension","id":"d4","a":{top},"b":{bore},"value":1.5}},{{"type":"note","id":"n1","text":"BREAK SHARP EDGES","anchor":{{"type":"part"}},"leaderTo":[10,10,20],"property":"semantic text"}},{{"type":"datumFeature","id":"A","letter":"A","anchor":{top}}},{{"type":"datumTarget","id":"A1","letter":"A","target":"1","placed":{{"shape":"circle","origin":[0,0,10],"axis":[0,0,1],"refDirection":[1,0,0],"sizes":{{"target diameter":4}}}}}},{{"type":"featureControlFrame","id":"f1","characteristic":"position","tolerance":0.1,"diameterZone":true,"modifier":"M","datums":[{{"letter":"A"}},{{"letter":"B","modifiers":["translation"]}}],"anchor":{{"type":"of","id":"d2"}},"projected":{{"length":8}},"segmentOf":{{"to":"f0","relation":"composite"}}}},{{"type":"surfaceFinish","id":"s1","roughness":1.6,"requirement":"required","process":"milled","anchor":{axis}}}]"#
+    );
+    assert_eq!(annotations.text(), expected);
+    assert!(node(&g, "annotations").get("meta").and_then(|m| m.get("sources")).and_then(|s| s.get("annotation:f1")).is_some());
+
+    let refused = |el: El| bad(part([el]).name("P"));
+    assert_eq!(
+        refused(feature_control_frame().id("f1").characteristic("roundness").tolerance(0.1).anchor(json(top))),
+        r#"feature_control_frame().id("f1"): characteristic: must be one of position, straightness, flatness, circularity, cylindricity, profileLine, profileSurface, angularity, perpendicularity, parallelism, concentricity, symmetry, circularRunout, totalRunout (got "roundness")"#
+    );
+    assert!(refused(note().id("n1").text("x").anchor(json(r#"{"type":"of"}"#))).starts_with(r#"note().id("n1"): anchor"#));
+    assert_eq!(refused(note().id("n1").type_("note").text("x").anchor(json(top))), r#"note().id("n1"): the tag is the annotation's type"#);
+    assert_eq!(bad(part([note().id("n1").text("x").anchor(json(top)), datum_feature().id("n1").letter("A").anchor(json(top))]).name("P")), "two annotations are called n1");
+    assert_eq!(
+        refused(slot().name("annotations").value(json("[]"))),
+        r#"slot().name("annotations"): annotations is not a slot (its items are written as their own elements: linear_dimension(), radial_dimension(), size_dimension(), angular_dimension(), note(), datum_feature(), datum_target(), feature_control_frame(), surface_finish())"#
+    );
 }
