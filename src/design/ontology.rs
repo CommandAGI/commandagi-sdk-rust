@@ -31,6 +31,11 @@
 //!                                                                         one pane() (repeat("live-stream"): one pane
 //!                                                                         per live stream); region().side.tab …
 //! geoproject([…]).id.name …                          <name>.geo.rs        date_range().start.end, camera(), reference()
+//! shock([…]).id.name.event_type.targets.start …      <name>.shock.rs      reference()
+//! scenario([…]).id.name.baseline_date.events …       <name>.scenario.rs   reference()
+//! geomodel([…]).id.name.runtime.version …            <name>.geomodel.rs   parameter().name.default.min.max.label?,
+//!                                                                         reference()
+//! geoparams([…]).id.name.for_model.values            <name>.geoparams.rs  reference()
 //! opgraph([…]).name                                  <name>.opgraph.rs    node().id.type_.x.y …ports, wire().from.to
 //! ```
 //!
@@ -101,6 +106,16 @@ elements! {
     camera: leaf;
     /// A file a geo project names: `.role("layer").path("…")`.
     reference: leaf;
+    /// A geo project's shock: `.id("closure").event_type("route-disruption").targets(json(…)).start("2028-03")`.
+    shock: children;
+    /// A geo project's scenario: the shocks, models and parameter sets it runs, by their paths.
+    scenario: children;
+    /// A geo project's model: its runtime and its parameters.
+    geomodel: children;
+    /// A parameter of a geo model: `.name("priceElasticity").default(0.3).min(0.1).max(1)`.
+    parameter: leaf;
+    /// A geo project's parameter set: `.for_model("commodity-shock").values(json(…))`.
+    geoparams: children;
     /// A node graph: its nodes and wires.
     opgraph: children;
     /// A node of a node graph: `.id("blur").type_("blur").x(300).y(80)`, its ports' values beside.
@@ -136,13 +151,17 @@ attributes! {
         // A geo project's.
         created_at; updated_at; default_workspace; metadata; start; end; center_lat; center_lng; zoom; pitch; bearing;
         role; hash;
+        // A geo project's shock's, scenario's, model's and parameter set's.
+        event_type; targets; duration_months; magnitude; probability; implementation_lag_months; enabled; affected_variables;
+        transmission_channels; baseline_date; time_horizon; parent_scenario; events; models; parameter_sets; tags; runtime;
+        version; compatible_events; assumptions; limitations; citations; validation; for_model; values;
         // A node graph's and a node's (the ports of the node-graph editor's own node types are fields too).
         meta; inputs; output; disabled; x; y; to; shade_a; shade_b; angle; seed; density; radius; freq; octave;
     }
 }
 
 pub(crate) const FAMILY: Family =
-    Family { module: "ontology", roots: &["world", "device", "dashboard", "geoproject", "opgraph"], declare };
+    Family { module: "ontology", roots: &["world", "device", "dashboard", "geoproject", "shock", "scenario", "geomodel", "geoparams", "opgraph"], declare };
 
 /// The graph id and domain a node graph has unless its file says another (the node-graph editor's new graph).
 pub const NODE_GRAPH_ID: &str = "nodegraph";
@@ -225,6 +244,58 @@ const GEO: Vocabulary = Vocabulary {
     from_tree: geo_of,
 };
 
+/// What a geo document says of itself. Its times are the file's own: the code holds none.
+const GEO_OWN: &[&str] = &["id", "name", "metadata"];
+const SHOCK_DATA: &[&str] = &["eventType", "targets", "start", "durationMonths", "magnitude", "probability", "implementationLagMonths", "enabled", "affectedVariables", "transmissionChannels", "notes"];
+const SCENARIO_DATA: &[&str] = &["baselineDate", "timeHorizon", "parentScenario", "events", "models", "parameterSets", "tags"];
+const GEOMODEL_DATA: &[&str] = &["runtime", "version", "compatibleEvents", "assumptions", "limitations", "citations", "validation"];
+const GEOPARAMS_DATA: &[&str] = &["forModel", "values"];
+
+const SHOCK: Vocabulary = Vocabulary {
+    format: "shock",
+    noun: "a shock",
+    root: "shock",
+    tags: &[
+        TagRule::new("shock", &[]).required(&["id", "name"]).attrs(&["id", "name", "metadata", "eventType", "targets", "start", "durationMonths", "magnitude", "probability", "implementationLagMonths", "enabled", "affectedVariables", "transmissionChannels", "notes"]),
+        TagRule::new("reference", &["shock"]).key("path").required(&["role", "path"]).attrs(&["role", "path", "hash"]),
+    ],
+    from_tree: shock_of,
+};
+
+const SCENARIO: Vocabulary = Vocabulary {
+    format: "scenario",
+    noun: "a scenario",
+    root: "scenario",
+    tags: &[
+        TagRule::new("scenario", &[]).required(&["id", "name"]).attrs(&["id", "name", "metadata", "baselineDate", "timeHorizon", "parentScenario", "events", "models", "parameterSets", "tags"]),
+        TagRule::new("reference", &["scenario"]).key("path").required(&["role", "path"]).attrs(&["role", "path", "hash"]),
+    ],
+    from_tree: scenario_of,
+};
+
+const GEOMODEL: Vocabulary = Vocabulary {
+    format: "geomodel",
+    noun: "a geo model",
+    root: "geomodel",
+    tags: &[
+        TagRule::new("geomodel", &[]).required(&["id", "name"]).attrs(&["id", "name", "metadata", "runtime", "version", "compatibleEvents", "assumptions", "limitations", "citations", "validation"]),
+        TagRule::new("parameter", &["geomodel"]).key("name").required(&["name", "default", "min", "max"]).attrs(&["name", "label", "default", "min", "max"]),
+        TagRule::new("reference", &["geomodel"]).key("path").required(&["role", "path"]).attrs(&["role", "path", "hash"]),
+    ],
+    from_tree: geomodel_of,
+};
+
+const GEOPARAMS: Vocabulary = Vocabulary {
+    format: "geoparams",
+    noun: "a geo parameter set",
+    root: "geoparams",
+    tags: &[
+        TagRule::new("geoparams", &[]).required(&["id", "name"]).attrs(&["id", "name", "metadata", "forModel", "values"]),
+        TagRule::new("reference", &["geoparams"]).key("path").required(&["role", "path"]).attrs(&["role", "path", "hash"]),
+    ],
+    from_tree: geoparams_of,
+};
+
 const OPGRAPH: Vocabulary = Vocabulary {
     format: "opgraph",
     noun: "a node graph",
@@ -238,7 +309,7 @@ const OPGRAPH: Vocabulary = Vocabulary {
 };
 
 /// The vocabularies of the ontology's files.
-pub const ONTOLOGY: &[&Vocabulary] = &[&WORLD, &DEVICE, &DASHBOARD, &GEO, &OPGRAPH];
+pub const ONTOLOGY: &[&Vocabulary] = &[&WORLD, &DEVICE, &DASHBOARD, &GEO, &SHOCK, &SCENARIO, &GEOMODEL, &GEOPARAMS, &OPGRAPH];
 
 /// Declare a world, a definition, a dashboard or a geo project (a document), or a node graph (a graph).
 fn declare(root: El) -> Result<Declared, String> {
@@ -451,6 +522,53 @@ fn geo_of(t: &DocTree) -> Result<Json, String> {
         out.set("references", Json::Arr(refs));
     }
     Ok(out.with("data", data))
+}
+
+// ── a geo project's documents: <name>.shock.rs, .scenario.rs, .geomodel.rs, .geoparams.rs ───────────────────────────
+
+/// A geo document's envelope: its own fields, its references, and its `data` (with a keyed record's children folded in).
+fn geo_file_of(t: &DocTree, type_: &str, fields: &[&str], record: Option<(&str, &str, &str)>) -> Result<Json, String> {
+    // A geo document says which shape it is in; this is the one the studio reads.
+    let mut out = Json::obj().with("type", type_).with("schemaVersion", "1.0");
+    for (k, v) in own(&t.attrs, GEO_OWN) {
+        out.set(&k, v);
+    }
+    let refs: Vec<Json> = kids(t, "reference").map(DocTree::record).collect();
+    if !refs.is_empty() {
+        out.set("references", Json::Arr(refs));
+    }
+    let mut data = Json::Obj(own(&t.attrs, fields));
+    if let Some((tag, field, key)) = record {
+        let mut entries = Json::obj();
+        let mut any = false;
+        for e in kids(t, tag) {
+            let mut r = e.record();
+            if let Some(Json::Str(k)) = r.remove(key) {
+                entries.set(&k, r);
+                any = true;
+            }
+        }
+        if any {
+            data.set(field, entries);
+        }
+    }
+    Ok(out.with("data", data))
+}
+
+fn shock_of(t: &DocTree) -> Result<Json, String> {
+    geo_file_of(t, "geoeconomics/event", SHOCK_DATA, None)
+}
+
+fn scenario_of(t: &DocTree) -> Result<Json, String> {
+    geo_file_of(t, "geoeconomics/scenario", SCENARIO_DATA, None)
+}
+
+fn geomodel_of(t: &DocTree) -> Result<Json, String> {
+    geo_file_of(t, "geoeconomics/model", GEOMODEL_DATA, Some(("parameter", "parameterSchema", "name")))
+}
+
+fn geoparams_of(t: &DocTree) -> Result<Json, String> {
+    geo_file_of(t, "geoeconomics/params", GEOPARAMS_DATA, None)
 }
 
 // ── <name>.opgraph.rs: the node graph ──────────────────────────────────────────────────────────────────────────────

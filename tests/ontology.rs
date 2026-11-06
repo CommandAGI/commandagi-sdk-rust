@@ -208,6 +208,31 @@ fn a_geo_projects_date_range_and_camera_are_elements() {
 }
 
 #[test]
+fn a_geo_projects_shock_scenario_model_and_parameter_set_are_their_envelopes() {
+    let (format, doc, _) =
+        document(shock([]).id("closure").name("Hormuz closure").event_type("route-disruption").targets(json(r#"["cp-hormuz"]"#)).start("2028-03").magnitude(0.7));
+    assert_eq!(format, "shock");
+    assert_eq!(
+        doc,
+        j(r#"{"type": "geoeconomics/event", "schemaVersion": "1.0", "id": "closure", "name": "Hormuz closure",
+              "data": {"eventType": "route-disruption", "targets": ["cp-hormuz"], "start": "2028-03", "magnitude": 0.7}}"#)
+    );
+    let (_, scen, _) = document(
+        scenario([]).id("s").name("Hormuz").baseline_date("2028-03").events(json(r#"["./shocks/closure.shock.rs"]"#)).models(json(r#"["models/commodity-shock.geomodel.rs"]"#)),
+    );
+    assert_eq!(scen, j(r#"{"type": "geoeconomics/scenario", "schemaVersion": "1.0", "id": "s", "name": "Hormuz",
+              "data": {"baselineDate": "2028-03", "events": ["./shocks/closure.shock.rs"], "models": ["models/commodity-shock.geomodel.rs"]}}"#));
+    let (_, model, _) = document(
+        geomodel([parameter().name("priceElasticity").default(0.2).min(0.05).max(0.6)]).id("m").name("Commodity shock").runtime("commodity-shock").version("1.0"),
+    );
+    assert_eq!(model, j(r#"{"type": "geoeconomics/model", "schemaVersion": "1.0", "id": "m", "name": "Commodity shock",
+              "data": {"runtime": "commodity-shock", "version": "1.0", "parameterSchema": {"priceElasticity": {"default": 0.2, "min": 0.05, "max": 0.6}}}}"#));
+    let (_, params, _) = document(geoparams([]).id("p").name("Severe").for_model("commodity-shock").values(json(r#"{"priceElasticity": 0.25}"#)));
+    assert_eq!(params, j(r#"{"type": "geoeconomics/params", "schemaVersion": "1.0", "id": "p", "name": "Severe",
+              "data": {"forModel": "commodity-shock", "values": {"priceElasticity": 0.25}}}"#));
+}
+
+#[test]
 fn a_node_graph_is_the_editors_op_graph_with_wires_into_ports_and_the_literal_kept() {
     let g = node().id("g").type_("gradient").x(40).y(80).shade_a(40);
     let into_b = wire().from("g:out").to("b:in");
