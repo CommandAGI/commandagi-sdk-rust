@@ -145,6 +145,8 @@ elements! {
     assemble: leaf;
     /// The product as it is sold: `product().id("cam").name("Camera").shipping(json(r#"{"hsCode": "8525.89"}"#))`.
     product: leaf;
+    /// A device definition placed as a unit (`placements`): `unit().id("arm").name("arm").device("…/definition.tsx").position([0, 0, 0]).rotation(0)`.
+    unit: leaf;
     /// A check the design must pass: `check().id("stroke").kind("interference").sweep(json(r#"{"joints": ["ramJ"]}"#))`.
     check: leaf;
     /// A finding accepted on purpose: `accept().id("a1").check("clash").body("Sleeve").other("Ram").max_volume(3200).reason(…)`.
@@ -301,6 +303,8 @@ attributes! {
         check; body; other; max_volume; reason; region; severity;
         /// A product's number, compliance and shipping: `product().id("kit").shipping(json(r#"{"hsCode": "8525.89"}"#))`.
         compliance; shipping;
+        /// A placed unit's definition, heading, tilt (degrees), box (mm) and its tuning of its channels.
+        device; rotation; channels; tilt_deg = "tilt_deg"; size_mm = "size_mm";
         /// A permit's process and the direction of the edges it permits.
         process; edge_dir;
         /// A fastener stack's clamped bodies, receiver, washer, nut, grip, fit, least thread engagement, torque and part number.
@@ -406,6 +410,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str, Option<&str>)] =
         ("assemble", "assemblySteps", "value", "AssemblyStep", None),
         ("library", "library", "value", "LibraryData", None),
         ("product", "products", "value", "ProductFacts", None),
+        ("unit", "placements", "value", "PlacedUnit", None),
         ("linearDimension", "annotations", "value", "LinearDimension", Some("annotation")),
         ("radialDimension", "annotations", "value", "RadialDimension", Some("annotation")),
         ("sizeDimension", "annotations", "value", "SizeDimension", Some("annotation")),
@@ -421,7 +426,7 @@ pub const THREED_ANNOTATIONS: &[&str] =
     &["linearDimension", "radialDimension", "sizeDimension", "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish"];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "point", "constraint",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "unit", "point", "constraint",
     "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input", "linearDimension", "radialDimension", "sizeDimension",
     "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish",
 ];
@@ -439,7 +444,7 @@ const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
-    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products", "annotations",
+    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products", "placements", "annotations",
 ];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];

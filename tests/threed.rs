@@ -385,6 +385,19 @@ fn a_tactile_skin_places_a_grid_of_taxels_on_a_face_of_a_body() {
 }
 
 #[test]
+fn unit_places_a_device_definition_in_the_design() {
+    // The TypeScript and Python SDKs read the same fields (test_threed.py, threed.test.ts).
+    let cell = |rotation: f64| {
+        part([unit().id("arm").name("arm").device("../devices/so101-follower-arm/definition.tsx").position([0, -49, 760]).rotation(rotation)]).name("Cell")
+    };
+    assert_eq!(
+        node(&graph(cell(0.0)), "placements").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"arm","name":"arm","device":"../devices/so101-follower-arm/definition.tsx","position":[0,-49,760],"rotation":0}]}"#
+    );
+    assert!(bad(part([unit().id("arm").name("arm").device("d.tsx").position([0, 0, 0])]).name("Cell")).contains("rotation"));
+}
+
+#[test]
 fn a_rod_is_a_feature_held_at_ports_and_port_is_the_documents_ports_list() {
     // The TypeScript and Python SDKs read the same fields (threed.test.ts, test_threed.py).
     let board = |hold: &str| {
