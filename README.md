@@ -55,6 +55,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::infra` | a VPN exit (`exit.rs`), a logged-in state (`session.rs`), a vantage (`vantage.rs`). The CommandAGI platform does not run these: its monitors read `vantage.tsx` and `session.tsx`, and `make infra-plan` reads `exit.tsx` |
 | `commandagi::design::evals` | an eval (`eval`: its `case`s), a metric (`metric`) |
 | `commandagi::design::monitors` | a monitor |
+| `commandagi::design::scripts` | a script (`<name>.script.rs`): its sources, tails, derives, wakes, discovers and judges |
 | `commandagi::design::scouts` | a scout's comparison, a replacement-cost analysis |
 | `commandagi::design::agents` | an agent harness, an agent |
 | `commandagi::design::records` | a contract, a product instance, a hardware release, a unit's calibration |
