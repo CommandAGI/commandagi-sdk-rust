@@ -1790,6 +1790,8 @@ pub enum ExternalPartPropsImporter {
     Usd,
     /// `"3dxml"`
     V3dxml,
+    /// `"jt"`
+    Jt,
     /// `"kicad_pcb"`
     KicadPcb,
     /// `"pcb.tsx"`
@@ -1819,6 +1821,7 @@ impl ToJson for ExternalPartPropsImporter {
             ExternalPartPropsImporter::Dae => "dae",
             ExternalPartPropsImporter::Usd => "usd",
             ExternalPartPropsImporter::V3dxml => "3dxml",
+            ExternalPartPropsImporter::Jt => "jt",
             ExternalPartPropsImporter::KicadPcb => "kicad_pcb",
             ExternalPartPropsImporter::PcbTsx => "pcb.tsx",
             ExternalPartPropsImporter::PcbJsx => "pcb.jsx",
@@ -1995,7 +1998,7 @@ pub struct ExternalPartProps {
     pub file_name: Option<String>,
     /// How to interpret the linked file: a 3D document in code (`"3d"`, a `.3d.tsx`, `.3d.py` or `.3d.rs` run), a foreign solid imported via the named importer ("step"/"iges"), or a board converted to a 3D solid on open — a KiCad board ("kicad_pcb") or a board in code, in the language it is written in ("pcb.tsx", "pcb.jsx", "pcb.py", "pcb.rs"; a LIVE link, so board edits re-mesh here). Mirrors `FileRef.importer`.
     pub importer: Option<ExternalPartPropsImporter>,
-    /// One node of the linked file, where the file holds several things a placement may place: for a 3DXML (`importer: "3dxml"`), the ReferenceRep it draws, `<structure file>#<id>` (`Product.3dxml#4`; docs/formats.md § 3DXML). Absent: the whole file.
+    /// One node of the linked file, where the file holds several things a placement may place: for a 3DXML (`importer: "3dxml"`), the ReferenceRep it draws, `<structure file>#<id>` (`Product.3dxml#4`; docs/formats.md § 3DXML); for a JT file (`importer: "jt"`), the shape node it draws, by its object id in the file's scene graph (`49`; docs/formats.md § JT). Absent: the whole file.
     pub node: Option<String>,
     /// Millimetres represented by one source coordinate for unitless/scene formats. Defaults are format-aware (glTF/VRML standard metres → 1000 mm; OBJ/STL → 1 mm). KiCad WRL adapters set 2.54.
     pub unit_scale_mm: Option<f64>,
