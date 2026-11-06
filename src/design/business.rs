@@ -33,6 +33,7 @@
 use super::company_formation::FORMATION_TAGS;
 pub use super::company_formation::{registered_agent, FormationAttrs};
 use super::company_governance::{governance_of, GOVERNANCE_TAGS};
+use super::company_deals::{deals_of, DEALS_TAGS};
 use super::element::{attributes, elements, fn_name, rust_name};
 use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
 use super::people_ops::{team_of, PEOPLE_OPS_TAGS};
@@ -41,6 +42,7 @@ use super::{Declared, Family};
 pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
 pub use super::people_ops::{band, benefit, checklist, role, team, PeopleOpsAttrs};
 pub use super::company_governance::{assignment, compliance, evidence, ip_asset, obligation, policy, seat, vote, GovernanceAttrs};
+pub use super::company_deals::{deal, DealAttrs};
 pub use super::{fragment, json, El, Json, Value};
 
 /// A priced round, pro forma, and its investments (`round()`, `investment()`).
@@ -145,7 +147,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships")],
         many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand"),
-            ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy"), ("products", "Product")],
+            ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy"), ("products", "Product"), ("deals", "Deal")],
     },
     spec(
         "Entity",
@@ -308,7 +310,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).chain(GOVERNANCE_TAGS).find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).chain(GOVERNANCE_TAGS).chain(DEALS_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -461,7 +463,8 @@ pub fn company_of(node: &BusinessNode) -> Json {
         Some(file) => company.with("relationships", file.clone()),
         None => company,
     };
-    governance_of(node, company)
+    let company = governance_of(node, company);
+    deals_of(node, company)
 }
 
 /// `{"id"?, "draft"}`: the id once the contract opened the draft (or it was filed).

@@ -20,6 +20,10 @@ Added
   `discover()` and `judge()`; a source, a tail and a derive say `.stream(..)`, which `script_with_defaults` fills as
   `records`. The same document as the TypeScript SDK's `scripts.ts` (one golden fixture, `tests/script_wake.json`). `monitors.rs`
   goes when the platform reads scripts only.
+- A company's deals (`company_deals.rs`, re-exported by `business`): `deal().id().title().counterparty().stage()
+  .value().currency().expected().closed().owner().since().source().note()` in a `company()`, its sales pipeline. The
+  company document gains `deals` only when the file writes one. The same in the TypeScript and Python SDKs (one golden
+  fixture, `tests/company_deals.json`).
 - A board's `fab()` states the house's other least dimensions, as KiCad's board setup states them:
   `.min_via_diameter()`, `.min_hole_clearance()` (copper to a hole), `.min_hole_to_hole()` and
   `.min_edge_clearance()` (mm), and `.via_in_pad()` (true or false: the house fills and caps a via in a pad, so a
