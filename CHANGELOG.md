@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- A board's `fab()` states the house's other least dimensions, as KiCad's board setup states them:
+  `.min_via_diameter()`, `.min_hole_clearance()` (copper to a hole), `.min_hole_to_hole()` and
+  `.min_edge_clearance()` (mm), and `.via_in_pad()` (true or false: the house fills and caps a via in a pad, so a
+  net's via may stand in its own pads). The same in the TypeScript and Python SDKs.
 - A definition's declared bounds and interlocks (`ontology.rs`): `bound().channel().field().min().max().max_rate()
   .max_speed()` folds into its channel's `bounds`, and `interlock().name().channel().requires().why()` into the
   definition's `interlocks`; a world's `interlock().unit()` guards one of its units by another's state. The host's

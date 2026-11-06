@@ -131,7 +131,7 @@ fn a_circuits_logistics_check_keeps_its_options() {
 fn a_boards_fab_is_one_board_fact_checked_by_name() {
     use commandagi::design::pcb::*;
     let board_of = |children: Vec<El>| board(children).schematic("L.sch.rs").width(20).height(20);
-    let fab_json = r#"{"suppliers": [{"name": "JLCPCB", "currency": "USD", "priceBreaks": [{"quantity": 5, "unitPrice": 2}], "leadTimeDays": 7, "source": "jlcpcb.com quote", "date": "2026-10-15"}], "finish": "ENIG", "mask": "green", "silk": "white", "minTrack": 0.09, "minSpace": 0.09, "minDrill": 0.15, "minAnnularRing": 0.13, "maxLayers": 6, "thicknesses": [1.6], "assembly": {"house": "JLCPCB", "sides": ["top"]}, "inspection": {"electrical": "flying-probe", "acceptance": "boots"}, "compliance": {"rohs": "compliant", "reach": "compliant", "eccn": "EAR99"}, "shipping": {"hsCode": "8534.00", "origin": "CN", "hazmat": "none"}}"#;
+    let fab_json = r#"{"suppliers": [{"name": "JLCPCB", "currency": "USD", "priceBreaks": [{"quantity": 5, "unitPrice": 2}], "leadTimeDays": 7, "source": "jlcpcb.com quote", "date": "2026-10-15"}], "finish": "ENIG", "mask": "green", "silk": "white", "minTrack": 0.09, "minSpace": 0.09, "minDrill": 0.15, "minAnnularRing": 0.13, "minViaDiameter": 0.3, "minHoleClearance": 0.14, "minHoleToHole": 0.2, "minEdgeClearance": 0.3, "viaInPad": true, "maxLayers": 6, "thicknesses": [1.6], "assembly": {"house": "JLCPCB", "sides": ["top"]}, "inspection": {"electrical": "flying-probe", "acceptance": "boots"}, "compliance": {"rohs": "compliant", "reach": "compliant", "eccn": "EAR99"}, "shipping": {"hsCode": "8534.00", "origin": "CN", "hazmat": "none"}}"#;
     let f = Json::parse(fab_json).unwrap();
     let el = fab()
         .suppliers(f.get("suppliers").cloned().unwrap())
@@ -142,6 +142,11 @@ fn a_boards_fab_is_one_board_fact_checked_by_name() {
         .min_space(0.09)
         .min_drill(0.15)
         .min_annular_ring(0.13)
+        .min_via_diameter(0.3)
+        .min_hole_clearance(0.14)
+        .min_hole_to_hole(0.2)
+        .min_edge_clearance(0.3)
+        .via_in_pad(true)
         .max_layers(6)
         .thicknesses([1.6])
         .assembly(json(r#"{"house": "JLCPCB", "sides": ["top"]}"#))

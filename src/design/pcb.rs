@@ -103,9 +103,14 @@
 //!
 //! ```text
 //! fab().suppliers(json(…)).finish().mask().silk().min_track().min_space().min_drill().min_annular_ring()
+//!      .min_via_diameter().min_hole_clearance().min_hole_to_hole().min_edge_clearance().via_in_pad(true)
 //!      .max_layers().thicknesses([…]).assembly(json(…)).inspection(json(…)).compliance(json(…)).shipping(json(…))
 //!                                   the fab house (the first of `suppliers`, with its terms), its capabilities for
-//!                                   the service ordered (mm), the finish, the solder mask and silk colours, the
+//!                                   the service ordered (mm: the least track, space, drill, via ring and via, copper
+//!                                   to a hole, hole to hole, copper to the edge; the router and the DRC hold the
+//!                                   board to them, and the KiCad export writes them as its board setup), whether it
+//!                                   fills and caps a via in a pad (`via_in_pad`, default false: a via of a net may
+//!                                   then stand in that net's pads), the finish, the solder mask and silk colours, the
 //!                                   assembly ({"house", "sides"}), the board's test ({"electrical", "procedure",
 //!                                   "acceptance", …}), its compliance and shipping. One per board. The board's
 //!                                   layers, thickness and copper stay its own.
@@ -386,6 +391,16 @@ attributes! {
         min_drill;
         /// The house's smallest annular ring (mm).
         min_annular_ring;
+        /// The house's smallest via (mm).
+        min_via_diameter;
+        /// The house's least gap from copper to a hole (mm).
+        min_hole_clearance;
+        /// The house's least gap between two holes (mm).
+        min_hole_to_hole;
+        /// The house's least gap from copper to the board edge (mm).
+        min_edge_clearance;
+        /// Whether the house fills and caps a via in a pad: a via of a net may then stand in that net's pads.
+        via_in_pad;
         /// The most copper layers the house makes.
         max_layers;
         /// The finished thicknesses the house offers (mm): `[0.8, 1.6]`.
@@ -618,7 +633,8 @@ pub fn trace_point_id(index: usize, count: usize) -> String {
     }
 }
 
-const FAB_CAPABILITIES: &[&str] = &["minTrack", "minSpace", "minDrill", "minAnnularRing"];
+/// The house's least dimensions (mm), as KiCad's board setup states them (`design_settings.rules`).
+const FAB_CAPABILITIES: &[&str] = &["minTrack", "minSpace", "minDrill", "minAnnularRing", "minViaDiameter", "minHoleClearance", "minHoleToHole", "minEdgeClearance"];
 const SIDES: &[&str] = &["top", "bottom"];
 const ELECTRICAL: &[&str] = &["flying-probe", "fixture", "none"];
 const INSPECTION_KEYS: &[&str] = &["dimensions", "procedure", "acceptance", "sampling", "electrical", "minutes", "ratePerHour", "currency"];
@@ -627,7 +643,7 @@ const INSPECTION_KEYS: &[&str] = &["dimensions", "procedure", "acceptance", "sam
 /// for the service ordered, the finish, mask and silk, the assembly, the board's test and its compliance and shipping
 /// (docs/formats.md § logistics). The board's layers, thickness and copper are its own and are not restated here.
 fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
-    let fields = [&["suppliers", "finish", "mask", "silk"][..], FAB_CAPABILITIES, &["maxLayers", "thicknesses", "assembly", "inspection", "compliance", "shipping"]].concat();
+    let fields = [&["suppliers", "finish", "mask", "silk"][..], FAB_CAPABILITIES, &["viaInPad", "maxLayers", "thicknesses", "assembly", "inspection", "compliance", "shipping"]].concat();
     refuse_unknown(el, &fields)?;
     let w = at(el);
     let mut out = vec![("fact".to_string(), Json::from("fab"))];
@@ -646,6 +662,11 @@ fn fab_fact(el: &El) -> Result<Vec<(String, Json)>, String> {
         if let Some(v) = positive(el, k, false)? {
             out.push((k.to_string(), v.into()));
         }
+    }
+    match el.attr_of("viaInPad") {
+        None => {}
+        Some(Json::Bool(b)) => out.push(("viaInPad".into(), Json::Bool(*b))),
+        Some(_) => return Err(format!("{w}: via_in_pad is true or false")),
     }
     if let Some(n) = num(el, "maxLayers", false)? {
         if !(n.fract() == 0.0 && n >= 1.0) {
