@@ -42,7 +42,7 @@ use super::{Declared, Family};
 pub use super::business_finance::{bank_account, budget, data_room, include, payroll, FinanceAttrs};
 pub use super::people_ops::{band, benefit, checklist, role, team, PeopleOpsAttrs};
 pub use super::company_governance::{assignment, compliance, evidence, ip_asset, obligation, policy, seat, vote, GovernanceAttrs};
-pub use super::company_deals::{deal, DealAttrs};
+pub use super::company_deals::{deal, deal_move, deal_stage, pipeline, DealAttrs};
 pub use super::{fragment, json, El, Json, Value};
 
 /// A priced round, pro forma, and its investments (`round()`, `investment()`).
@@ -145,7 +145,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         tag: "Company",
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
         required: &["name"],
-        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships")],
+        one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships"), ("pipeline", "Pipeline")],
         many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand"),
             ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy"), ("products", "Product"), ("deals", "Deal")],
     },

@@ -12,7 +12,10 @@ fn element(tree: &Json) -> El {
     };
     let mut el = match tag.as_str() {
         "Company" => company(children),
-        "Deal" => deal(),
+        "Deal" => deal(children),
+        "DealMove" => deal_move(),
+        "Pipeline" => pipeline(children),
+        "DealStage" => deal_stage(),
         other => panic!("{other} is not in the golden's vocabulary"),
     };
     if let Some(Json::Obj(fields)) = tree.get("attrs") {
@@ -52,8 +55,19 @@ fn what_the_vocabulary_does_not_say_is_refused_by_name() {
 fn the_calls_chain_their_attributes() {
     let Declared::Document { document, .. } = declare(
         company([
-            deal().id("acme-pilot").title("Pilot of ten units").counterparty("relationships/cards/acme.vcf").stage("proposal").value("120000").currency("USD").expected("2027-03-31").owner("ceo"),
-            deal().id("county").title("County survey").counterparty("county").stage("lead"),
+            pipeline([deal_stage().id("lead").label("first call").probability(0.1), deal_stage().id("proposal").probability("0.5")]).stale_days(30),
+            deal([deal_move().from("lead").to("proposal").at("2026-11-01T17:02:00Z").by("person:ada").note("the call went well")])
+                .id("acme-pilot")
+                .title("Pilot of ten units")
+                .counterparty("relationships/cards/acme.vcf")
+                .stage("proposal")
+                .value("120000")
+                .currency("USD")
+                .expected("2027-03-31")
+                .owner("ceo")
+                .probability(0.3)
+                .probability_reason("their budget is not approved"),
+            deal([]).id("county").title("County survey").counterparty("county").stage("lead"),
         ])
         .name("X"),
     )
@@ -63,5 +77,15 @@ fn the_calls_chain_their_attributes() {
     let Some(Json::Arr(deals)) = document.get("deals") else { panic!("the deals") };
     assert_eq!(deals.len(), 2);
     assert_eq!(deals[0].get("counterparty"), Some(&Json::Str("relationships/cards/acme.vcf".into())));
+    assert_eq!(deals[0].get("probabilityReason"), Some(&Json::Str("their budget is not approved".into())));
+    let Some(Json::Arr(moves)) = deals[0].get("moves") else { panic!("the moves") };
+    assert_eq!(moves[0].get("from"), Some(&Json::Str("lead".into())));
+    assert_eq!(moves[0].get("by"), Some(&Json::Str("person:ada".into())));
     assert_eq!(deals[1].get("value"), None);
+    assert_eq!(deals[1].get("moves"), None);
+    let Some(pipe) = document.get("pipeline") else { panic!("the pipeline") };
+    assert_eq!(pipe.get("staleDays"), Some(&Json::Num(30.0)));
+    let Some(Json::Arr(stages)) = pipe.get("stages") else { panic!("the stages") };
+    assert_eq!(stages[0].get("label"), Some(&Json::Str("first call".into())));
+    assert_eq!(stages[1].get("probability"), Some(&Json::Str("0.5".into())));
 }
