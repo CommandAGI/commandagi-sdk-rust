@@ -31,7 +31,7 @@
 //! A harness is the program that runs an agent and talks to a model: a CLI agent, an API provider's loop, or a program
 //! with no model. A base instance names its harness and has no parent; every other instance is a fork: it names its
 //! parent and keeps its parent's harness. A file never names itself: a harness's id and an agent's id are their
-//! folders' names. `realtime` and `persona` are objects, written as [`json`] with the TypeScript names as keys
+//! folders' names. `realtime`, `persona`, `kernel`, `cognition`, `routing`, `fabric` and `access` are objects, written as [`json`] with the TypeScript names as keys
 //! (`"videoMinutes"`). Nothing adds a default: what the file does not say, the document does not have.
 
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
@@ -71,6 +71,25 @@ attributes! {
         /// membership takes it at join, and a person's supervise of that member overrides it.
         supervisor;
         instructions; voice; voice_mode; tools; persona; color; icon; gender;
+        /// Its picture: a file beside this one (`"avatar.png"`), shown where it has no `icon`.
+        avatar;
+        /// Its alert sound's id (`"chime"`).
+        sound;
+        /// The skills it has equipped, in order: each a ref to a skill's `SKILL.md`.
+        skills;
+        /// What runs its loop, in its harness's kind, as [`json`]: `{"type": "interactive-cli", "cli": "claude"}`.
+        kernel;
+        /// Its cognitive architecture, as [`json`]: `{"urgency", "faculties", "models", "speculation"}`.
+        cognition;
+        /// The weights a `route:<family>` model is chosen by, as [`json`]: `{"quality", "cost", "coldLatency", "throughput"}`.
+        routing;
+        /// Its own wiring of the model fabric, as [`json`]: `{"config", "mindPin", "added", "gates"}`.
+        fabric;
+        /// Its reach into its owner's account, as [`json`]: `{"scopes", "reach", …}`. Absent: none. A limit on the
+        /// agent: the platform applies it only for a principal who may set it.
+        access;
+        /// It asks before it spends on a resource (a computer, a robot, a snapshot).
+        confirm_spend;
     }
 }
 
@@ -88,8 +107,12 @@ pub const REALTIME_OUT: &[&str] = &["audio", "text", "tools"];
 /// G.711 μ-law (a telephone call) and 16-bit little-endian PCM, mono, at a rate.
 pub const AUDIO_FORMATS: &[&str] = &["g711-ulaw@8000", "pcm16@8000", "pcm16@16000", "pcm16@24000"];
 pub const HARNESS_FIELDS: &[&str] = &["kind", "label", "provider", "cli", "runs", "tasks", "realtime", "family", "experimental", "homepage", "about"];
-pub const AGENT_FIELDS: &[&str] =
-    &["harness", "parent", "name", "model", "effort", "supervisor", "instructions", "voice", "voiceMode", "tools", "persona", "color", "icon", "gender"];
+pub const AGENT_FIELDS: &[&str] = &[
+    "harness", "parent", "name", "model", "effort", "supervisor", "instructions", "voice", "voiceMode", "tools", "persona", "color", "icon", "gender",
+    "avatar", "sound", "skills", "kernel", "cognition", "routing", "fabric", "access", "confirmSpend",
+];
+/// The fields of an agent that are plain data, each an object: the platform's own shapes, verbatim.
+pub const AGENT_OBJECT_FIELDS: &[&str] = &["persona", "kernel", "cognition", "routing", "fabric", "access"];
 pub const VOICE_MODES: &[&str] = &["off", "push-to-talk", "open-mic"];
 pub const REALTIME_FIELDS: &[&str] = &["in", "out", "audio", "fps", "hz", "minutes", "videoMinutes"];
 
@@ -236,7 +259,7 @@ fn harness_of(t: &DocTree) -> Result<Json, String> {
 }
 
 fn agent_of(t: &DocTree) -> Result<Json, String> {
-    for k in ["harness", "parent", "name", "model", "effort", "supervisor", "instructions", "voice", "color", "icon", "gender"] {
+    for k in ["harness", "parent", "name", "model", "effort", "supervisor", "instructions", "voice", "color", "icon", "gender", "avatar", "sound"] {
         word(t, k)?;
     }
     one_of(t, "voiceMode", VOICE_MODES)?;
@@ -265,9 +288,27 @@ fn agent_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("agent() tools is a list of tool names, not {}", v.text()));
         }
     }
-    if let Some(v) = t.attr_of("persona") {
-        if !matches!(v, Json::Obj(_)) {
-            return Err(format!(r#"agent() persona is an object ({{"tone": "warm"}}), not {}"#, v.text()));
+    if let Some(v) = t.attr_of("skills") {
+        if !matches!(v, Json::Arr(items) if items.iter().all(|x| matches!(x, Json::Str(s) if !s.is_empty()))) {
+            return Err(format!("agent() skills is a list of refs to SKILL.md files, not {}", v.text()));
+        }
+    }
+    for k in AGENT_OBJECT_FIELDS {
+        if let Some(v) = t.attr_of(k) {
+            if !matches!(v, Json::Obj(_)) {
+                let example = if *k == "persona" { r#"{"tone": "warm"}"# } else { "{ … }" };
+                return Err(format!("agent() {k} is an object ({example}), not {}", v.text()));
+            }
+        }
+    }
+    if let Some(v) = t.attr_of("confirmSpend") {
+        if !matches!(v, Json::Bool(_)) {
+            return Err(format!("agent() confirm_spend is true or false, not {}", v.text()));
+        }
+    }
+    if let Some(Json::Str(a)) = t.attr_of("avatar") {
+        if a.contains('/') || a.starts_with('.') {
+            return Err(format!(r#"agent() avatar is a file beside this one ("avatar.png"), not {}"#, Json::Str(a.clone()).text()));
         }
     }
     Ok(said(t, AGENT_FIELDS))

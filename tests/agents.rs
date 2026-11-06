@@ -80,6 +80,30 @@ fn a_realtime_harness_says_what_its_model_takes_and_gives_live() {
 }
 
 #[test]
+fn a_forks_runtime_configuration() {
+    let (_, doc, _) = document(
+        agent()
+            .parent("cloud://global/agents/commandagi")
+            .name("Researcher")
+            .avatar("avatar.png")
+            .skills(["../../skills/review/SKILL.md"])
+            .routing(json(r#"{"quality": 2, "cost": 1}"#))
+            .access(json(r#"{"scopes": ["threads:read"], "reach": "own"}"#))
+            .confirm_spend(true),
+    );
+    assert_eq!(
+        doc,
+        j(r#"{"parent": "cloud://global/agents/commandagi", "name": "Researcher", "avatar": "avatar.png",
+              "skills": ["../../skills/review/SKILL.md"], "routing": {"quality": 2, "cost": 1},
+              "access": {"scopes": ["threads:read"], "reach": "own"}, "confirmSpend": true}"#)
+    );
+    assert!(bad(agent().parent("../a").skills("review")).contains("skills is a list of refs"));
+    assert!(bad(agent().parent("../a").access(["threads:read"])).contains("access is an object"));
+    assert!(bad(agent().parent("../a").confirm_spend("yes")).contains("confirm_spend is true or false"));
+    assert!(bad(agent().parent("../a").avatar("../x/avatar.png")).contains("avatar is a file beside this one"));
+}
+
+#[test]
 fn refusals_by_name() {
     assert!(bad(agent().name("x")).contains("names its harness"));
     assert!(bad(agent().harness("codex").parent("../a")).contains("not both: a fork keeps its parent's harness"));
