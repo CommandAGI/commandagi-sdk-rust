@@ -26,28 +26,24 @@ fn site(el: &El) -> Json {
 }
 
 #[test]
-fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() {
+fn a_world_declares_its_units_and_space_each_site_by_its_path() {
     let arm = unit().uid("arm").name("arm").device("../../devices/so-101/definition.tsx").position([100, 0, 0]).rotation(90);
     let arm_site = site(&arm);
-    let file = world([
-        space().origin_mm([0, 0, 0]).size_mm([4000, 3000, 2500]),
-        arm,
-        scene([body().id("cube").shape(json(r#"{"type": "box", "hx": 0.02}"#)).at([0, 0, 1])]).hz(240),
-    ])
-    .name("Shop")
-    .kind("simulation");
+    let file = world([space().origin_mm([0, 0, 0]).size_mm([4000, 3000, 2500]), arm]).name("Shop");
     let root_site = site(&file);
     let (format, doc, sources) = document(file);
     assert_eq!(format, "world");
     assert_eq!(
         doc,
-        j(r#"{"name": "Shop", "kind": "simulation", "space": {"origin_mm": [0, 0, 0], "size_mm": [4000, 3000, 2500]},
-              "units": [{"uid": "arm", "name": "arm", "device": "../../devices/so-101/definition.tsx", "position": [100, 0, 0], "rotation": 90}],
-              "scene": {"hz": 240, "bodies": [{"id": "cube", "shape": {"type": "box", "hx": 0.02}, "at": [0, 0, 1]}]}}"#)
+        j(r#"{"name": "Shop", "space": {"origin_mm": [0, 0, 0], "size_mm": [4000, 3000, 2500]},
+              "units": [{"uid": "arm", "name": "arm", "device": "../../devices/so-101/definition.tsx", "position": [100, 0, 0], "rotation": 90}]}"#)
     );
     assert_eq!(sources.get(""), Some(&root_site));
     assert_eq!(sources.get("unit#arm"), Some(&arm_site));
-    assert!(sources.get("space").is_some() && sources.get("scene/body#cube").is_some(), "every element by its path: {}", sources.text());
+    assert!(sources.get("space").is_some(), "every element by its path: {}", sources.text());
+    // Every world is real: a kind and a scene are refused by name.
+    assert!(bad(world([]).name("Shop").kind("physical")).contains("world().kind: a world names real things: it has no kind"));
+    assert!(bad(world([scene([body().id("cube")]).hz(240)]).name("Shop")).contains("scene() in a world(): a world declares no scene"));
 
     // The world's model and the parts of it a run moves: attributes of world(), as the TypeScript SDK writes them.
     let links = r#"[{"node": "ram", "joint": {"unit": "press-1", "channel": "axes", "name": "z", "type": "prismatic", "axis": "z", "origin_mm": [0, 0, 0], "home": 0}}]"#;
@@ -60,7 +56,6 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
 
     let w = |children: Vec<El>| world(children).name("W");
     assert_eq!(document(world([]).name("W")).1, j(r#"{"name": "W", "units": []}"#));
-    assert!(bad(world([]).name("W").kind("real")).contains(r#"physical" or "simulation", not "real""#));
     assert!(bad(w(vec![unit().uid("a").name("a").device("d.json").speed(3)])).contains(r#"unit().uid("a"): speed is not read"#));
     assert!(bad(w(vec![unit().uid("a").name("a").device("d"), unit().uid("a").name("b").device("d")])).contains(r#"two unit() in world() have uid "a""#));
     assert!(bad(w(vec![body().id("b")])).contains("body() stands in scene(), not in world()"));

@@ -15,11 +15,11 @@
 //! ```
 //!
 //! A record is an element and its fields are the element's attributes, verbatim; a list of records is the parent's
-//! children (`units` → `unit()`, `channels` → `channel()`, a scene's `bodies` → `body()`). The tags:
+//! children (`units` → `unit()`, `channels` → `channel()`). The tags:
 //!
 //! ```text
 //! world([…]).name.description?.from?.model?          world.rs             space().origin_mm.size_mm, group().uid …,
-//!   .links?.policies?                                                     unit().uid …, view(), scene([body().id …]),
+//!   .links?.policies?                                                     unit().uid …, view(),
 //!                                                                         interlock().name.unit.channel.requires.why
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …,
 //!                                                                         bound().channel.field.min?.max?.max_rate?
@@ -70,7 +70,7 @@ use super::{Declared, Family};
 pub use super::{fragment, json, El, Json, Value};
 
 elements! {
-    /// A world: its space, its units, its view and its scene.
+    /// A world: its space, its units and its view.
     world: children;
     /// A world's space: `.origin_mm([…]).size_mm([…])`.
     space: leaf;
@@ -80,9 +80,9 @@ elements! {
     unit: leaf;
     /// A world's view.
     view: leaf;
-    /// A world's scene: its bodies.
+    /// Refused in a world: its twin steps its model's scene, and a simulation's scene is a `.3d.rs`'s.
     scene: children;
-    /// A body of a scene: `.id("cube").shape(json(…))`.
+    /// A body of a refused `scene()`.
     body: leaf;
     /// A device definition: its channels.
     device: children;
@@ -194,7 +194,11 @@ pub const GROUP_FIELDS: &[&str] = &["uid", "name", "description", "group", "size
 /// `links`: the parts of the world's model that a run moves (packages/domain/world/pose.js modelPose), a definition's
 /// link grammar with the unit named in each joint and emit; `node` is the id of the model's feature that makes the part.
 /// `policies`: the world's follow policies (docs/follow.md): one unit's robot follows another's joints, by angle.
-const WORLD_FIELDS: &[&str] = &["name", "kind", "description", "from", "model", "links", "policies"];
+const WORLD_FIELDS: &[&str] = &["name", "description", "from", "model", "links", "policies"];
+/// What a world reads: its fields, and `kind`, read only to refuse it by name (every world is real).
+const WORLD_READ: &[&str] = &["name", "description", "from", "model", "links", "policies", "kind"];
+const WORLD_KIND: &str = "a world names real things: it has no kind; a simulation is a run of a .3d.tsx";
+const WORLD_SCENE: &str = "a world declares no scene: its twin steps its model's scene (model=\"model.3d.tsx\"), and a simulation's scene is a .3d.tsx's";
 /// A `bound()`'s attributes: the channel it bounds, the field, and its limits.
 const BOUND_FIELDS: &[&str] = &["channel", "field", "min", "max", "maxRate", "maxSpeed", "why"];
 /// An `interlock()`'s attributes in a world; a definition's names no `unit`.
@@ -210,13 +214,13 @@ const WORLD: Vocabulary = Vocabulary {
     noun: "a world",
     root: "world",
     tags: &[
-        TagRule::new("world", &[]).required(&["name"]).attrs(WORLD_FIELDS),
+        TagRule::new("world", &[]).required(&["name"]).attrs(WORLD_READ),
         TagRule::new("space", &["world"]).single().required(&["origin_mm", "size_mm"]).attrs(&["origin_mm", "size_mm"]),
         TagRule::new("group", &["world"]).key("uid").required(&["uid", "name"]).attrs(GROUP_FIELDS),
         TagRule::new("unit", &["world"]).key("uid").required(&["uid", "name", "device"]).attrs(UNIT_FIELDS),
         TagRule::new("view", &["world"]).single(),
-        TagRule::new("scene", &["world"]).single(),
-        TagRule::new("body", &["scene"]).key("id").required(&["id"]),
+        TagRule::new("scene", &["world"]),
+        TagRule::new("body", &["scene"]),
         TagRule::new("interlock", &["world"]).key("name").required(&["name", "unit", "channel", "requires", "why"]).attrs(INTERLOCK_FIELDS),
     ],
     from_tree: world_of,
@@ -405,12 +409,11 @@ fn call(t: &DocTree, key: &str) -> String {
 // ── world.rs ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 fn world_of(t: &DocTree) -> Result<Json, String> {
-    match t.attr_of("kind") {
-        None => {}
-        Some(Json::Str(k)) if k == "physical" || k == "simulation" => {}
-        other => {
-            return Err(format!("world(): kind is \"physical\" or \"simulation\", not {}", text(other)));
-        }
+    if t.attr_of("kind").is_some() {
+        return Err(format!("world().kind: {WORLD_KIND}"));
+    }
+    if kids(t, "scene").next().is_some() {
+        return Err(format!("scene() in a world(): {WORLD_SCENE}"));
     }
     let mut out = Json::Obj(own(&t.attrs, WORLD_FIELDS));
     if let Some(space) = t.single("space") {
@@ -423,14 +426,6 @@ fn world_of(t: &DocTree) -> Result<Json, String> {
     out.set("units", Json::Arr(kids(t, "unit").map(DocTree::record).collect()));
     if let Some(view) = t.single("view") {
         out.set("view", view.record());
-    }
-    if let Some(scene) = t.single("scene") {
-        let bodies: Vec<Json> = kids(scene, "body").map(DocTree::record).collect();
-        let mut s = scene.record();
-        if !bodies.is_empty() {
-            s.set("bodies", Json::Arr(bodies));
-        }
-        out.set("scene", s);
     }
     let interlocks: Vec<Json> = kids(t, "interlock").map(DocTree::record).collect();
     if !interlocks.is_empty() {
