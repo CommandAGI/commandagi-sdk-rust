@@ -51,16 +51,16 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
 
     // The world's model and the parts of it a run moves: attributes of world(), as the TypeScript SDK writes them.
     let links = r#"[{"node": "ram", "joint": {"unit": "press-1", "channel": "axes", "name": "z", "type": "prismatic", "axis": "z", "origin_mm": [0, 0, 0], "home": 0}}]"#;
-    let (_, posed, _) = document(world([]).name("Press").kind("physical").model("press.3d.tsx").links(json(links)));
-    assert_eq!(posed, j(&format!(r#"{{"name": "Press", "kind": "physical", "model": "press.3d.tsx", "links": {links}, "units": []}}"#)));
+    let (_, posed, _) = document(world([]).name("Press").model("press.3d.tsx").links(json(links)));
+    assert_eq!(posed, j(&format!(r#"{{"name": "Press", "model": "press.3d.tsx", "links": {links}, "units": []}}"#)));
     // A world's follow policies (docs/follow.md): an attribute of world(), as the TypeScript SDK writes it.
     let policies = r#"[{"id": "sim-control", "kind": "follow", "robot": "arm", "reality": "physical", "leader": {"unit": "arm", "run": "twin"}, "hz": 30}]"#;
-    let (_, followed, _) = document(world([]).name("Cell").kind("physical").policies(json(policies)));
-    assert_eq!(followed, j(&format!(r#"{{"name": "Cell", "kind": "physical", "policies": {policies}, "units": []}}"#)));
+    let (_, followed, _) = document(world([]).name("Cell").policies(json(policies)));
+    assert_eq!(followed, j(&format!(r#"{{"name": "Cell", "policies": {policies}, "units": []}}"#)));
 
-    let w = |children: Vec<El>| world(children).name("W").kind("physical");
-    assert!(bad(world([]).name("W")).contains("world() needs kind"));
-    assert!(bad(world([]).name("W").kind("real")).contains(r#"physical" or "simulation", said explicitly, not "real""#));
+    let w = |children: Vec<El>| world(children).name("W");
+    assert_eq!(document(world([]).name("W")).1, j(r#"{"name": "W", "units": []}"#));
+    assert!(bad(world([]).name("W").kind("real")).contains(r#"physical" or "simulation", not "real""#));
     assert!(bad(w(vec![unit().uid("a").name("a").device("d.json").speed(3)])).contains(r#"unit().uid("a"): speed is not read"#));
     assert!(bad(w(vec![unit().uid("a").name("a").device("d"), unit().uid("a").name("b").device("d")])).contains(r#"two unit() in world() have uid "a""#));
     assert!(bad(w(vec![body().id("b")])).contains("body() stands in scene(), not in world()"));
@@ -73,10 +73,10 @@ fn a_world_declares_its_units_space_and_a_scenes_bodies_each_site_by_its_path() 
         unit().uid("cnc-01").name("router").device("../../devices/cnc/definition.tsx").group("shelf-1").position([-900, 3600, 150]).rotation(0),
     ])
     .name("Shop")
-    .kind("physical"));
+    );
     assert_eq!(
         shelved,
-        j(r#"{"name": "Shop", "kind": "physical",
+        j(r#"{"name": "Shop",
               "groups": [{"uid": "shelf", "name": "machine shelf", "size_mm": [2440, 760, 2600], "position": [0, 3600, 0], "rotation": 0},
                          {"uid": "shelf-1", "name": "level 1", "group": "shelf", "size_mm": [2440, 760, 650], "position": [0, 3600, 150], "rotation": 0}],
               "units": [{"uid": "cnc-01", "name": "router", "device": "../../devices/cnc/definition.tsx", "group": "shelf-1", "position": [-900, 3600, 150], "rotation": 0}]}"#)
@@ -133,7 +133,7 @@ fn bounds_and_interlocks_are_elements() {
     let (_, w, _) = document(
         world([unit().uid("tray").name("tray").device("d"), interlock().name("shuttle-needs-hatch-open").unit("tray").channel("shuttle").requires(json(r#"[{"unit": "hatch", "channel": "gate", "field": "open", "eq": true}]"#)).why("the tray would strike the gate")])
             .name("Unit")
-            .kind("physical"),
+            ,
     );
     assert_eq!(w.get("interlocks").and_then(|l| if let Json::Arr(l) = l { l[0].get("unit").cloned() } else { None }), Some(Json::Str("tray".into())));
 }

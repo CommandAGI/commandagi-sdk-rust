@@ -10,7 +10,6 @@
 //!         unit().uid("arm").name("arm").device("../../devices/so-101/definition.tsx").position([0, 0, 0]).rotation(0),
 //!     ])
 //!     .name("Shop")
-//!     .kind("physical")
 //! }
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
@@ -19,7 +18,7 @@
 //! children (`units` → `unit()`, `channels` → `channel()`, a scene's `bodies` → `body()`). The tags:
 //!
 //! ```text
-//! world([…]).name.kind.description?.from?.model?     world.rs             space().origin_mm.size_mm, group().uid …,
+//! world([…]).name.description?.from?.model?          world.rs             space().origin_mm.size_mm, group().uid …,
 //!   .links?.policies?                                                     unit().uid …, view(), scene([body().id …]),
 //!                                                                         interlock().name.unit.channel.requires.why
 //! device([…]).name … .firmware?.revision?            definition.rs        channel().id.dir.medium.format.transport …,
@@ -211,7 +210,7 @@ const WORLD: Vocabulary = Vocabulary {
     noun: "a world",
     root: "world",
     tags: &[
-        TagRule::new("world", &[]).required(&["name", "kind"]).attrs(WORLD_FIELDS),
+        TagRule::new("world", &[]).required(&["name"]).attrs(WORLD_FIELDS),
         TagRule::new("space", &["world"]).single().required(&["origin_mm", "size_mm"]).attrs(&["origin_mm", "size_mm"]),
         TagRule::new("group", &["world"]).key("uid").required(&["uid", "name"]).attrs(GROUP_FIELDS),
         TagRule::new("unit", &["world"]).key("uid").required(&["uid", "name", "device"]).attrs(UNIT_FIELDS),
@@ -407,9 +406,10 @@ fn call(t: &DocTree, key: &str) -> String {
 
 fn world_of(t: &DocTree) -> Result<Json, String> {
     match t.attr_of("kind") {
+        None => {}
         Some(Json::Str(k)) if k == "physical" || k == "simulation" => {}
         other => {
-            return Err(format!("world(): kind is \"physical\" or \"simulation\", said explicitly, not {}", text(other)));
+            return Err(format!("world(): kind is \"physical\" or \"simulation\", not {}", text(other)));
         }
     }
     let mut out = Json::Obj(own(&t.attrs, WORLD_FIELDS));
