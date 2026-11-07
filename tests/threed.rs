@@ -398,6 +398,25 @@ fn unit_places_a_device_definition_in_the_design() {
 }
 
 #[test]
+fn capture_places_a_captured_place_by_its_geo_pose() {
+    // The TypeScript and Python SDKs read the same fields (threed.test.ts, test_threed.py).
+    let matrix = |lat: f64| {
+        part([capture()
+            .id("bridgeway")
+            .src("./bridgeway.ply")
+            .at(json(&format!(r#"{{"latDeg": {lat}, "lonDeg": -122.4796, "heightM": 4.109, "headingDeg": 12}}"#)))
+            .captured("2017-03-21")
+            .licence("CC-BY-SA-4.0")])
+        .name("Matrix")
+    };
+    assert_eq!(
+        node(&graph(matrix(37.8564)), "captures").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"bridgeway","src":"./bridgeway.ply","at":{"latDeg":37.8564,"lonDeg":-122.4796,"heightM":4.109,"headingDeg":12},"captured":"2017-03-21","licence":"CC-BY-SA-4.0"}]}"#
+    );
+    assert!(bad(matrix(137.0)).contains("latDeg"));
+}
+
+#[test]
 fn a_rod_is_a_feature_held_at_ports_and_port_is_the_documents_ports_list() {
     // The TypeScript and Python SDKs read the same fields (threed.test.ts, test_threed.py).
     let board = |hold: &str| {
