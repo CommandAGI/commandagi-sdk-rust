@@ -317,9 +317,11 @@ fn a_bodys_engineering_data_a_joint_a_mate_and_a_sheet_are_typed_elements() {
         r#"joint().id("j1"): kind: must be one of fixed, revolute, prismatic, cylindrical, planar, screw, spherical, universal (got "hinge")"#
     );
     assert_eq!(bad(part([joint().id("j1").kind("fixed").a("base")]).name("P")), r#"joint().id("j1"): anchor: is required"#);
+    // HP Multi Jet Fusion is a process of its own, not SLS.
+    graph(part([body().id("pa12").engineering(json(r#"{"process": "mjf-printing", "material": "PA12"}"#))]).name("P"));
     assert_eq!(
         bad(part([body().id("base").engineering(json(r#"{"process": "magic", "suppliers": [{"sku": "x", "date": "2026-10-01"}]}"#))]).name("P")),
-        r#"body().id("base"): engineering/process: must be one of other, manual, cnc-milling, cnc-turning, laser-cutting, waterjet-cutting, sheet-metal-bending, extrusion, casting, injection-moulding, fdm-printing, sla-printing, sls-printing, welding, grinding, glass-working, saw-cutting, purchased, reference (got "magic"); engineering/suppliers/0/name: is required"#
+        r#"body().id("base"): engineering/process: must be one of other, manual, cnc-milling, cnc-turning, laser-cutting, waterjet-cutting, sheet-metal-bending, extrusion, casting, injection-moulding, fdm-printing, sla-printing, sls-printing, mjf-printing, welding, grinding, glass-working, saw-cutting, purchased, reference (got "magic"); engineering/suppliers/0/name: is required"#
     );
     assert_eq!(bad(part([slot().name("dynamics").value(json(r#"{"joints": []}"#))]).name("P")), r#"slot().name("dynamics"): joints are written as joint() elements"#);
     assert!(bad(part([slot().name("drawings").value(json("[]"))]).name("P")).contains("drawings is not a slot"));
