@@ -417,6 +417,25 @@ fn capture_places_a_captured_place_by_its_geo_pose() {
 }
 
 #[test]
+fn view_keeps_a_camera_under_a_name_and_what_it_rides() {
+    // The TypeScript and Python SDKs read the same element to the same inputs (threed.test.ts, test_threed.py).
+    let matrix = |kind: &str| {
+        part([view()
+            .id("ferry")
+            .name("Ride the ferry")
+            .camera(json(r#"{"target": [0, 0, 0], "radius": 3000000, "theta": 0.5, "phi": 1}"#))
+            .ride(json(&format!(r#"{{"target": "vessel-367123450", "view": "{kind}"}}"#)))])
+        .name("Matrix")
+    };
+    assert_eq!(
+        node(&graph(matrix("chase")), "views").get("inputs").unwrap().text(),
+        r#"{"value":[{"id":"ferry","name":"Ride the ferry","camera":{"target":[0,0,0],"radius":3000000,"theta":0.5,"phi":1},"ride":{"target":"vessel-367123450","view":"chase"}}]}"#
+    );
+    assert!(bad(matrix("sideways")).contains("view"));
+    assert!(bad(part([slot().name("views").value(json("[]"))]).name("Matrix")).contains("views is not a slot"));
+}
+
+#[test]
 fn a_rod_is_a_feature_held_at_ports_and_port_is_the_documents_ports_list() {
     // The TypeScript and Python SDKs read the same fields (threed.test.ts, test_threed.py).
     let board = |hold: &str| {

@@ -72,6 +72,8 @@
 //!                                                run records of them
 //! mate().id().kind().a().b().axis() …            a mate between two components of an assembly (`assembly.mates`)
 //! sheet().id().size().scale().projection().views(…) …      an engineering drawing sheet of the document (`drawings`)
+//! view().id().name().camera(…).ride(…)           a camera kept under a name (`views`): the Views menu applies it, and
+//!                                                `ride` (`{"target", "view": chase | cockpit | orbit}`) is what it rides
 //! check().id().kind().bodies().against().sweep(…) …      a check the design must pass (`checks`; a sweep moves joints)
 //! accept().id().check().body().other().region().max_volume().reason()   a finding accepted on purpose (`accepted`)
 //! permitted().id().check().body().process().edge_dir().region().reason()   findings a process or a purpose permits
@@ -149,6 +151,8 @@ elements! {
     unit: leaf;
     /// A captured place drawn as Gaussian splats (`captures`): `capture().id("bridgeway").src("./bridgeway.ply").at(json(r#"{"latDeg": 37.8564, "lonDeg": -122.4796, "heightM": 4.1}"#))`.
     capture: leaf;
+    /// A camera kept under a name (`views`), and what it rides when the view is applied: `view().id("ferry").name("Ride the ferry").camera(json(r#"{"target": [0, 0, 0], "radius": 3e6, "theta": 0.5, "phi": 1}"#)).ride(json(r#"{"target": "vessel-367123450", "view": "chase"}"#))`.
+    view: leaf;
     /// A check the design must pass: `check().id("stroke").kind("interference").sweep(json(r#"{"joints": ["ramJ"]}"#))`.
     check: leaf;
     /// A finding accepted on purpose: `accept().id("a1").check("clash").body("Sleeve").other("Ram").max_volume(3200).reason(…)`.
@@ -309,6 +313,8 @@ attributes! {
         device; rotation; channels; tilt_deg = "tilt_deg"; size_mm = "size_mm";
         /// A capture's file, the day its photos were taken, its licence, credit, terms page and cameras (its pose is `at`, its page `source`).
         src; captured; licence; credit; terms; devices;
+        /// A saved view's camera and what it rides (`{"target", "view": chase | cockpit | orbit}`).
+        camera; ride;
         /// A permit's process and the direction of the edges it permits.
         process; edge_dir;
         /// A fastener stack's clamped bodies, receiver, washer, nut, grip, fit, least thread engagement, torque and part number.
@@ -416,6 +422,7 @@ pub const THREED_LISTS: &[(&str, &str, &str, &str, Option<&str>)] =
         ("product", "products", "value", "ProductFacts", None),
         ("unit", "placements", "value", "PlacedUnit", None),
         ("capture", "captures", "value", "PlacedCapture", None),
+        ("view", "views", "value", "NamedView", None),
         ("linearDimension", "annotations", "value", "LinearDimension", Some("annotation")),
         ("radialDimension", "annotations", "value", "RadialDimension", Some("annotation")),
         ("sizeDimension", "annotations", "value", "SizeDimension", Some("annotation")),
@@ -431,7 +438,7 @@ pub const THREED_ANNOTATIONS: &[&str] =
     &["linearDimension", "radialDimension", "sizeDimension", "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish"];
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
-    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "unit", "capture", "point", "constraint",
+    "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "unit", "capture", "view", "point", "constraint",
     "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input", "linearDimension", "radialDimension", "sizeDimension",
     "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish",
 ];
@@ -449,7 +456,7 @@ const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step"
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",
-    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products", "placements", "captures", "annotations",
+    "accepted", "permitted", "fasteners", "tactile", "ports", "items", "assemblySteps", "library", "products", "placements", "captures", "views", "annotations",
 ];
 /// Slots whose value is an object: each field is a port of the slot's node; any other slot holds its value whole.
 const OBJECT_SLOTS: &[&str] = &["environment", "assembly", "sceneConstraints", "dynamics", "animation", "optimization", "standardParts"];
