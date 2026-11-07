@@ -52,6 +52,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::business` | a company, an RFC, a case |
 | `commandagi::design::tasks` | a task, a project |
 | `commandagi::design::mounts` | a thread's mounted tasks (`mounts.rs`, in the thread's run folder) |
+| `commandagi::design::connectors` | a remote API as a folder tree a mount can list (`name.connector.rs`): `connector`, `credential`, `licence`, `folder`, `request`, `here`, `each().in_(…).as_(…)`, `dir`, `file` |
 | `commandagi::design::infra` | a VPN exit (`exit.rs`), a logged-in state (`session.rs`), a vantage (`vantage.rs`). The CommandAGI platform does not run these: its scripts read `vantage.tsx` and `session.tsx`, and `make infra-plan` reads `exit.tsx` |
 | `commandagi::design::evals` | an eval (`eval`: its `case`s), a metric (`metric`) |
 | `commandagi::design::scripts` | a script (`<name>.script.rs`): its sources, tails, derives, wakes, discovers and judges; with `param()`s, a template |

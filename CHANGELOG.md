@@ -8,6 +8,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::connectors`: a remote API as a folder tree, `<name>.connector.rs`, the same document as the TypeScript
+  SDK's `<name>.connector.tsx` (`connector`, `credential`, `licence`, `folder`, `request`, `here`, `each`, `dir`, `file`;
+  the attributes `in`, `as` and `is` are `in_`, `as_`, `is`). A connector that would make an impolite or unreadable
+  request is refused with why.
+
 - A fact a company or a brand does not know is `facts::unknown("<why>")`, and one it knows only roughly
   `facts::about(<value>)`. Any attribute takes either, a required one too.
 - `product()` (`.maker()`, `.seller()`) and `relationships()` in a `company()`; `compliance().horizon(…)`;
