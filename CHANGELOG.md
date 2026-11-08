@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::opportunities`: an opportunity (`<name>.opportunity.rs`) and an experiment
+  (`<name>.experiment.rs`), the same documents as the TypeScript SDK's `.opportunity.tsx` and `.experiment.tsx`
+  (`opportunity`, `contact`, `action`, `evidence`, `move_`, `draft`, `experiment`, `arm`, `objective`, `decision`;
+  `.ref_()` is `ref`). Each refusal is by name.
 - `commandagi::design::goods`: a good, `<name>.good.rs`, the same document as the TypeScript SDK's `<name>.good.tsx`
   (`good`, `variant`; `.price_cents()`, `.inventory_qty()`, `.weight_grams()`). A physical good with a pre-order
   `deposit`, or a digital good with each variant's `file`; each refusal is by name.
