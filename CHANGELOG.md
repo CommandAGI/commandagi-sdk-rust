@@ -8,6 +8,10 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::goods`: a good, `<name>.good.rs`, the same document as the TypeScript SDK's `<name>.good.tsx`
+  (`good`, `variant`; `.price_cents()`, `.inventory_qty()`, `.weight_grams()`). A physical good with a pre-order
+  `deposit`, or a digital good with each variant's `file`; each refusal is by name.
+
 - `commandagi::design::connectors`: a remote API as a folder tree, `<name>.connector.rs`, the same document as the TypeScript
   SDK's `<name>.connector.tsx` (`connector`, `credential`, `licence`, `folder`, `request`, `here`, `each`, `dir`, `file`;
   the attributes `in`, `as` and `is` are `in_`, `as_`, `is`). A connector that would make an impolite or unreadable
