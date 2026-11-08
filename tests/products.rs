@@ -84,6 +84,7 @@ fn a_product_that_does_not_read_is_refused_with_why() {
         (ph(vec![v().price_cents(10)]), "priceCents is a whole number of cents, at least 50"),
         (ph(vec![v()]).fulfilment("ship"), "fulfilment is an object"),
         (ph(vec![v()]).with_attr("colour", "red"), "colour is not read"),
+        (ph(vec![v()]).tax_code("txcd_1"), "taxCode is a Stripe product tax code like txcd_99999999"),
         (ph(vec![v(), discount().code("a b c").percent(5)]), "code is letters, digits, - and _ (3 to 40)"),
         (ph(vec![v(), discount().code("SAVE5")]), "takes off one of percent or amountCents, not neither"),
         (ph(vec![v(), d().percent(5)]), "takes off one of percent or amountCents, not both"),

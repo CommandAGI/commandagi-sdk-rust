@@ -42,7 +42,7 @@ elements! {
 attributes! {
     /// The fields of a product, of its variants and of its discounts, chained on their elements.
     pub trait ProductsAttrs {
-        name; kind; slug; subtitle; description; images; status; shipping; fulfilment; quantity_terms; embodiment_kind;
+        name; kind; slug; subtitle; description; images; status; shipping; fulfilment; quantity_terms; embodiment_kind; tax_code;
         sku; price_cents; compare_at_cents; stock; options; weight_grams; file; deposit;
         code; percent; amount_cents; starts_at; ends_at; usage_limit;
     }
@@ -52,7 +52,7 @@ pub(crate) const FAMILY: Family = Family { module: "products", roots: &["product
 
 pub const PRODUCT_KINDS: &[&str] = &["physical", "digital"];
 pub const PRODUCT_STATUSES: &[&str] = &["draft", "active", "archived"];
-pub const PRODUCT_FIELDS: &[&str] = &["name", "kind", "slug", "subtitle", "description", "images", "status", "shipping", "fulfilment", "quantityTerms", "embodimentKind"];
+pub const PRODUCT_FIELDS: &[&str] = &["name", "kind", "slug", "subtitle", "description", "images", "status", "shipping", "fulfilment", "quantityTerms", "embodimentKind", "taxCode"];
 pub const VARIANT_FIELDS: &[&str] = &["sku", "name", "priceCents", "compareAtCents", "stock", "options", "weightGrams", "file", "deposit"];
 pub const DISCOUNT_FIELDS: &[&str] = &["code", "percent", "amountCents", "startsAt", "endsAt", "usageLimit"];
 
@@ -386,6 +386,13 @@ pub fn product_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("{at} embodimentKind is a short text (at most 80), not {}", e.text()));
         }
         out.set("embodimentKind", e.clone());
+    }
+    if let Some(c) = t.attr_of("taxCode") {
+        let ok = matches!(c, Json::Str(s) if s.len() == 13 && s.starts_with("txcd_") && s[5..].bytes().all(|b| b.is_ascii_digit()));
+        if !ok {
+            return Err(format!("{at} taxCode is a Stripe product tax code like txcd_99999999, not {}", c.text()));
+        }
+        out.set("taxCode", c.clone());
     }
     let variants: Vec<&DocTree> = t.children.iter().filter(|c| c.tag == "variant").collect();
     // A file not finished yet may hold none; the checkout refuses a product that sells nothing.
