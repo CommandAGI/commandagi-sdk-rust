@@ -151,3 +151,42 @@ fn a_bracket_is_an_order_with_two_exits_each_outcome_naming_its_leg() {
         r#"order(): stop_loss is decimal text ("185.09"), not a number"#
     );
 }
+
+#[test]
+fn an_option_contract_is_one_sym_in_one_spelling() {
+    let call = "AAPL 2026-12-18 C 200";
+    assert_eq!(option_symbol("AAPL", "2026-12-18", "call", "200", None).unwrap(), call);
+    assert_eq!(option_symbol("SPY", "2027-01-15", "P", "450.50", Some("10")).unwrap(), "SPY 2027-01-15 P 450.5 x10");
+    assert_eq!(option_symbol("AAPL", "2026-12-18", "C", "200", Some("100")).unwrap(), call, "100 is not written");
+    assert_eq!(
+        parse_option(call).unwrap(),
+        Some(OptionContract { underlying: "AAPL".into(), expiry: "2026-12-18".into(), right: "C".into(), strike: "200".into(), multiplier: "100".into() })
+    );
+    assert_eq!(parse_option("BTC/USD").unwrap(), None, "a symbol with no space is not a contract");
+    for (sym, words) in [
+        ("AAPL 2026-12-18 C 200.50", "an option's strike is written 200.5, not 200.50 (one spelling for each contract)"),
+        ("AAPL 2026-12-18 call 200", r#"an option's right is C (a call) or P (a put), not "call""#),
+        ("AAPL 2026-02-30 C 200", r#"an option's expiry is a date, YYYY-MM-DD, not "2026-02-30""#),
+        ("AAPL 2026-12-18 C 200 x100", "a multiplier of 100 is not written: AAPL 2026-12-18 C 200 is that contract"),
+        ("AAPL 2026-12-18 C 0", r#"an option's strike is decimal text above 0, not "0""#),
+        ("AAPL Dec-18 200C", r#"an option contract is <underlying> <expiry YYYY-MM-DD> <C|P> <strike>[ x<multiplier>], for example "AAPL 2026-12-18 C 200", not "AAPL Dec-18 200C""#),
+    ] {
+        assert_eq!(parse_option(sym).unwrap_err(), words);
+    }
+    // In a recording: a contract's quote and its order (with what it opens); a sym spelled otherwise is refused.
+    let (_, doc, _) = document(market([
+        quote().t(T).sym(call).last("3.1"),
+        order().t(T).id("o-a1b2c3d4e5f6").sym(call).side("buy").qty("2").type_("limit").limit("3.1").effect("open").tif("day").venue("tradier-sandbox").mode("paper").by("person:ada").grant("g-paper"),
+    ]));
+    assert_eq!(
+        doc,
+        Json::parse(&format!(
+            r#"{{"records": [{{"kind": "quote", "t": "{T}", "sym": "{call}", "last": "3.1"}}, {{"kind": "order", "t": "{T}", "id": "o-a1b2c3d4e5f6", "sym": "{call}", "side": "buy", "qty": "2", "type": "limit", "limit": "3.1", "effect": "open", "tif": "day", "venue": "tradier-sandbox", "mode": "paper", "by": "person:ada", "grant": "g-paper"}}]}}"#
+        ))
+        .unwrap()
+    );
+    assert_eq!(
+        bad(market([quote().t(T).sym("AAPL 2026-12-18 C 200.0").last("3.1")])),
+        "quote(): sym: an option's strike is written 200, not 200.0 (one spelling for each contract)"
+    );
+}
