@@ -546,12 +546,39 @@ impl SketchProps {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ProfileRefRegionsItem {
+    Text(String),
+    Number(f64),
+}
+
+impl ToJson for ProfileRefRegionsItem {
+    fn to_json(&self) -> Json {
+        match self {
+            ProfileRefRegionsItem::Text(x) => x.to_json(),
+            ProfileRefRegionsItem::Number(x) => x.to_json(),
+        }
+    }
+}
+
+impl From<String> for ProfileRefRegionsItem {
+    fn from(x: String) -> ProfileRefRegionsItem {
+        ProfileRefRegionsItem::Text(x)
+    }
+}
+
+impl From<f64> for ProfileRefRegionsItem {
+    fn from(x: f64) -> ProfileRefRegionsItem {
+        ProfileRefRegionsItem::Number(x)
+    }
+}
+
 /// A profile drawn from a sketch's solved closed regions.
 #[derive(Clone, Debug)]
 pub struct ProfileRef {
     pub sketch: String,
-    /// Indices into the sketch's detected closed regions; omit/empty = all.
-    pub regions: Option<Vec<f64>>,
+    /// The sketch's closed regions to take: an index into them, or a region's reference (a string built from the ids of its segments, which keeps naming it after an unrelated edit); omit/empty = each outer loop.
+    pub regions: Option<Vec<ProfileRefRegionsItem>>,
 }
 
 impl ToJson for ProfileRef {
@@ -3441,6 +3468,8 @@ pub struct SketchSegmentLine {
     pub b: String,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SketchSegmentLine {
@@ -3457,6 +3486,9 @@ impl ToJson for SketchSegmentLine {
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
         }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
+        }
         o
     }
 }
@@ -3468,6 +3500,8 @@ pub struct SketchSegmentCircle {
     pub radius: f64,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SketchSegmentCircle {
@@ -3484,6 +3518,9 @@ impl ToJson for SketchSegmentCircle {
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
         }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
+        }
         o
     }
 }
@@ -3498,6 +3535,8 @@ pub struct SketchSegmentArc {
     pub radius: f64,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SketchSegmentArc {
@@ -3515,6 +3554,9 @@ impl ToJson for SketchSegmentArc {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -3566,6 +3608,8 @@ pub struct SketchSegmentSpline {
     /// A TRUE NURBS definition. Absent means the historical Catmull-Rom interpolant — which has no degree, no knot vector and no weights, so it can approximate a conic and never be one.
     pub nurbs: Option<NurbsSpec>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SketchSegmentSpline {
@@ -3587,6 +3631,9 @@ impl ToJson for SketchSegmentSpline {
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
         }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
+        }
         o
     }
 }
@@ -3601,6 +3648,8 @@ pub struct SketchSegmentEllipse {
     pub minor_radius: f64,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SketchSegmentEllipse {
@@ -3618,6 +3667,9 @@ impl ToJson for SketchSegmentEllipse {
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
         }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
+        }
         o
     }
 }
@@ -3634,6 +3686,8 @@ pub struct SketchSegmentEllipseArc {
     pub end: String,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SketchSegmentEllipseArc {
@@ -3652,6 +3706,9 @@ impl ToJson for SketchSegmentEllipseArc {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -7302,6 +7359,8 @@ pub struct LineProps {
     pub b: String,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for LineProps {
@@ -7316,6 +7375,9 @@ impl ToJson for LineProps {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -7342,6 +7404,8 @@ pub struct CircleProps {
     pub radius: f64,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for CircleProps {
@@ -7356,6 +7420,9 @@ impl ToJson for CircleProps {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -7385,6 +7452,8 @@ pub struct ArcProps {
     pub radius: f64,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for ArcProps {
@@ -7401,6 +7470,9 @@ impl ToJson for ArcProps {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -7430,6 +7502,8 @@ pub struct SplineProps {
     /// A TRUE NURBS definition. Absent means the historical Catmull-Rom interpolant — which has no degree, no knot vector and no weights, so it can approximate a conic and never be one.
     pub nurbs: Option<NurbsSpec>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for SplineProps {
@@ -7449,6 +7523,9 @@ impl ToJson for SplineProps {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -7478,6 +7555,8 @@ pub struct EllipseProps {
     pub minor_radius: f64,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for EllipseProps {
@@ -7493,6 +7572,9 @@ impl ToJson for EllipseProps {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
@@ -7524,6 +7606,8 @@ pub struct EllipseArcProps {
     pub end: String,
     pub construction: Option<bool>,
     pub from: Option<String>,
+    /// The segment this one is a piece of, when a split cut it from that segment: a region's reference keeps naming the source.
+    pub of: Option<String>,
 }
 
 impl ToJson for EllipseArcProps {
@@ -7541,6 +7625,9 @@ impl ToJson for EllipseArcProps {
         }
         if let Some(v) = &self.from {
             o.set("from", v.to_json());
+        }
+        if let Some(v) = &self.of {
+            o.set("of", v.to_json());
         }
         o
     }
