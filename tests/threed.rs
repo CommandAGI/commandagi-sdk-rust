@@ -122,6 +122,35 @@ fn a_subset_of_the_built_in_planes_an_id_with_a_slash_and_a_feature_of_an_unknow
     assert_eq!(g.get("meta").and_then(|m| m.get("presentation")).unwrap().text(), r#"{"order":["fan/bore","r1"]}"#);
 }
 
+// Rust declares a 3D document by its elements only (it has no call form): an extrude's profile takes a region by index
+// or by reference, and a piece of a split side names the side it was cut from, as the TypeScript and Python SDKs' calls.
+#[test]
+fn an_extrude_takes_a_region_by_reference_and_a_piece_names_its_side() {
+    let g = graph(
+        part([
+            sketch([
+                point().id("p1").x(0).y(0),
+                point().id("p2").x(10).y(0),
+                point().id("p3").x(10).y(5),
+                point().id("p4").x(10).y(10),
+                line().id("l1").a("p1").b("p2"),
+                line().id("l2a").a("p2").b("p3").with_attr("of", "l2"),
+                line().id("l2b").a("p3").b("p4").with_attr("of", "l2"),
+                line().id("l3").a("p4").b("p1"),
+            ])
+            .id("s1")
+            .plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#)),
+            extrude().id("e1").profile(json(r#"{"sketch": "s1", "regions": ["l1+l2+l3", 0]}"#)).distance(2).operation("new"),
+        ])
+        .name("P"),
+    );
+    assert_eq!(node(&g, "e1").get("inputs").and_then(|i| i.get("profile")).unwrap().text(), r#"{"sketch":"s1","regions":["l1+l2+l3",0]}"#);
+    let segments = node(&g, "s1").get("inputs").and_then(|i| i.get("sketch")).and_then(|s| s.get("segments")).unwrap();
+    assert_eq!(segments.get("l2a").and_then(|s| s.get("of")), Some(&Json::from("l2")));
+    let refused = bad(part([extrude().id("e1").profile(json(r#"{"sketch": "s1", "regions": [true]}"#)).distance(2).operation("new")]).name("P"));
+    assert!(refused.contains("regions"), "{refused}");
+}
+
 #[test]
 fn a_code_features_inputs_are_ports_of_its_node() {
     let g = graph(part([code().id("bracket").source("bracket.3d.py").inputs(json(r#"{"width": 40}"#)).consumes(["base"])]).name("P"));
