@@ -27,7 +27,7 @@ fn with_attrs(mut el: El, attrs: &Json) -> El {
 /// The document back to code: each list's entries as their elements, in the vocabulary's order.
 fn code_of(doc: &Json) -> El {
     let mut parts = Vec::new();
-    for (list, part) in [("sources", source as fn() -> El), ("tails", tail), ("derives", derive), ("wakes", wake), ("discovers", discover), ("judges", judge), ("params", param)] {
+    for (list, part) in [("sources", source as fn() -> El), ("tails", tail), ("derives", derive), ("wakes", wake), ("discovers", discover), ("judges", judge), ("params", param), ("publishes", publish)] {
         let Some(Json::Arr(entries)) = doc.get(list) else { panic!("{list} is a list") };
         parts.extend(entries.iter().map(|e| with_attrs(part(), e)));
     }
@@ -68,7 +68,7 @@ fn a_script_is_its_parts_both_ways() {
              "tails": [{"of": "../../central-banks/fed/fed.script.tsx", "when": {"class": "fomc.*"}}],
              "derives": [],
              "wakes": [{"when": {"class": "sec.filing.8-k*"}, "prompt": "Say what the report changes."}],
-             "discovers": [], "judges": [], "params": []}"#)
+             "discovers": [], "judges": [], "params": [], "publishes": []}"#)
     );
     assert_eq!(document(code_of(&doc)).1, doc, "both ways");
     let full = script_with_defaults(&doc);
@@ -85,7 +85,7 @@ fn a_script_is_its_parts_both_ways() {
 #[test]
 fn an_empty_script_its_file_name_and_a_part_that_names_another_stream() {
     let (_, doc) = document(script([]));
-    assert_eq!(doc, j(r#"{"sources": [], "tails": [], "derives": [], "wakes": [], "discovers": [], "judges": [], "params": []}"#));
+    assert_eq!(doc, j(r#"{"sources": [], "tails": [], "derives": [], "wakes": [], "discovers": [], "judges": [], "params": [], "publishes": []}"#));
     for name in ["nvidia.script.tsx", "a.script.jsx", "b.script.py", "c.script.rs"] {
         assert!(script_file_ok(name), "{name}");
     }
@@ -177,6 +177,19 @@ fn a_derive_names_an_operator_and_each_ports_file_a_discover_the_files_it_reads(
     refused(disc().of("./kev"), "of names a file");
     refused(disc().of(json("[]")), "of is a script file or a list of them");
     refused(disc().max(500), "max is a whole number from 1 to 50");
+}
+
+#[test]
+fn a_publish_folds_the_scripts_records_by_a_rule_one_a_rule() {
+    let (_, doc) = document(script([publish().rule("capital").when(json(r#"{"class": "*.topic"}"#))]));
+    assert_eq!(doc.get("publishes"), Some(&j(r#"[{"rule": "capital", "when": {"class": "*.topic"}}]"#)));
+    assert_eq!(document(code_of(&doc)).1, doc, "both ways");
+    let (_, bare) = document(script([publish().rule("capital")]));
+    assert_eq!(script_with_defaults(&bare).get("publishes"), Some(&j(r#"[{"rule": "capital", "when": null}]"#)));
+    refused(publish().rule("news"), r#"rule is "capital", not "news""#);
+    refused(publish().rule("capital").when(json("3")), "when");
+    let e = declare(script([publish().rule("capital"), publish().rule("capital")])).unwrap_err();
+    assert!(e.contains("capital"), "{e}");
 }
 
 #[test]

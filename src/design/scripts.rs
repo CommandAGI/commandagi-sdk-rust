@@ -22,10 +22,12 @@
 //! A tail names the file it tails (`of`: a ref from this script's folder to a script file, a run's `records.jsonl`, or a
 //! statistics series by its id, `fred:DGS10`), never a folder, and takes the records its `when` (a record predicate)
 //! holds for. A wake wakes the agent on the script's own records (`when`) or on a clock (`every`), never both. `stream`
-//! names the stream of the run a part appends to (absent: `records`). A discover's `into` is written `into_`
+//! names the stream of the run a part appends to (absent: `records`). A `publish` folds the script's own records into
+//! plain files of its owner's Drive by a rule of the ontology, by program and with no model (`capital`: a capital
+//! faucet's cycle files); its `when` says which. A discover's `into` is written `into_`
 //! (`Into::into` has the name). Nothing adds a default: what the file does not say, the document does not have;
 //! [`script_with_defaults`] gives the document as the platform reads it. A script's `sameAs`, `sources`, `tails`,
-//! `derives`, `wakes`, `discovers`, `judges` and `params` are always lists. A script with `param()` parts is a
+//! `derives`, `wakes`, `discovers`, `judges`, `params` and `publishes` are always lists. A script with `param()` parts is a
 //! template: each `${id}` placeholder is filled when it is copied, and a placeholder as a whole value passes the checks
 //! of the file it will name.
 //!
@@ -71,6 +73,8 @@ elements! {
     judge: leaf;
     /// A template's parameter: its `${id}` placeholders are filled when the template is copied.
     param: leaf;
+    /// A publish: the script's own records folded into plain files by a rule of the ontology, by program.
+    publish: leaf;
 }
 
 attributes! {
@@ -87,6 +91,8 @@ attributes! {
         op; inputs;
         into_ = "into"; of; when; slug; props; name; max; visibility;
         rubric; model;
+        /// A publish's rule (`capital`).
+        rule;
         /// A param's.
         type_; label; default; required; choices; accept;
     }
@@ -104,6 +110,9 @@ pub const WAKE_FIELDS: &[&str] = &["when", "every", "prompt", "agent", "maxSpend
 pub const DERIVE_FIELDS: &[&str] = &["id", "op", "inputs", "params", "since", "stream"];
 pub const DISCOVER_FIELDS: &[&str] = &["into", "of", "when", "slug", "class", "props", "name", "max", "visibility"];
 pub const JUDGE_FIELDS: &[&str] = &["id", "of", "rubric", "model"];
+pub const PUBLISH_FIELDS: &[&str] = &["rule", "when"];
+/// The rules a publish folds records by: `capital`, a capital faucet's cycle files (docs/capital.md § files).
+pub const PUBLISH_RULES: &[&str] = &["capital"];
 /// What a judge judges: each turn of the thread's agents, or each turn on a mounted task.
 pub const JUDGE_OF: &[&str] = &["turn", "task"];
 /// A template's parameter (docs/scripts.md § the catalogue): its `${id}` placeholders are filled when it is copied.
@@ -136,6 +145,7 @@ const SCRIPT: Vocabulary = Vocabulary {
         TagRule::new("discover", &["script"]).required(&["slug", "class"]).attrs(DISCOVER_FIELDS),
         TagRule::new("judge", &["script"]).key("id").required(&["id", "of", "rubric", "model"]).attrs(JUDGE_FIELDS),
         TagRule::new("param", &["script"]).key("id").required(&["id", "type"]).attrs(SCRIPT_PARAM_FIELDS),
+        TagRule::new("publish", &["script"]).key("rule").required(&["rule"]).attrs(PUBLISH_FIELDS),
     ],
     // A tail names a file by its ref: the platform checks that the file is there and has a run.
     from_tree: script_of,
@@ -618,6 +628,21 @@ fn wake_of(c: &DocTree) -> Result<Json, String> {
     Ok(said(c, WAKE_FIELDS))
 }
 
+/// A publish: the script's own records folded into plain files by a rule of the ontology, by program.
+fn publish_of(c: &DocTree) -> Result<Json, String> {
+    let w = call(c, "rule");
+    if let Some(v) = c.attr_of("rule").filter(|v| !matches!(v, Json::Null)) {
+        if !v.as_str().is_some_and(|s| PUBLISH_RULES.contains(&s)) {
+            let rules = PUBLISH_RULES.iter().map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join(", ");
+            return Err(format!("{w} rule is {rules}, not {}", v.text()));
+        }
+    }
+    if let Some(bad) = c.attr_of("when").filter(|v| !matches!(v, Json::Null)).and_then(when_shape) {
+        return Err(format!("{w} when: {bad}"));
+    }
+    Ok(said(c, PUBLISH_FIELDS))
+}
+
 fn script_of(t: &DocTree) -> Result<Json, String> {
     for k in SCRIPT_FIELDS.iter().filter(|k| **k != "sameAs") {
         word(t, k, "title")?;
@@ -637,8 +662,10 @@ fn script_of(t: &DocTree) -> Result<Json, String> {
     let mut discovers = Vec::new();
     let mut judges = Vec::new();
     let mut params: Vec<Json> = Vec::new();
+    let mut publishes = Vec::new();
     for c in &t.children {
         match c.tag {
+            "publish" => publishes.push(publish_of(c)?),
             "source" => sources.push(source_of(c)?),
             "tail" => tails.push(tail_of(c)?),
             "derive" => derives.push(derive_of(c)?),
@@ -662,6 +689,7 @@ fn script_of(t: &DocTree) -> Result<Json, String> {
     out.set("discovers", Json::Arr(discovers));
     out.set("judges", Json::Arr(judges));
     out.set("params", Json::Arr(params));
+    out.set("publishes", Json::Arr(publishes));
     Ok(out)
 }
 
@@ -808,6 +836,7 @@ pub fn script_with_defaults(m: &Json) -> Json {
                 .with("accept", or_null(p, "accept"))
         })
         .collect();
+    let publishes = list("publishes").iter().map(|p| Json::obj().with("rule", or_null(p, "rule")).with("when", or_null(p, "when"))).collect();
     let mut out = Json::obj();
     for k in SCRIPT_FIELDS {
         out.set(k, if *k == "sameAs" { m.get(k).cloned().unwrap_or_else(|| Json::Arr(Vec::new())) } else { or_null(m, k) });
@@ -819,5 +848,6 @@ pub fn script_with_defaults(m: &Json) -> Json {
     out.set("discovers", Json::Arr(discovers));
     out.set("judges", Json::Arr(judges));
     out.set("params", Json::Arr(params));
+    out.set("publishes", Json::Arr(publishes));
     out
 }
