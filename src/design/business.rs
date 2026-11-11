@@ -32,6 +32,8 @@
 
 use super::company_formation::FORMATION_TAGS;
 pub use super::company_formation::{registered_agent, FormationAttrs};
+use super::company_profile::{profile_of, PROFILE_TAGS};
+pub use super::company_profile::{address, owner, stock, ProfileAttrs};
 use super::company_governance::{governance_of, GOVERNANCE_TAGS};
 use super::company_deals::{deals_of, DEALS_TAGS};
 use super::element::{attributes, elements, fn_name, rust_name};
@@ -143,10 +145,11 @@ pub(crate) const fn spec(tag: &'static str, props: &'static [(&'static str, Kind
 const BUSINESS_TAGS: &[TagSpec] = &[
     TagSpec {
         tag: "Company",
-        props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text)],
+        // `website` is the legal profile's (company_profile.rs).
+        props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text), ("website", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships"), ("pipeline", "Pipeline")],
-        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("brands", "Brand"),
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("addresses", "Address"), ("stock", "Stock"), ("owners", "Owner"), ("brands", "Brand"),
             ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy"), ("products", "Product"), ("deals", "Deal")],
     },
     spec(
@@ -310,7 +313,7 @@ fn value(tag: &str, prop: &str, kind: Kind, v: &Json) -> Result<Json, String> {
 
 /// Read one element of the vocabulary and its children, refusing what it does not say.
 pub fn read_business_node(el: &El) -> Result<BusinessNode, String> {
-    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).chain(GOVERNANCE_TAGS).chain(DEALS_TAGS).find(|s| s.tag == el.tag) else {
+    let Some(spec) = BUSINESS_TAGS.iter().chain(FINANCE_TAGS).chain(FORMATION_TAGS).chain(PROFILE_TAGS).chain(EQUITY_TAGS).chain(PEOPLE_OPS_TAGS).chain(GOVERNANCE_TAGS).chain(DEALS_TAGS).find(|s| s.tag == el.tag) else {
         return Err(format!("{}() is not an element of a company, an RFC or a case", fn_name(el.tag)));
     };
     let f = fn_name(el.tag);
@@ -451,6 +454,7 @@ pub fn company_of(node: &BusinessNode) -> Json {
     };
     let agents: Vec<Json> = node.many("registeredAgents").iter().map(|x| Json::Obj(x.props.clone())).collect();
     let company = if agents.is_empty() { company } else { company.with("registeredAgents", agents) };
+    let company = profile_of(node, company);
     let company = match node.one("team") {
         Some(t) => company.with("team", team_of(t)),
         None => company,
