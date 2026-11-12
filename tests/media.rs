@@ -99,7 +99,7 @@ fn a_song_declares_the_chain_synth_effects_track_master() {
         .name("Keys")])
         .name("Loop")
         .tempo(96)
-        .time_signature("3/4"),
+        .meter("3/4"),
     );
     assert_eq!(input(&g, "master", "tempo"), golden(r#"[{"atBeat": 0, "bpm": 96}]"#));
     assert_eq!(input(&g, "master", "timeSig"), golden(r#"{"num": 3, "den": 4}"#));
@@ -172,7 +172,7 @@ fn refuses_what_the_vocabulary_cannot_say() {
     assert_eq!(video_track(vec![clip([effect([]).type_("glow").amount("x")]).src("a.mp4").duration(1)]), "effect().type_(\"glow\"): amount is a number, not \"x\"");
     assert_eq!(video_track(vec![title([]).text("T").duration(1).opacity(2)]), "title().text(\"T\"): opacity is at most 1, not 2");
     let song_track = |children: Vec<El>| bad(song([track(children)]));
-    assert_eq!(song_track(vec![clip([])]), "track(): its clips need a synth() or a sampler() to play them");
+    assert_eq!(song_track(vec![clip([])]), "track(): its clips need a synth(), a sampler() or an instrument() to play them");
     assert_eq!(song_track(vec![synth(), clip([note().pitch("H2")])]), "note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not \"H2\"");
     assert_eq!(song_track(vec![clip([]).src("/abs/tone.wav")]), "clip().src(\"/abs/tone.wav\"): src is a path relative to this file, not /abs/tone.wav");
     assert_eq!(song_track(vec![clip([]).src("take.mp4")]), "clip().src(\"take.mp4\"): take.mp4 is not a sound file this studio reads");
@@ -181,7 +181,7 @@ fn refuses_what_the_vocabulary_cannot_say() {
     assert_eq!(song_track(vec![sampler()]), "sampler() names its sound file (.src(\"media/tone.wav\"), relative to this file)");
     assert_eq!(bad(song([]).cycle_start(4)), "song(): a cycle names both its cycle_start and its cycle_end (beats)");
     assert_eq!(bad(song([]).cycle_start(4).cycle_end(4)), "song(): cycle_end (4) comes after cycle_start (4)");
-    assert_eq!(bad(song([]).time_signature("4/5")), "song(): time_signature is \"beats/unit\" (\"4/4\", \"6/8\")");
+    assert_eq!(bad(song([]).meter("4/5")), "song(): meter is \"beats/unit\" (\"4/4\", \"6/8\", \"2+2+3/8\")");
     assert_eq!(bad(song([]).tempo(json(r#"[{"atBeat": 4, "bpm": 90}]"#))), "song(): tempo is beats per minute (120), or [{ atBeat: 0, bpm: 120 }, …] sorted by beat");
 }
 
@@ -370,4 +370,78 @@ fn an_override_says_no_keys_and_an_effects_override_holds_its_params_keys() {
     let fx = input(&g, "clip_Title", "effects");
     assert!(fx.contains(r#""overrides":{"S":{"keyframes":[{"property":"effect.fx_vignette.amount","keys":[{"id":"kf_clip_Title_S","time":0,"value":0.5,"easing":"linear"}]}]}}"#), "{fx}");
     assert!(fx.contains(r#""overrides":{"S":{"keyframes":[{"property":"effect.fx_vignette_2.amount","keys":[]}]}}"#), "{fx}");
+}
+
+#[test]
+fn a_song_declares_its_structure_as_score_nodes() {
+    let g = graph(
+        song([
+            player([instrument().kind("string").preset("violin"), reverb().preset("hall").mix(0.2), send().bus("hall").gain_db(-12)])
+                .name("violin")
+                .family("strings")
+                .place(json(r#"{"azimuth": -20, "distance": 3}"#)),
+            motif().name("head").notes("1:8 2 3 5:4."),
+            section([
+                phrase().bars("1-4").dynamics("p < f"),
+                voice([use_().motif("head").transform(json(r#"[{"op": "transpose", "steps": 2}]"#)), notes().line("1:1")]).player("violin").role("melody"),
+            ])
+            .name("A")
+            .bars(4)
+            .key("F")
+            .harmony("i | iv | V7 | i"),
+            bus([reverb().preset("hall").mix(1)]).name("hall"),
+            room().size([8, 12, 5]).rt60(json(r#"{"low": 1.2, "mid": 1, "high": 0.7}"#)),
+            master([compressor().ratio(2)]).target_lufs(-16),
+            track([
+                instrument().kind("modal").preset("glockenspiel"),
+                compressor().threshold_db(-20),
+                reverb().mix(0.4).predelay(0.02),
+                send().bus("hall").gain_db(-6),
+                clip([note().pitch("D5")]),
+            ])
+            .name("Bell")
+            .place(json(r#"{"azimuth": 30, "distance": 4}"#))
+            .out("hall"),
+        ])
+        .name("Air")
+        .key("D minor")
+        .meter("2+2+3/8")
+        .tempo(72)
+        .style("baroque")
+        .seed(7),
+    );
+    assert_eq!(input(&g, "master", "timeSig"), r#"{"num":7,"den":8}"#);
+    assert_eq!(input(&g, "master", "meter"), r#""2+2+3/8""#);
+    assert_eq!(input(&g, "master", "key"), r#""D minor""#);
+    assert_eq!(input(&g, "master", "score"), r#"["player_violin","motif_head","section_A","bus_hall","room","master_2"]"#);
+    assert_eq!(node(&g, "player_violin").get("type").map(Json::text), Some(r#""score.player""#.to_string()));
+    assert_eq!(
+        node(&g, "player_violin").get("inputs").map(Json::text),
+        Some(r#"{"name":"violin","family":"strings","place":{"azimuth":-20,"distance":3},"children":["instrument","reverb","send"]}"#.to_string())
+    );
+    assert_eq!(node(&g, "instrument").get("inputs").map(Json::text), Some(r#"{"kind":"string","preset":"violin"}"#.to_string()));
+    assert_eq!(node(&g, "send").get("inputs").map(Json::text), Some(r#"{"bus":"hall","gainDb":-12}"#.to_string()));
+    assert_eq!(input(&g, "section_A", "children"), r#"["phrase","voice_violin"]"#);
+    assert_eq!(input(&g, "section_A", "key"), r#""F""#);
+    assert_eq!(node(&g, "voice_violin").get("inputs").map(Json::text), Some(r#"{"player":"violin","role":"melody","children":["use_head","notes"]}"#.to_string()));
+    assert_eq!(node(&g, "use_head").get("inputs").map(Json::text), Some(r#"{"motif":"head","transform":[{"op":"transpose","steps":2}]}"#.to_string()));
+    assert_eq!(node(&g, "master_2").get("inputs").map(Json::text), Some(r#"{"targetLufs":-16,"children":["compressor"]}"#.to_string()));
+    assert_eq!(input(&g, "inst_Bell", "spec"), r#"{"kind":"modal","preset":"glockenspiel"}"#);
+    assert_eq!(input(&g, "fx_Bell_compressor", "spec"), r#"{"type":"compressor","thresholdDb":-20}"#);
+    assert_eq!(input(&g, "fx_Bell_reverb", "spec"), r#"{"type":"reverb","decay":1.8,"mix":0.4,"predelay":0.02}"#);
+    assert_eq!(input(&g, "track_Bell", "place"), r#"{"azimuth":30,"distance":4}"#);
+    assert_eq!(input(&g, "track_Bell", "out"), r#""hall""#);
+    assert_eq!(input(&g, "track_Bell", "sends"), r#"[{"bus":"hall","gainDb":-6}]"#);
+
+    assert_eq!(bad(song([voice([]).player("violin")])), "voice() is not read in a song() (it holds track(), player(), motif(), groove(), section(), room(), master(), bus())");
+    assert_eq!(bad(song([section([]).name("A").attr("chords", "i")])), "section().name(\"A\"): chords is not read on a section()");
+    assert_eq!(
+        bad(song([section([voice([note().pitch(60)]).player("v")]).name("A")])),
+        "note() is not read in a voice() (it holds notes(), use_(), rest(), harmonize(), accompany(), counterpoint(), drums())"
+    );
+    assert_eq!(
+        bad(song([track([instrument().release(1)])])),
+        "instrument(): an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\") or a preset (.preset(\"violin\"))"
+    );
+    assert_eq!(bad(song([motif().name("m").notes("1:4").key("x")])), "motif().name(\"m\"): key is not read on a motif()");
 }
