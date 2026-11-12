@@ -378,6 +378,16 @@ attributes! {
         pitch;
         /// A note's velocity, 0 to 1.
         velocity;
+        /// How a song's note is played: "legato", "staccato", "accent" ….
+        articulation;
+        /// Cents from a note's pitch over its own time: `json(r#"[[0, -20], [0.1, 0]]"#)` (seconds, cents).
+        pitch_curve;
+        /// A gain over a note's own time: `json(r#"[[0, 0.5], [0.2, 1]]"#)` (seconds, gain).
+        amp_curve;
+        /// 0 to 1 over a note's own time: what its instrument's timbre follows (bow pressure, breath).
+        timbre_curve;
+        /// The per-note values a note's instrument reads: `json(r#"{"tone": 2}"#)`.
+        params;
         /// A song's tempo: beats per minute, or a tempo map.
         tempo;
         /// A song's or a section's meter: "4/4", "6/8", "2+2+3/8".
@@ -2167,19 +2177,33 @@ fn declare_song(root: &El) -> Result<Json, String> {
                     if n.tag != "note" {
                         return Err(format!("{} is not read in a clip() (it holds note())", tag(n.tag)));
                     }
-                    refuse_unknown(n, &["pitch", "start", "duration", "velocity"])?;
-                    let Some(pitch) = pitch_of(n.attr_of("pitch")) else {
-                        let given = n.attr_of("pitch").map(Json::text).unwrap_or_else(|| "nothing".into());
-                        return Err(format!("note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not {given}"));
+                    refuse_unknown(n, &["pitch", "start", "duration", "velocity", "articulation", "pitchCurve", "ampCurve", "timbreCurve", "params"])?;
+                    // A song's note may sound between two keys (a note read from a recording): a number with a fraction.
+                    let pitch: Json = match n.attr_of("pitch") {
+                        Some(Json::Num(p)) if p.fract() != 0.0 && (0.0..=127.0).contains(p) => Json::Num(*p),
+                        given => match pitch_of(given) {
+                            Some(p) => p.into(),
+                            None => {
+                                let given = given.map(Json::text).unwrap_or_else(|| "nothing".into());
+                                return Err(format!("note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not {given}"));
+                            }
+                        },
                     };
                     let nid = format!("{cid}_n{}", notes.len() + 1);
-                    notes.push(obj(&[
+                    let mut note = obj(&[
                         ("id", nid.as_str().into()),
-                        ("pitch", pitch.into()),
+                        ("pitch", pitch),
                         ("start", at_least(n, "start", 0.0)?.unwrap_or(0.0).into()),
                         ("dur", at_least(n, "duration", 0.0)?.unwrap_or(1.0).into()),
                         ("vel", num(n, "velocity", Some(0.0), Some(1.0))?.unwrap_or(0.8).into()),
-                    ]));
+                    ]);
+                    // Its expression is the sound kernel's, as written.
+                    if let Json::Obj(rest) = written(n, &["pitch", "start", "duration", "velocity"]) {
+                        for (k, v) in rest {
+                            note.set(&k, v);
+                        }
+                    }
+                    notes.push(note);
                     sources.put(format!("note:{nid}"), n);
                 }
                 let inputs = obj(&[

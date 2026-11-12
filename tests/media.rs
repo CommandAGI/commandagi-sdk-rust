@@ -119,6 +119,17 @@ fn a_song_declares_the_chain_instrument_effects_track_master() {
     assert_eq!(sources, format!(r#"{{"note:clip_Keys_1_n1":{},"note:clip_Keys_1_n2":{}}}"#, site(line, 17), site(line + 1, 17)));
     assert_eq!(node(&g, "track_Keys").get("meta").unwrap().get("order"), Some(&Json::Num(0.0)));
     assert_eq!(pitch_of(Some(&Json::from("F#3"))), Some(54));
+    // A note may sound between two keys and carry its expression, passed as written.
+    let bent = graph(song([track([
+        instrument().preset("violin"),
+        clip([note().pitch(60.25).start(0).articulation("legato").amp_curve(json(r#"[[0, 0.5], [0.2, 1]]"#)).params(json(r#"{"tone": 2}"#))]),
+    ])
+    .name("T")]));
+    assert_eq!(
+        input(&bent, "clip_T_1", "notes"),
+        golden(r#"[{"id": "clip_T_1_n1", "pitch": 60.25, "start": 0, "dur": 1, "vel": 0.8, "articulation": "legato", "ampCurve": [[0, 0.5], [0.2, 1]], "params": {"tone": 2}}]"#)
+    );
+    assert_eq!(bad(song([track([instrument().preset("violin"), clip([note().pitch(60).attr("bend", 2)])])])), "note(): bend is not read on a note()");
     assert_eq!(pitch_of(Some(&Json::from("Bb2"))), Some(46));
     assert_eq!(pitch_name(61), "C#4");
     assert_eq!(
