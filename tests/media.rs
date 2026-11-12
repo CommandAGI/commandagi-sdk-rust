@@ -1,6 +1,6 @@
 // The media vocabulary against the graphs the TypeScript SDK declares for the same elements (`media.test.ts`): a
 // clip's media is a source node named by its relative path, out becomes a duration, titles carry their text; a song's
-// chain is synth → effects → track → master with notes inline; each call rides on its node (meta.source) and on what
+// chain is instrument → effects → track → master with notes inline; each call rides on its node (meta.source) and on what
 // the node holds (meta.sources); what the vocabulary cannot say is refused by name.
 
 use commandagi::design::declare;
@@ -84,11 +84,11 @@ fn a_clips_intro_and_outro_are_its_animations() {
 }
 
 #[test]
-fn a_song_declares_the_chain_synth_effects_track_master() {
+fn a_song_declares_the_chain_instrument_effects_track_master() {
     let line = line!() + 6;
     let g = graph(
         song([track([
-            synth().wave("triangle").attack(0.02),
+            instrument().kind("subtractive").oscillators(json(r#"[{"shape": "triangle"}]"#)).attack(0.02),
             reverb().mix(0.5),
             clip([
                 note().pitch("C4").start(0).duration(1),
@@ -107,6 +107,10 @@ fn a_song_declares_the_chain_synth_effects_track_master() {
     assert_eq!(input(&g, "track_Keys", "audio"), golden(r#"{"wire": {"node": "fx_Keys_reverb", "port": "audio"}}"#));
     assert_eq!(input(&g, "fx_Keys_reverb", "audio"), golden(r#"{"wire": {"node": "inst_Keys", "port": "audio"}}"#));
     assert_eq!(input(&g, "inst_Keys", "midi.1"), golden(r#"{"wire": {"node": "clip_Keys_1", "port": "midi"}}"#));
+    // An instrument's and an effect's fields are the sound kernel's, as written: no default is added here.
+    assert_eq!(input(&g, "inst_Keys", "spec"), golden(r#"{"kind": "subtractive", "oscillators": [{"shape": "triangle"}], "attack": 0.02}"#));
+    assert_eq!(input(&g, "fx_Keys_reverb", "spec"), golden(r#"{"kind": "reverb", "mix": 0.5}"#));
+    assert_eq!(input(&g, "fx_Keys_reverb", "name"), golden(r#""Reverb""#));
     assert_eq!(
         input(&g, "clip_Keys_1", "notes"),
         golden(r#"[{"id": "clip_Keys_1_n1", "pitch": 60, "start": 0, "dur": 1, "vel": 0.8}, {"id": "clip_Keys_1_n2", "pitch": 64, "start": 1, "dur": 1, "vel": 0.8}]"#)
@@ -124,11 +128,11 @@ fn a_song_declares_the_chain_synth_effects_track_master() {
 }
 
 #[test]
-fn a_song_holds_audio_clips_a_sampler_and_a_cycle() {
+fn a_song_holds_audio_clips_a_sampler_of_the_kernel_and_a_cycle() {
     let g = graph(
         song([
-            track([gain().gain(0.5), clip([]).src("media/tone.wav").start(2).length(3).in_(0.25).volume(0.8), clip([]).src("media/tone.wav").name("Again").start(8)]).name("Tone"),
-            track([sampler().src("media/tone.wav").root("C5").release(1), clip([note().pitch("E5")])]).name("Bells"),
+            track([gain().gain_db(-6), clip([]).src("media/tone.wav").start(2).length(3).in_(0.25).volume(0.8), clip([]).src("media/tone.wav").name("Again").start(8)]).name("Tone"),
+            track([instrument().kind("sampler").zones(json(r#"[{"src": "media/tone.wav", "root": 72}]"#)).release(1), clip([note().pitch("E5")])]).name("Bells"),
         ])
         .cycle_start(4)
         .cycle_end(12),
@@ -142,8 +146,9 @@ fn a_song_holds_audio_clips_a_sampler_and_a_cycle() {
     );
     assert_eq!(
         input(&g, "inst_Bells", "spec"),
-        golden(r#"{"kind": "sampler", "src": "media/tone.wav", "baseNote": 72, "gain": 1, "env": {"attack": 0.01, "decay": 0.15, "sustain": 0.6, "release": 1}}"#)
+        golden(r#"{"kind": "sampler", "zones": [{"src": "media/tone.wav", "root": 72}], "release": 1}"#)
     );
+    assert_eq!(input(&g, "fx_Tone_gain", "spec"), golden(r#"{"kind": "gain", "gainDb": -6}"#));
 }
 
 #[test]
@@ -172,13 +177,12 @@ fn refuses_what_the_vocabulary_cannot_say() {
     assert_eq!(video_track(vec![clip([effect([]).type_("glow").amount("x")]).src("a.mp4").duration(1)]), "effect().type_(\"glow\"): amount is a number, not \"x\"");
     assert_eq!(video_track(vec![title([]).text("T").duration(1).opacity(2)]), "title().text(\"T\"): opacity is at most 1, not 2");
     let song_track = |children: Vec<El>| bad(song([track(children)]));
-    assert_eq!(song_track(vec![clip([])]), "track(): its clips need a synth(), a sampler() or an instrument() to play them");
-    assert_eq!(song_track(vec![synth(), clip([note().pitch("H2")])]), "note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not \"H2\"");
+    assert_eq!(song_track(vec![clip([])]), "track(): its clips need an instrument() to play them");
+    assert_eq!(song_track(vec![instrument().preset("grandPiano"), clip([note().pitch("H2")])]), "note(): pitch is a MIDI number (0–127) or a name (\"C4\", \"F#3\"), not \"H2\"");
     assert_eq!(song_track(vec![clip([]).src("/abs/tone.wav")]), "clip().src(\"/abs/tone.wav\"): src is a path relative to this file, not /abs/tone.wav");
     assert_eq!(song_track(vec![clip([]).src("take.mp4")]), "clip().src(\"take.mp4\"): take.mp4 is not a sound file this studio reads");
-    assert_eq!(song_track(vec![synth(), clip([]).src("tone.wav")]), "track(): a track that plays an instrument holds clips of notes; an audio clip (src) goes on a track without one");
-    assert_eq!(song_track(vec![sampler().src("a.wav").root("Q")]), "sampler(): root is the pitch the file sounds at, a MIDI number (0–127) or a name (\"A4\"), not \"Q\"");
-    assert_eq!(song_track(vec![sampler()]), "sampler() names its sound file (.src(\"media/tone.wav\"), relative to this file)");
+    assert_eq!(song_track(vec![instrument().preset("grandPiano"), clip([]).src("tone.wav")]), "track(): a track that plays an instrument holds clips of notes; an audio clip (src) goes on a track without one");
+    assert_eq!(song_track(vec![instrument().preset("grandPiano"), instrument().preset("harp")]), "track(): a track plays one instrument");
     assert_eq!(bad(song([]).cycle_start(4)), "song(): a cycle names both its cycle_start and its cycle_end (beats)");
     assert_eq!(bad(song([]).cycle_start(4).cycle_end(4)), "song(): cycle_end (4) comes after cycle_start (4)");
     assert_eq!(bad(song([]).meter("4/5")), "song(): meter is \"beats/unit\" (\"4/4\", \"6/8\", \"2+2+3/8\")");
@@ -427,8 +431,8 @@ fn a_song_declares_its_structure_as_score_nodes() {
     assert_eq!(node(&g, "use_head").get("inputs").map(Json::text), Some(r#"{"motif":"head","transform":[{"op":"transpose","steps":2}]}"#.to_string()));
     assert_eq!(node(&g, "master_2").get("inputs").map(Json::text), Some(r#"{"targetLufs":-16,"children":["compressor"]}"#.to_string()));
     assert_eq!(input(&g, "inst_Bell", "spec"), r#"{"kind":"modal","preset":"glockenspiel"}"#);
-    assert_eq!(input(&g, "fx_Bell_compressor", "spec"), r#"{"type":"compressor","thresholdDb":-20}"#);
-    assert_eq!(input(&g, "fx_Bell_reverb", "spec"), r#"{"type":"reverb","decay":1.8,"mix":0.4,"predelay":0.02}"#);
+    assert_eq!(input(&g, "fx_Bell_compressor", "spec"), r#"{"kind":"compressor","thresholdDb":-20}"#);
+    assert_eq!(input(&g, "fx_Bell_reverb", "spec"), r#"{"kind":"reverb","mix":0.4,"predelay":0.02}"#);
     assert_eq!(input(&g, "track_Bell", "place"), r#"{"azimuth":30,"distance":4}"#);
     assert_eq!(input(&g, "track_Bell", "out"), r#""hall""#);
     assert_eq!(input(&g, "track_Bell", "sends"), r#"[{"bus":"hall","gainDb":-6}]"#);

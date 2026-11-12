@@ -9,6 +9,13 @@ promises nothing about the next one: read this file before you change the tag yo
 Changed (a song written before this needs an edit)
 
 - A song's meter is `song().meter(…)` (it was `song().time_signature(…)`); `time_signature_of` is `meter_of`. A meter may be written in groups (`"2+2+3/8"`).
+- A track's instrument is `instrument().kind(…).preset(…)` of the sound kernel, and an effect's fields are the kernel's.
+  `synth()` and `sampler()` are removed: write `instrument().kind("subtractive").oscillators(json(r#"[{"shape":
+  "triangle"}]"#))` (or a preset: `instrument().preset("grandPiano")`) and `instrument().kind("sampler").zones(json(
+  r#"[{"src": "media/tone.wav", "root": 69}]"#))`. The five effects with fields of their own take the kernel's:
+  `gain().gain_db(…)`, `filter().hz(…)`, `delay().time(…)` (seconds), `reverb().rt60(…)`, `eq().bands(…)`. An effect
+  node's spec is `{"kind": …, fields as written}`, with no default added. `WAVES`, `.wave(…)`, `.transpose(…)`,
+  `.root(…)` and `.time_beats(…)` are removed; `.oscillators(…)` and `.zones(…)` are added.
 
 Added (media)
 
