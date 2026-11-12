@@ -284,6 +284,10 @@ elements! {
     upward_compressor = "upwardCompressor": leaf;
     /// A song's expander.
     expander: leaf;
+    /// A song's voice taken out of a recording: `voice_remove().amount(1)`.
+    voice_remove = "voiceRemove": leaf;
+    /// A song's voice kept alone, the rest taken out.
+    voice_isolate = "voiceIsolate": leaf;
 }
 
 attributes! {
@@ -1968,6 +1972,7 @@ pub const SONG_EFFECT_KINDS: &[&str] = &[
     "gain", "pan", "width", "eq", "filter", "compressor", "multiband", "limiter", "gate", "transient", "deesser", "saturate", "exciter", "delay", "chorus",
     "flanger", "phaser", "tremolo", "vibrato", "reverb", "convolve", "duck", "vocoder",
     "pitchShift", "harmonizer", "autotune", "shimmer", "bitcrush", "ringMod", "frequencyShift", "waveshape", "tapeStop", "stutter", "reverse", "lofi", "granular", "spectralFreeze", "haas", "autopan", "rotary", "denoise", "declick", "dehum", "dcBlock", "polarity", "loudnessMatch", "clipper", "dynamicEq", "upwardCompressor", "expander",
+    "voiceRemove", "voiceIsolate",
 ];
 
 /// A song's structure and performance, by tag: the attributes each takes (none: its own kind's, passed to the sound
