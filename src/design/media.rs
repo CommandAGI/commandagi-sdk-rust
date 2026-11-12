@@ -230,6 +230,60 @@ elements! {
     duck: leaf;
     /// A song's channel vocoder: its sound played at the levels of the part it listens to (`sidechain`).
     vocoder: leaf;
+    /// A song's pitch shifter (a phase vocoder with formants kept, or PSOLA).
+    pitch_shift = "pitchShift": leaf;
+    /// A song's harmonizer: copies at intervals of the key's scale.
+    harmonizer: leaf;
+    /// A song's pitch correction to the key's scale.
+    autotune: leaf;
+    /// A song's shimmer: a reverb whose feedback is pitch-shifted.
+    shimmer: leaf;
+    /// A song's bit crusher: fewer bits and a lower sample rate.
+    bitcrush: leaf;
+    /// A song's ring modulator.
+    ring_mod = "ringMod": leaf;
+    /// A song's frequency shifter (single sideband).
+    frequency_shift = "frequencyShift": leaf;
+    /// A song's waveshaper: a drawn transfer curve.
+    waveshape: leaf;
+    /// A song's tape stop.
+    tape_stop = "tapeStop": leaf;
+    /// A song's stutter: beat-synced repeats.
+    stutter: leaf;
+    /// A song's reverse: beat-synced spans played backward.
+    reverse: leaf;
+    /// A song's lo-fi: wow, flutter, hiss and a narrow band.
+    lofi: leaf;
+    /// A song's granular delay and freeze.
+    granular: leaf;
+    /// A song's spectral freeze.
+    spectral_freeze = "spectralFreeze": leaf;
+    /// A song's Haas widener: one side a few milliseconds late.
+    haas: leaf;
+    /// A song's auto-pan.
+    autopan: leaf;
+    /// A song's rotary speaker (a Leslie).
+    rotary: leaf;
+    /// A video's noise reduction, or a song's (spectral subtraction).
+    denoise: leaf;
+    /// A song's declicker.
+    declick: leaf;
+    /// A song's hum remover (50 or 60 Hz and its harmonics).
+    dehum: leaf;
+    /// A song's DC blocker.
+    dc_block = "dcBlock": leaf;
+    /// A song's polarity switch.
+    polarity: leaf;
+    /// A song's loudness match to a LUFS target.
+    loudness_match = "loudnessMatch": leaf;
+    /// A song's clipper (soft or hard, oversampled).
+    clipper: leaf;
+    /// A song's dynamic equalizer.
+    dynamic_eq = "dynamicEq": leaf;
+    /// A song's upward compressor.
+    upward_compressor = "upwardCompressor": leaf;
+    /// A song's expander.
+    expander: leaf;
 }
 
 attributes! {
@@ -1913,6 +1967,7 @@ pub fn meter_of(v: Option<&Json>) -> Option<Json> {
 pub const SONG_EFFECT_KINDS: &[&str] = &[
     "gain", "pan", "width", "eq", "filter", "compressor", "multiband", "limiter", "gate", "transient", "deesser", "saturate", "exciter", "delay", "chorus",
     "flanger", "phaser", "tremolo", "vibrato", "reverb", "convolve", "duck", "vocoder",
+    "pitchShift", "harmonizer", "autotune", "shimmer", "bitcrush", "ringMod", "frequencyShift", "waveshape", "tapeStop", "stutter", "reverse", "lofi", "granular", "spectralFreeze", "haas", "autopan", "rotary", "denoise", "declick", "dehum", "dcBlock", "polarity", "loudnessMatch", "clipper", "dynamicEq", "upwardCompressor", "expander",
 ];
 
 /// A song's structure and performance, by tag: the attributes each takes (none: its own kind's, passed to the sound
@@ -2150,14 +2205,14 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 };
                 sends.push(obj(&[("bus", bus.into()), ("gainDb", any(el, "gainDb")?.unwrap_or(0.0).into())]));
             } else if el.tag == "clip" && player.is_some() && el.attr_of("src").is_some() {
-                refuse_unknown(el, &["name", "src", "start", "length", "in", "volume", "loop"])?;
+                refuse_unknown(el, &["name", "src", "start", "length", "in", "volume", "loop", "stretch", "stretchMode", "reverse"])?;
                 if el.child_elements().next().is_some() {
                     return Err(format!("{}: an audio clip holds no notes (notes go in a clip on a track with an instrument)", place(el)));
                 }
                 let src = sound_src(el)?;
                 let clip_name = txt(el, "name", None)?.unwrap_or_else(|| stem_of(&src));
                 let cid = ids.make(&format!("clip_{clip_name}"));
-                let inputs = obj(&[
+                let mut inputs = obj(&[
                     ("name", clip_name.as_str().into()),
                     ("src", src.into()),
                     ("start", at_least(el, "start", 0.0)?.unwrap_or(0.0).into()),
@@ -2166,6 +2221,16 @@ fn declare_song(root: &El) -> Result<Json, String> {
                     ("gain", at_least(el, "volume", 0.0)?.unwrap_or(1.0).into()),
                     ("loop", flag(el, "loop")?.unwrap_or(false).into()),
                 ]);
+                // The clip's own operations, said only when written: the sound kernel stretches the span or turns it round.
+                if let Some(stretch) = num(el, "stretch", Some(0.25), Some(4.0))? {
+                    inputs.set("stretch", stretch);
+                }
+                if let Some(mode) = txt(el, "stretchMode", Some(&["vocoder", "wsola"]))? {
+                    inputs.set("stretchMode", mode.as_str());
+                }
+                if let Some(reverse) = flag(el, "reverse")? {
+                    inputs.set("reverse", reverse);
+                }
                 nodes.put(&cid, node(&cid, "sample", inputs, None, meta_of(el, Sources::new(), Json::obj())));
                 clips.push(cid);
             } else if el.tag == "clip" {
