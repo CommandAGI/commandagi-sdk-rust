@@ -226,6 +226,10 @@ elements! {
     vibrato: leaf;
     /// A song's convolution with a measured response.
     convolve: leaf;
+    /// A song's ducker: down by its amount while the part it listens to (`sidechain`) sounds.
+    duck: leaf;
+    /// A song's channel vocoder: its sound played at the levels of the part it listens to (`sidechain`).
+    vocoder: leaf;
 }
 
 attributes! {
@@ -1908,7 +1912,7 @@ pub fn meter_of(v: Option<&Json>) -> Option<Json> {
 /// The sound kernel's effect kinds: each is a tag of a song (`compressor().threshold_db(-18)`).
 pub const SONG_EFFECT_KINDS: &[&str] = &[
     "gain", "pan", "width", "eq", "filter", "compressor", "multiband", "limiter", "gate", "transient", "deesser", "saturate", "exciter", "delay", "chorus",
-    "flanger", "phaser", "tremolo", "vibrato", "reverb", "convolve",
+    "flanger", "phaser", "tremolo", "vibrato", "reverb", "convolve", "duck", "vocoder",
 ];
 
 /// A song's structure and performance, by tag: the attributes each takes (none: its own kind's, passed to the sound
