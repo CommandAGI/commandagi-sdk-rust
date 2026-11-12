@@ -81,7 +81,7 @@ pub(crate) const FAMILY: Family = Family { module: "tasks", roots: &["task", "pr
 
 /// The fields of a task's body (packages/domain/core/src/task.ts `TaskDoc`), but its sketch, its asks and its subtasks.
 pub const TASK_FIELDS: &[&str] = &[
-    "id", "title", "status", "priority", "glyph", "assignees", "projects", "blockedBy", "labels", "startAt", "dueAt", "closedAt", "threadId",
+    "id", "title", "status", "priority", "glyph", "assignees", "projects", "blockedBy", "labels", "startAt", "dueAt", "closedAt", "threadId", "taskKey",
     "createdBy", "readme", "expires", "approvedBy", "approvedAt", "grants", "createdAt", "updatedAt",
 ];
 /// The fields of one `asks()`: the shape of one standing grant (a world's units, a folder's files, a folder's venues).
