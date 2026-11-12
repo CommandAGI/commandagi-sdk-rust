@@ -22,6 +22,13 @@ Added (media)
 - A song's effects `voice_remove()` (the lead voice taken out of a recording: an instrumental) and `voice_isolate()`
   (the voice kept alone), the sound kernel's two outputs of one separation; a field without a method is set by name
   (`voice_remove().attr("method", "melody")`).
+- The sound kernel's instrument kinds `wavetable`, `granular`, `stack` and `fx`, and the drum machines as a `drums`
+  instrument's `kit` (`"808"`, `"909"`), are `instrument().kind(…)` with their fields: `.sound(…)`, `.layers(…)`,
+  `.table(…)`, `.position(…)`, `.position_envelope(…)`, `.unison(…)`, `.spread(…)`, `.filter(…)`, `.semitones(…)`,
+  `.tone(…)`, `.drive(…)`, `.glide(…)`, `.pitch_envelope(…)`, `.pitch_decay(…)`, `.lfo_rate(…)`, `.lfo_depth(…)`,
+  `.warp(…)`, `.warp_amount(…)`, `.fm_ratio(…)`, `.source(…)`, `.root(…)`, `.density(…)`, `.scan(…)`, `.freeze(…)`,
+  `.jitter(…)`, `.pitch_spread(…)`, `.pan_spread(…)` and `.reverse(…)` (any other field is `.attr(name, value)`). An
+  instrument with no kind names the kinds in its refusal.
 - A song's `note()` may say its expression, passed to the sound kernel as written: `.articulation(…)`,
   `.pitch_curve(…)`, `.amp_curve(…)` and `.timbre_curve(…)` (points `[seconds, value]` over the note's own time) and
   `.params(…)` (the per-note values its instrument reads). Its pitch may be a number with a fraction (a note read

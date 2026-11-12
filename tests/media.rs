@@ -456,7 +456,7 @@ fn a_song_declares_its_structure_as_score_nodes() {
     );
     assert_eq!(
         bad(song([track([instrument().release(1)])])),
-        "instrument(): an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\") or a preset (.preset(\"violin\"))"
+        "instrument(): an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\", \"wavetable\", \"granular\", \"stack\", \"fx\") or a preset (.preset(\"violin\"))"
     );
     assert_eq!(bad(song([motif().name("m").notes("1:4").key("x")])), "motif().name(\"m\"): key is not read on a motif()");
 }

@@ -664,6 +664,62 @@ attributes! {
         strength;
         /// An effect's threshold.
         threshold;
+        /// A designed sound of the `fx` kind: "riser", "downlifter", "impact", "subDrop", "whoosh", "reverseSwell", "braam", "drone", "tick", "pulse".
+        sound;
+        /// A `stack`'s layers: `json(r#"[{"instrument": {"preset": "taiko"}, "gainDb": -3}]"#)`.
+        layers;
+        /// A `wavetable`'s built-in table: "classic", "harmonics", "vowels", "pwm".
+        table;
+        /// Where a `wavetable` reads its table, or a `granular` instrument its source, 0 to 1.
+        position;
+        /// How the position moves over a `wavetable` note: `json(r#"{"amount": 0.5, "decay": 1}"#)`.
+        position_envelope;
+        /// Copies of a `wavetable`'s oscillator.
+        unison;
+        /// How far copies or grains spread across the stereo width, 0 to 1.
+        spread;
+        /// A synthesizer's filter: `json(r#"{"cutoff": 800, "envelope": 2}"#)`.
+        filter;
+        /// Semitones a designed sound's pitch travels.
+        semitones;
+        /// The share of tone against noise in a designed sound.
+        tone;
+        /// dB into a soft clip.
+        drive;
+        /// Seconds a legato note takes to reach its pitch.
+        glide;
+        /// Semitones a `wavetable` note's pitch starts above it.
+        pitch_envelope;
+        /// The seconds a `wavetable`'s pitch envelope falls in.
+        pitch_decay;
+        /// The rate of a `wavetable`'s LFO, in hertz.
+        lfo_rate;
+        /// The depth of a `wavetable`'s LFO, 0 to 1.
+        lfo_depth;
+        /// A `wavetable`'s warp: "none", "sync", "bend", "fm".
+        warp;
+        /// How far a `wavetable`'s warp goes, 0 to 1.
+        warp_amount;
+        /// The whole ratio of a `wavetable`'s phase modulator.
+        fm_ratio;
+        /// A `granular` instrument's source instrument: `json(r#"{"preset": "vibraphone", "pitch": 60}"#)`.
+        source;
+        /// The pitch a `granular` source sounds.
+        root;
+        /// Grains a second.
+        density;
+        /// Seconds of source a `granular` position moves each second.
+        scan;
+        /// A `granular` position stays where the note started.
+        freeze;
+        /// Seconds around the position a grain may start.
+        jitter;
+        /// Cents of spread of each grain's pitch.
+        pitch_spread;
+        /// How far grains spread across the stereo width, 0 to 1.
+        pan_spread;
+        /// The share of grains read backward.
+        reverse;
     }
 }
 
@@ -2177,7 +2233,7 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 }
                 if txt(el, "kind", None)?.filter(|k| !k.is_empty()).is_none() && txt(el, "preset", None)?.filter(|k| !k.is_empty()).is_none() {
                     return Err(format!(
-                        "{}: an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\") or a preset (.preset(\"violin\"))",
+                        "{}: an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\", \"wavetable\", \"granular\", \"stack\", \"fx\") or a preset (.preset(\"violin\"))",
                         place(el)
                     ));
                 }
