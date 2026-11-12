@@ -1,4 +1,4 @@
-// A company's legal profile (website, email, phone, address(), stock(), owner()), read as the same document as the
+// A company's legal profile (website, email, phone, address(), listing(), stock(), owner()), read as the same document as the
 // TypeScript SDK's JSX. company_profile.json is the golden of the three SDKs
 // (sdk/typescript/src/design/company-profile.golden.json, sdk/python/tests/company_profile.json).
 
@@ -17,6 +17,7 @@ fn element(tag: &str, attrs: &Json) -> El {
     let el = match tag {
         "Entity" => entity(),
         "Address" => address(),
+        "Listing" => listing(),
         "Stock" => stock(),
         "Owner" => owner(),
         _ => panic!("no tag {tag}"),

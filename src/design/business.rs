@@ -33,7 +33,7 @@
 use super::company_formation::FORMATION_TAGS;
 pub use super::company_formation::{registered_agent, FormationAttrs};
 use super::company_profile::{profile_of, PROFILE_TAGS};
-pub use super::company_profile::{address, owner, stock, ProfileAttrs};
+pub use super::company_profile::{address, listing, owner, stock, ProfileAttrs};
 use super::company_governance::{governance_of, GOVERNANCE_TAGS};
 use super::company_deals::{deals_of, DEALS_TAGS};
 use super::element::{attributes, elements, fn_name, rust_name};
@@ -149,7 +149,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
         props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text), ("website", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships"), ("pipeline", "Pipeline")],
-        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("addresses", "Address"), ("stock", "Stock"), ("owners", "Owner"), ("brands", "Brand"),
+        many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("addresses", "Address"), ("listings", "Listing"), ("stock", "Stock"), ("owners", "Owner"), ("brands", "Brand"),
             ("seats", "Seat"), ("obligations", "Obligation"), ("evidence", "Evidence"), ("ipAssets", "IpAsset"), ("assignments", "Assignment"), ("policies", "Policy"), ("products", "Product"), ("deals", "Deal")],
     },
     spec(

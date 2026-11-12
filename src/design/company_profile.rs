@@ -1,8 +1,8 @@
 //! A COMPANY'S LEGAL PROFILE, in Rust (docs/company-substrate.md § the legal profile): the facts a form asks for, so
 //! an agent fills one from the company file alone. It adds the company's `website`, its addresses by purpose
-//! (`address()`), its classes of stock (`stock()`) and its beneficial owners (`owner()`); the same elements as the
-//! TypeScript SDK's `company-profile.ts` and the Python SDK's `company_profile.py`. A company names no mailbox and no
-//! phone line: a form's contact email and phone are its responsible person's card:
+//! (`address()`), its listings on exchanges (`listing()`), its classes of stock (`stock()`) and its beneficial owners
+//! (`owner()`); the same elements as the TypeScript SDK's `company-profile.ts` and the Python SDK's `company_profile.py`.
+//! A company names no mailbox and no phone line: a form's contact email and phone are its responsible person's card:
 //!
 //! ```
 //! use commandagi::design::business::*;
@@ -11,6 +11,7 @@
 //!     company([
 //!         entity().jurisdiction("US-DE").form("corporation").name("Acme Robotics, Inc.").formed("2026-01-05"),
 //!         address().kind("legal").line1("1 Main St").city("Austin").region("TX").postal("78701").country("US"),
+//!         listing().venue("XNAS").symbol("ACME").since("2026-06-01"),
 //!         stock().kind("common").authorized(10_000_000).issued(8_000_000).reserved(2_000_000).par("0.00001"),
 //!         owner().name("Ada Founder").holder("people/ada-founder/").percent("100"),
 //!     ])
@@ -21,8 +22,9 @@
 //! ```
 //!
 //! An address's `kind` is `legal` (the formation documents and the tax-id notice), `mailing`, `office` or another word.
-//! The document holds them as `website`, `addresses`, `stock` and `owners`, each absent when the file
-//! writes none. A company file with the profile's identifiers is private.
+//! A listing's `venue` is the exchange's market identifier code (ISO 10383), `symbol` its ticker there and `since` the
+//! first day it traded there. The document holds them as `website`, `addresses`, `listings`, `stock` and `owners`,
+//! each absent when the file writes none. A company file with the profile's identifiers is private.
 
 use super::business::{spec, BusinessNode, Kind::Amount, Kind::Text, TagSpec};
 use super::element::{attributes, elements};
@@ -31,6 +33,8 @@ use super::Json;
 elements! {
     /// An address of the company by purpose: `.kind("legal").line1("1 Main St").country("US")`.
     address = "Address": leaf;
+    /// A listing of the company's shares: `.venue("XNAS").symbol("ACME").since("2026-06-01")`.
+    listing = "Listing": leaf;
     /// A class of stock the charter authorizes: `.kind("common").authorized(10_000_000).issued(…)`.
     stock = "Stock": leaf;
     /// A beneficial owner: `.name("Ada Founder").percent("100")`.
@@ -41,7 +45,7 @@ attributes! {
     /// The fields of the legal profile that a company's other elements lack (`.kind()`, `.name()`, `.since()`,
     /// `.source()` and `.issued()` are `BusinessAttrs`'s, `.holder()` `GovernanceAttrs`'s).
     pub trait ProfileAttrs {
-        website; line1; line2; city; region; postal; country; authorized; reserved; par; percent;
+        website; line1; line2; city; region; postal; country; authorized; reserved; par; percent; venue; symbol;
     }
 }
 
@@ -55,12 +59,13 @@ pub(crate) const PROFILE_TAGS: &[TagSpec] = &[
         &[("kind", Text), ("line1", Text), ("line2", Text), ("city", Text), ("region", Text), ("postal", Text), ("country", Text), ("source", Text)],
         &["kind", "line1", "country"],
     ),
+    spec("Listing", &[("venue", Text), ("symbol", Text), ("since", Text), ("source", Text)], &["venue", "symbol"]),
     spec("Stock", &[("kind", Text), ("authorized", Amount), ("issued", Amount), ("reserved", Amount), ("par", Text), ("source", Text)], &["kind", "authorized"]),
     spec("Owner", &[("name", Text), ("holder", Text), ("percent", Amount), ("since", Text), ("source", Text)], &["name", "percent"]),
 ];
 
 /// The lists of `company()` they fill.
-pub(crate) const PROFILE_LISTS: &[(&str, &str)] = &[("addresses", "Address"), ("stock", "Stock"), ("owners", "Owner")];
+pub(crate) const PROFILE_LISTS: &[(&str, &str)] = &[("addresses", "Address"), ("listings", "Listing"), ("stock", "Stock"), ("owners", "Owner")];
 
 /// The company document with its profile fields, each only when the file writes it.
 pub(crate) fn profile_of(node: &BusinessNode, company: Json) -> Json {
