@@ -65,7 +65,7 @@
 //!
 //! fn document() -> El {
 //!     song([
-//!         player([instrument().kind("string").preset("violin")]).name("violin").family("strings"),
+//!         player([instrument().kind("measured").preset("violin")]).name("violin").family("strings"),
 //!         motif().name("head").notes("1:8 2 3 5:4."),
 //!         section([voice([use_().motif("head"), notes().line("5:4 4 3 2")]).player("violin")]).name("A").bars(2).harmony("i | V7"),
 //!     ])
@@ -168,7 +168,7 @@ elements! {
     ending: children;
     /// One line of a section, played by a player: notes, motif uses, rests and computed lines.
     voice: children;
-    /// An instrument of the sound kernel, on a track or for a player: `instrument().kind("string").preset("violin")`.
+    /// An instrument of the sound kernel, on a track or for a player: `instrument().kind("measured").preset("violin")`.
     instrument: leaf;
     /// A send to a bus: `send().bus("hall").gain_db(-12)`.
     send: leaf;
@@ -668,7 +668,8 @@ attributes! {
         sound;
         /// A `stack`'s layers: `json(r#"[{"instrument": {"preset": "taiko"}, "gainDb": -3}]"#)`.
         layers;
-        /// A `wavetable`'s built-in table: "classic", "harmonics", "vowels", "pwm".
+        /// A `wavetable`'s built-in table: "classic", "harmonics", "vowels", "pwm". A `measured` instrument's table
+        /// of the kernel: "violin", "grandPiano", "trumpet" …
         table;
         /// Where a `wavetable` reads its table, or a `granular` instrument its source, 0 to 1.
         position;
@@ -688,6 +689,10 @@ attributes! {
         drive;
         /// Seconds a legato note takes to reach its pitch.
         glide;
+        /// How much of a `measured` instrument's noise sounds (a breath, a bow, a hammer): 1 is as measured.
+        noise;
+        /// How deep a `measured` instrument's own vibrato is: 1 is as measured, 0 is none.
+        vibrato;
         /// Semitones a `wavetable` note's pitch starts above it.
         pitch_envelope;
         /// The seconds a `wavetable`'s pitch envelope falls in.
@@ -2233,7 +2238,7 @@ fn declare_song(root: &El) -> Result<Json, String> {
                 }
                 if txt(el, "kind", None)?.filter(|k| !k.is_empty()).is_none() && txt(el, "preset", None)?.filter(|k| !k.is_empty()).is_none() {
                     return Err(format!(
-                        "{}: an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\", \"wavetable\", \"granular\", \"stack\", \"fx\") or a preset (.preset(\"violin\"))",
+                        "{}: an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"measured\", \"fm\", \"subtractive\", \"sampler\", \"drums\", \"wavetable\", \"granular\", \"stack\", \"fx\") or a preset (.preset(\"violin\"))",
                         place(el)
                     ));
                 }

@@ -391,7 +391,7 @@ fn an_override_says_no_keys_and_an_effects_override_holds_its_params_keys() {
 fn a_song_declares_its_structure_as_score_nodes() {
     let g = graph(
         song([
-            player([instrument().kind("string").preset("violin"), reverb().preset("hall").mix(0.2), send().bus("hall").gain_db(-12)])
+            player([instrument().kind("measured").preset("violin"), reverb().preset("hall").mix(0.2), send().bus("hall").gain_db(-12)])
                 .name("violin")
                 .family("strings")
                 .place(json(r#"{"azimuth": -20, "distance": 3}"#)),
@@ -408,7 +408,7 @@ fn a_song_declares_its_structure_as_score_nodes() {
             room().size([8, 12, 5]).rt60(json(r#"{"low": 1.2, "mid": 1, "high": 0.7}"#)),
             master([compressor().ratio(2)]).target_lufs(-16),
             track([
-                instrument().kind("modal").preset("glockenspiel"),
+                instrument().kind("measured").preset("glockenspiel"),
                 compressor().threshold_db(-20),
                 reverb().mix(0.4).predelay(0.02),
                 send().bus("hall").gain_db(-6),
@@ -434,14 +434,14 @@ fn a_song_declares_its_structure_as_score_nodes() {
         node(&g, "player_violin").get("inputs").map(Json::text),
         Some(r#"{"name":"violin","family":"strings","place":{"azimuth":-20,"distance":3},"children":["instrument","reverb","send"]}"#.to_string())
     );
-    assert_eq!(node(&g, "instrument").get("inputs").map(Json::text), Some(r#"{"kind":"string","preset":"violin"}"#.to_string()));
+    assert_eq!(node(&g, "instrument").get("inputs").map(Json::text), Some(r#"{"kind":"measured","preset":"violin"}"#.to_string()));
     assert_eq!(node(&g, "send").get("inputs").map(Json::text), Some(r#"{"bus":"hall","gainDb":-12}"#.to_string()));
     assert_eq!(input(&g, "section_A", "children"), r#"["phrase","voice_violin"]"#);
     assert_eq!(input(&g, "section_A", "key"), r#""F""#);
     assert_eq!(node(&g, "voice_violin").get("inputs").map(Json::text), Some(r#"{"player":"violin","role":"melody","children":["use_head","notes"]}"#.to_string()));
     assert_eq!(node(&g, "use_head").get("inputs").map(Json::text), Some(r#"{"motif":"head","transform":[{"op":"transpose","steps":2}]}"#.to_string()));
     assert_eq!(node(&g, "master_2").get("inputs").map(Json::text), Some(r#"{"targetLufs":-16,"children":["compressor"]}"#.to_string()));
-    assert_eq!(input(&g, "inst_Bell", "spec"), r#"{"kind":"modal","preset":"glockenspiel"}"#);
+    assert_eq!(input(&g, "inst_Bell", "spec"), r#"{"kind":"measured","preset":"glockenspiel"}"#);
     assert_eq!(input(&g, "fx_Bell_compressor", "spec"), r#"{"kind":"compressor","thresholdDb":-20}"#);
     assert_eq!(input(&g, "fx_Bell_reverb", "spec"), r#"{"kind":"reverb","mix":0.4,"predelay":0.02}"#);
     assert_eq!(input(&g, "track_Bell", "place"), r#"{"azimuth":30,"distance":4}"#);
@@ -456,7 +456,7 @@ fn a_song_declares_its_structure_as_score_nodes() {
     );
     assert_eq!(
         bad(song([track([instrument().release(1)])])),
-        "instrument(): an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"fm\", \"subtractive\", \"sampler\", \"drums\", \"wavetable\", \"granular\", \"stack\", \"fx\") or a preset (.preset(\"violin\"))"
+        "instrument(): an instrument names its kind (.kind(\"string\"), \"modal\", \"wind\", \"additive\", \"measured\", \"fm\", \"subtractive\", \"sampler\", \"drums\", \"wavetable\", \"granular\", \"stack\", \"fx\") or a preset (.preset(\"violin\"))"
     );
     assert_eq!(bad(song([motif().name("m").notes("1:4").key("x")])), "motif().name(\"m\"): key is not read on a motif()");
 }

@@ -8,6 +8,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Changed (a song written before this needs an edit)
 
+- The sound kernel's presets `nylonGuitar`, `steelGuitar`, `electricBass`, `harp`, `grandPiano`, `pianoFelt`, `violin`, `viola`, `cello`, `doubleBass`, `marimba`, `vibraphone`, `glockenspiel`, `flute`, `clarinet`, `saxophone`, `trumpet`, `electricPiano` and `pipeOrgan` are tones measured on real instruments, of the kind `measured`. A song that names
+  one with the kind it had (`instrument().kind("string").preset("violin")`) is refused by name: write `instrument().kind("measured").preset("violin")`, or the preset alone
+  (`instrument().preset("violin")`). The fields of the kinds they were (`bow`, `hardness`, `bore`, `operators` …) are not theirs; the fields
+  of `measured` are `brightness` (dB an octave), and factors on what was measured: `attack`, `decay`, `release`,
+  `noise`, `vibrato`.
 - `voice_remove()` and `voice_isolate()` take `method` `"model"` (the default: a trained separation model, where the place that runs the song has
   it) or `"classical"` (it was `"combined"`); `"center"`, `"melody"` and `"repet"` stay. Where no model runs, `"model"`
   is the classical method.
@@ -22,6 +27,8 @@ Changed (a song written before this needs an edit)
 
 Added (media)
 
+- The sound kernel's instrument kind `measured`: an instrument as the tones measured on a real one. It names one of
+  the kernel's tables (`instrument().kind("measured").table("cello")`), or holds its own `held` and `tones`.
 - A song's effects `voice_remove()` (the lead voice taken out of a recording: an instrumental) and `voice_isolate()`
   (the voice kept alone), the sound kernel's two outputs of one separation; a field without a method is set by name
   (`voice_remove().attr("method", "melody")`).
