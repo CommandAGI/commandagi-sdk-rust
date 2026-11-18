@@ -40,13 +40,13 @@ elements! {
 attributes! {
     /// The fields of a storefront and of its offers, chained on their elements.
     pub trait StorefrontsAttrs {
-        name; venue; seller; seller_record; seller_id; url; source; checkout; hold; listings; read; kind; price; unit; codes; tags;
+        name; venue; seller; seller_record; seller_id; url; source; banner; checkout; hold; listings; read; kind; price; unit; codes; tags;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "storefronts", roots: &["Storefront"], declare };
 
-pub const STOREFRONT_FIELDS: &[&str] = &["name", "venue", "seller", "sellerRecord", "sellerId", "url", "source", "checkout", "hold"];
+pub const STOREFRONT_FIELDS: &[&str] = &["name", "venue", "seller", "sellerRecord", "sellerId", "url", "source", "banner", "checkout", "hold"];
 pub const STOREFRONT_CHECKOUTS: &[&str] = &["agent", "seller"];
 pub const STOREFRONT_MIRROR_FIELDS: &[&str] = &["listings", "read"];
 pub const STOREFRONT_OFFER_FIELDS: &[&str] = &["name", "kind", "price", "unit", "codes", "tags"];
@@ -171,6 +171,7 @@ pub fn storefront_of(t: &DocTree) -> Result<Json, String> {
         }
     }
     out = optional(t, "source", 500, &at, out)?;
+    out = optional(t, "banner", 500, &at, out)?;
     if let Some(c) = t.attr_of("checkout") {
         match c {
             Json::Str(s) if STOREFRONT_CHECKOUTS.contains(&s.as_str()) => out = out.with("checkout", Json::Str(s.clone())),

@@ -107,7 +107,7 @@ elements! {
 attributes! {
     /// The fields of a company, an RFC and a case, chained on their elements.
     pub trait BusinessAttrs {
-        name; about; codes; tags; postal_address; files; dashboard;
+        name; about; codes; tags; postal_address; files; dashboard; banner;
         jurisdiction; form; tax_classification; formed; fiscal_year_end; ids; operates_in; conditions;
         kind; id; issued; expires; file; journal; ocf; folder;
         procedure; title; body; target; engine_json; summary;
@@ -153,7 +153,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
     TagSpec {
         tag: "Company",
         // `website` is the legal profile's (company_profile.rs).
-        props: &[("name", Text), ("about", Text), ("codes", Texts), ("tags", Texts), ("postalAddress", Text), ("files", Texts), ("dashboard", Text), ("website", Text)],
+        props: &[("name", Text), ("about", Text), ("codes", Texts), ("tags", Texts), ("postalAddress", Text), ("files", Texts), ("dashboard", Text), ("banner", Text), ("website", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships"), ("pipeline", "Pipeline")],
         many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("addresses", "Address"), ("listings", "Listing"), ("stock", "Stock"), ("owners", "Owner"), ("brands", "Brand"),
@@ -443,6 +443,11 @@ pub fn company_of(node: &BusinessNode) -> Result<Json, String> {
     let company = company
         .with("files", node.prop("files").cloned().unwrap_or(Json::Arr(Vec::new())))
         .with("dashboard", or_null(node.prop("dashboard")));
+    // The banner of the company's profile: a ref to a picture (relative to the file) or a colour (`#1f6feb`).
+    let company = match node.prop("banner") {
+        Some(b) => company.with("banner", b.clone()),
+        None => company,
+    };
     let company = company.with("entity", entity).with("standard", standard);
     // Each area's field is absent when the file names none of it (docs/company-substrate.md § how an area joins).
     let subsidiaries: Vec<Json> = node.many("subsidiaries").iter().map(|x| Json::Obj(x.props.clone())).collect();

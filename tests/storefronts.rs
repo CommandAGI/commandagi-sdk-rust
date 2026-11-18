@@ -23,6 +23,16 @@ fn a_relisted_store_is_its_document() {
 }
 
 #[test]
+fn a_banner_is_carried_as_written() {
+    for banner in ["brand/banner.png", "#1f6feb"] {
+        let Declared::Document { document, .. } = declare(storefront([offer().name("Ride").kind("service")]).name("Rides").venue("uber").seller("Uber").banner(banner)).unwrap() else {
+            panic!("a storefront is a document")
+        };
+        assert_eq!(document.get("banner"), Some(&Json::Str(banner.to_string())));
+    }
+}
+
+#[test]
 fn a_service_store_is_its_document() {
     let Declared::Document { document, .. } = declare(
         storefront([
