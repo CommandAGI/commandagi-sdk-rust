@@ -10,7 +10,7 @@
 //! fn document() -> El {
 //!     company([
 //!         seat().body("board").title("director").holder("Northwind/people/Lin Chen.vcf").start("2024-01-31"),
-//!         compliance().industries(["naics:541370"]),
+//!         compliance().horizon("18 months"),
 //!         evidence().obligation("US-DE:de-llc-lp-annual-tax").due("2026-06-01").file("Northwind/filings/2026.pdf"),
 //!         ip_asset().kind("trademark").stage("registered").title("NORTHWIND").jurisdiction("US").registered("2025-02-11"),
 //!         policy().kind("aviation").carrier("Skyward Mutual").start("2025-07-01").end("2026-07-01"),
@@ -31,7 +31,8 @@ use super::Json;
 elements! {
     /// A seat of a body (the board, the officers, a committee): `.body("board").title("director").holder("…vcf")`.
     seat = "Seat": leaf;
-    /// The compliance register's settings: the company's industry codes and how far ahead it looks (`.horizon("18 months")`).
+    /// The compliance register's settings: how far ahead it looks (`.horizon("18 months")`); the company's industry is
+    /// its `company().codes([…])`.
     compliance = "Compliance": leaf;
     /// An obligation of the company's own (a certification, a contract's report): `.id("…").name("…").due("…")`.
     obligation = "Obligation": leaf;
@@ -51,7 +52,7 @@ attributes! {
     /// The fields of seats, obligations, evidence, IP assets, policies and votes that a company's other elements lack
     /// (`.due()` is `FormationAttrs`'s, `.currency()` `FinanceAttrs`'s).
     pub trait GovernanceAttrs {
-        holder; start; end; appointed_by; industries; every; url; authority; obligation; done; stage; number; filed;
+        holder; start; end; appointed_by; every; url; authority; obligation; done; stage; number; filed;
         registered; owner; claimants; classes; person; horizon; signed; carrier; limit; broker; threshold; quorum; choice;
     }
 }
@@ -63,7 +64,7 @@ const fn leaf(tag: &'static str, props: &'static [(&'static str, Kind)], require
 /// The tags' attributes.
 pub(crate) const GOVERNANCE_TAGS: &[TagSpec] = &[
     leaf("Seat", &[("body", Text), ("title", Text), ("holder", Text), ("start", Text), ("end", Text), ("appointedBy", Text)], &["body", "title", "holder"]),
-    leaf("Compliance", &[("industries", Texts), ("horizon", Text)], &[]),
+    leaf("Compliance", &[("horizon", Text)], &[]),
     leaf("Obligation", &[("id", Text), ("name", Text), ("authority", Text), ("url", Text), ("due", Text), ("every", Text), ("note", Text)], &["id", "name", "due"]),
     leaf("Evidence", &[("obligation", Text), ("due", Text), ("done", Text), ("file", Text), ("note", Text)], &["obligation", "due"]),
     leaf(
@@ -113,8 +114,7 @@ pub(crate) fn governance_of(node: &BusinessNode, mut company: Json) -> Json {
         company.set("governance", Json::obj().with("seats", props_of(node, "seats")));
     }
     if node.one("compliance").is_some() || !node.many("obligations").is_empty() || !node.many("evidence").is_empty() {
-        let industries = node.one("compliance").and_then(|n| n.prop("industries")).cloned().unwrap_or(Json::Arr(Vec::new()));
-        let mut compliance = Json::obj().with("industries", industries);
+        let mut compliance = Json::obj();
         if let Some(h) = node.one("compliance").and_then(|n| n.prop("horizon")) {
             compliance.set("horizon", h.clone());
         }

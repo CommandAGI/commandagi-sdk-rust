@@ -69,11 +69,13 @@ fn the_calls_chain_their_attributes() {
             evidence().obligation("own:x").due("2026-01-01").done("2026-01-01").file("x.pdf"),
             paper([vote().holder("a.vcf").choice("for").signed("2026-01-02")]).kind("board-consent").file("c.pdf").body("board").threshold("unanimous"),
         ])
-        .name("X"),
+        .name("X")
+        .codes(["naics:541370"])
+        .tags(["land survey"]),
     )
     .unwrap() else {
         panic!("a document")
     };
     assert!(document.get("insurance").is_some() && document.get("ip").is_none());
-    assert_eq!(document.get("compliance").and_then(|c| c.get("industries")), Some(&Json::Arr(Vec::new())));
+    assert_eq!((document.get("codes"), document.get("tags")), (Some(&Json::parse(r#"["naics:541370"]"#).unwrap()), Some(&Json::parse(r#"["land survey"]"#).unwrap())));
 }

@@ -37,6 +37,7 @@ pub mod agents;
 pub mod brands;
 pub mod business;
 pub(crate) mod business_finance;
+pub mod classification;
 pub(crate) mod company_formation;
 pub(crate) mod company_profile;
 pub mod company_governance;

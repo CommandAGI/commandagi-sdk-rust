@@ -52,7 +52,7 @@ fn a_storefront_that_does_not_read_is_refused_with_why() {
         (s(vec![]).url("http://x"), "url is an https:// address"),
         (s(vec![offer().name("A").kind("service").price("25 dollars")]), "price is an amount and an ISO currency"),
         (s(vec![offer().name("A").kind("thing")]), "kind is service or good"),
-        (s(vec![offer().name("A").kind("good").codes(["43211500"])]), "codes is a list of at most 20 classification codes"),
+        (s(vec![offer().name("A").kind("good").codes(["43211500"])]), "codes: \"43211500\" is not a code: write it as scheme:code"),
         (s(vec![offer().name("A").kind("good"), offer().name("A").kind("good")]), "have name \"A\""),
         (s(vec![offers().listings("a.csv"), offers().listings("b.csv")]), "has one offers()"),
         (storefront([]).name("Shop").venue("ebay"), "needs seller"),

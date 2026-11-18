@@ -13,10 +13,16 @@
 //!         registration().kind("tax-id").jurisdiction("US").id("12-3456789"),
 //!     ])
 //!     .name("Northwind")
+//!     .codes(["naics:541370"])
+//!     .tags(["land survey"])
 //!     .files(["Northwind/"])
 //! }
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
+//!
+//! `codes` and `tags` say what kind of business it is ([`super::classification`]): standard codes as scheme:code and
+//! free words; a company's `product()` takes product schemes only (unspsc, gs1, hs). The compliance register matches an
+//! industry's obligations against its business codes (naics, nace …).
 //!
 //! The reader gives back the document the apps use: the company itself, or an RFC's or a case's `{"id"?, "draft"}`.
 //! The standard's parts REF their files (the journal stays hledger, the cap table Open Cap Table Format); the company
@@ -37,6 +43,7 @@ pub use super::company_profile::{address, listing, owner, stock, ProfileAttrs};
 use super::company_governance::{governance_of, GOVERNANCE_TAGS};
 use super::company_deals::{deals_of, DEALS_TAGS};
 use super::element::{attributes, elements, fn_name, rust_name};
+use super::classification::{classification_problem, PRODUCT_SCHEMES};
 use super::business_finance::{finance_of, COMPANY_FINANCE_MANY, COMPANY_FINANCE_ONE, FINANCE_TAGS};
 use super::people_ops::{team_of, PEOPLE_OPS_TAGS};
 use super::facts::fact_marker;
@@ -100,7 +107,7 @@ elements! {
 attributes! {
     /// The fields of a company, an RFC and a case, chained on their elements.
     pub trait BusinessAttrs {
-        name; about; postal_address; files; dashboard;
+        name; about; codes; tags; postal_address; files; dashboard;
         jurisdiction; form; tax_classification; formed; fiscal_year_end; ids; operates_in; conditions;
         kind; id; issued; expires; file; journal; ocf; folder;
         procedure; title; body; target; engine_json; summary;
@@ -146,7 +153,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
     TagSpec {
         tag: "Company",
         // `website` is the legal profile's (company_profile.rs).
-        props: &[("name", Text), ("about", Text), ("postalAddress", Text), ("files", Texts), ("dashboard", Text), ("website", Text)],
+        props: &[("name", Text), ("about", Text), ("codes", Texts), ("tags", Texts), ("postalAddress", Text), ("files", Texts), ("dashboard", Text), ("website", Text)],
         required: &["name"],
         one: &[("entity", "Entity"), ("books", "Books"), ("captable", "CapTable"), ("people", "People"), ("calendar", "Calendar"), ("matters", "Matters"), ("team", "Team"), ("compliance", "Compliance"), ("relationships", "Relationships"), ("pipeline", "Pipeline")],
         many: &[("registrations", "Registration"), ("subsidiaries", "Subsidiary"), ("papers", "Paper"), ("rounds", "Round"), ("registeredAgents", "RegisteredAgent"), ("addresses", "Address"), ("listings", "Listing"), ("stock", "Stock"), ("owners", "Owner"), ("brands", "Brand"),
@@ -207,7 +214,7 @@ const BUSINESS_TAGS: &[TagSpec] = &[
     spec("Signature", &[("party", Text), ("signer", Text), ("capacity", Text), ("date", Text), ("method", Text), ("evidence", Text)], &["party"]),
     spec("Version", &[("file", Text), ("date", Text), ("note", Text)], &["file"]),
     spec("Brand", &[("file", Text)], &["file"]),
-    spec("Product", &[("id", Text), ("name", Text), ("about", Text), ("maker", Text), ("seller", Text), ("status", Text), ("file", Text)], &["name"]),
+    spec("Product", &[("id", Text), ("name", Text), ("about", Text), ("codes", Texts), ("tags", Texts), ("maker", Text), ("seller", Text), ("status", Text), ("file", Text)], &["name"]),
     spec("Relationships", &[("file", Text)], &["file"]),
     TagSpec {
         tag: "Rfc",
@@ -377,8 +384,17 @@ fn or_null(v: Option<&Json>) -> Json {
     v.cloned().unwrap_or(Json::Null)
 }
 
-/// A company document from a `company()` (docs/formats.md § companies).
-pub fn company_of(node: &BusinessNode) -> Json {
+/// A node's `codes` and `tags`, checked (docs/formats.md § classification): only what it writes.
+fn classified_fields(node: &BusinessNode, schemes: Option<&[&str]>, at: &str) -> Result<Vec<(String, Json)>, String> {
+    if let Some(problem) = classification_problem(node.prop("codes"), node.prop("tags"), schemes) {
+        return Err(format!("{at} {problem}"));
+    }
+    Ok(["codes", "tags"].iter().filter_map(|k| node.prop(k).map(|v| (k.to_string(), v.clone()))).collect())
+}
+
+/// A company document from a `company()` (docs/formats.md § companies). A code or tag out of its grammar is refused.
+pub fn company_of(node: &BusinessNode) -> Result<Json, String> {
+    let classification = classified_fields(node, None, "company()")?;
     let entity = match node.one("entity") {
         None => Json::Null,
         Some(e) => {
@@ -461,14 +477,25 @@ pub fn company_of(node: &BusinessNode) -> Json {
     };
     let brands: Vec<Json> = node.many("brands").iter().map(|x| Json::Obj(x.props.clone())).collect();
     let company = if brands.is_empty() { company } else { company.with("brands", brands) };
-    let products: Vec<Json> = node.many("products").iter().map(|x| Json::Obj(x.props.clone())).collect();
+    let products: Vec<Json> = node
+        .many("products")
+        .iter()
+        .map(|x| {
+            let at = format!("product().name({})", or_null(x.prop("name")).text());
+            classified_fields(x, Some(PRODUCT_SCHEMES), &at).map(|_| Json::Obj(x.props.clone()))
+        })
+        .collect::<Result<_, _>>()?;
     let company = if products.is_empty() { company } else { company.with("products", products) };
     let company = match node.one("relationships").and_then(|n| n.prop("file")) {
         Some(file) => company.with("relationships", file.clone()),
         None => company,
     };
     let company = governance_of(node, company);
-    deals_of(node, company)
+    let mut company = deals_of(node, company);
+    for (k, v) in classification {
+        company.set(&k, v);
+    }
+    Ok(company)
 }
 
 /// `{"id"?, "draft"}`: the id once the contract opened the draft (or it was filed).
@@ -513,7 +540,7 @@ pub fn case_of(node: &BusinessNode) -> Json {
 fn declare(root: El) -> Result<Declared, String> {
     let node = read_business_node(&root)?;
     let (format, document) = match root.tag {
-        "Company" => ("company", company_of(&node)),
+        "Company" => ("company", company_of(&node)?),
         "Rfc" => ("rfc", rfc_of(&node)),
         _ => ("case", case_of(&node)),
     };

@@ -6,6 +6,15 @@ promises nothing about the next one: read this file before you change the tag yo
 
 ## Unreleased
 
+Changed (a company file that wrote `compliance().industries(…)` needs an edit)
+
+- Classification (`classification.rs`; CommandAGI's docs/formats.md § classification): `company()`, a company's `product()`
+  and a `products::product()` take `codes` (standard codes as `scheme:code`: business schemes naics, nace, isic, sic, anzsic, jsic;
+  product schemes unspsc, gs1, hs) and `tags` (free words, lower case, trimmed). A code of an unknown scheme or out of its
+  scheme's grammar is refused by name; a product takes product schemes only. `compliance().industries(…)` is removed: write the
+  codes on the company (`company([…]).codes(["naics:541370"])`); the register reads the company's business codes.
+  `business::company_of` returns `Result<Json, String>`.
+
 Changed (a song written before this needs an edit)
 
 - The sound kernel's presets `nylonGuitar`, `steelGuitar`, `electricBass`, `harp`, `grandPiano`, `pianoFelt`, `violin`, `viola`, `cello`, `doubleBass`, `marimba`, `vibraphone`, `glockenspiel`, `flute`, `clarinet`, `saxophone`, `trumpet`, `electricPiano` and `pipeOrgan` are tones measured on real instruments, of the kind `measured`. A song that names

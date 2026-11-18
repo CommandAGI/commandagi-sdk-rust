@@ -14,17 +14,21 @@
 //!     .name("Helmet files")
 //!     .kind("digital")
 //!     .status("active")
+//!     .codes(["unspsc:43232100"])
+//!     .tags(["3d printing", "helmet"])
 //! }
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
 //!
-//! `kind` is `physical` (`shipping` is its policy, required) or `digital` (each variant names the `file` it sells; no
+//! `codes` (product schemes: unspsc, gs1, hs) and `tags` say what kind of product it is ([`super::classification`];
+//! docs/formats.md § classification). `kind` is `physical` (`shipping` is its policy, required) or `digital` (each variant names the `file` it sells; no
 //! shipping, weight, stock or deposit). A physical variant with no `stock` is made to order. A `deposit`
 //! (`{"percent": 1..99}` or `{"cents": n}`, at least 50 and less than the price) makes a variant a pre-order. A
 //! `discount` takes `percent` or `amount_cents` off, between `starts_at` and `ends_at` (ISO 8601; a date-time with no
 //! offset is UTC), for at most `usage_limit` orders. A run gives back `{format: "product", document, sources}` beside an
 //! empty graph; `sources` names each variant's site by its sku (`variant#helmet-stl`).
 
+use super::classification::{classification_problem, PRODUCT_SCHEMES};
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
 use super::{Declared, Family};
@@ -42,7 +46,7 @@ elements! {
 attributes! {
     /// The fields of a product, of its variants and of its discounts, chained on their elements.
     pub trait ProductsAttrs {
-        name; kind; slug; subtitle; description; images; status; shipping; fulfilment; quantity_terms; embodiment_kind; tax_code;
+        name; kind; slug; subtitle; description; images; status; shipping; fulfilment; quantity_terms; embodiment_kind; tax_code; codes; tags;
         sku; price_cents; compare_at_cents; stock; options; weight_grams; file; deposit;
         code; percent; amount_cents; starts_at; ends_at; usage_limit;
     }
@@ -52,7 +56,7 @@ pub(crate) const FAMILY: Family = Family { module: "products", roots: &["product
 
 pub const PRODUCT_KINDS: &[&str] = &["physical", "digital"];
 pub const PRODUCT_STATUSES: &[&str] = &["draft", "active", "archived"];
-pub const PRODUCT_FIELDS: &[&str] = &["name", "kind", "slug", "subtitle", "description", "images", "status", "shipping", "fulfilment", "quantityTerms", "embodimentKind", "taxCode"];
+pub const PRODUCT_FIELDS: &[&str] = &["name", "kind", "slug", "subtitle", "description", "images", "status", "shipping", "fulfilment", "quantityTerms", "embodimentKind", "taxCode", "codes", "tags"];
 pub const VARIANT_FIELDS: &[&str] = &["sku", "name", "priceCents", "compareAtCents", "stock", "options", "weightGrams", "file", "deposit"];
 pub const DISCOUNT_FIELDS: &[&str] = &["code", "percent", "amountCents", "startsAt", "endsAt", "usageLimit"];
 
@@ -393,6 +397,14 @@ pub fn product_of(t: &DocTree) -> Result<Json, String> {
             return Err(format!("{at} taxCode is a Stripe product tax code like txcd_99999999, not {}", c.text()));
         }
         out.set("taxCode", c.clone());
+    }
+    if let Some(problem) = classification_problem(t.attr_of("codes"), t.attr_of("tags"), Some(PRODUCT_SCHEMES)) {
+        return Err(format!("{at} {problem}"));
+    }
+    for k in ["codes", "tags"] {
+        if let Some(v) = t.attr_of(k) {
+            out.set(k, v.clone());
+        }
     }
     let variants: Vec<&DocTree> = t.children.iter().filter(|c| c.tag == "variant").collect();
     // A file not finished yet may hold none; the checkout refuses a product that sells nothing.

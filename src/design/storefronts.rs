@@ -17,8 +17,9 @@
 //! ```
 //!
 //! The holder is the account whose Drive holds the file, never an attribute. `offer().name(…).kind("service")` is one
-//! offer, by its name, with `price("25.00 USD")`, `unit`, classification `codes` (`<scheme>:<code>`) and `tags`.
+//! offer, by its name, with `price("25.00 USD")`, `unit`, classification `codes` (product schemes, [`super::classification`]) and `tags`.
 
+use super::classification::{classification_problem, PRODUCT_SCHEMES};
 use super::documents::{declare_document, DocTree, TagRule, Vocabulary};
 use super::element::{attributes, elements};
 use super::{Declared, Family};
@@ -94,14 +95,6 @@ fn is_price(s: &str) -> bool {
     digits(whole) && frac.map_or(true, digits) && currency.len() == 3 && currency.bytes().all(|c| c.is_ascii_uppercase())
 }
 
-fn is_code(s: &str) -> bool {
-    let Some((scheme, code)) = s.split_once(':') else { return false };
-    !scheme.is_empty()
-        && scheme.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
-        && !code.is_empty()
-        && code.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'-')
-}
-
 fn optional(t: &DocTree, k: &str, max: usize, at: &str, out: Json) -> Result<Json, String> {
     match t.attr_of(k) {
         None => Ok(out),
@@ -139,17 +132,14 @@ fn offer_of(c: &DocTree) -> Result<Json, String> {
         }
     }
     out = optional(c, "unit", 40, &at, out)?;
-    if let Some(v) = c.attr_of("codes") {
-        let Some(list) = texts(v, is_code) else {
-            return Err(format!("{at} codes is a list of at most 20 classification codes, each <scheme>:<code> (\"unspsc:43211500\"), not {}", v.text()));
-        };
-        out = out.with("codes", Json::Arr(list));
+    // What kind of offer it is (super::classification): product schemes and free tags, by the one grammar.
+    if let Some(problem) = classification_problem(c.attr_of("codes"), c.attr_of("tags"), Some(PRODUCT_SCHEMES)) {
+        return Err(format!("{at} {problem}"));
     }
-    if let Some(v) = c.attr_of("tags") {
-        let Some(list) = texts(v, |s| !s.trim().is_empty() && s.encode_utf16().count() <= 40) else {
-            return Err(format!("{at} tags is a list of at most 20 short texts (at most 40 each), not {}", v.text()));
-        };
-        out = out.with("tags", Json::Arr(list));
+    for k in ["codes", "tags"] {
+        if let Some(v) = c.attr_of(k) {
+            out = out.with(k, v.clone());
+        }
     }
     Ok(out)
 }

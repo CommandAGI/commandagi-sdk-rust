@@ -85,6 +85,10 @@ fn a_product_that_does_not_read_is_refused_with_why() {
         (ph(vec![v()]).fulfilment("ship"), "fulfilment is an object"),
         (ph(vec![v()]).with_attr("colour", "red"), "colour is not read"),
         (ph(vec![v()]).tax_code("txcd_1"), "taxCode is a Stripe product tax code like txcd_99999999"),
+        // Classification (docs/formats.md § classification): product schemes only, tags as they are kept.
+        (ph(vec![v()]).codes(["naics:541511"]), r#""naics:541511" is a business code; here a code is of unspsc, gs1, hs"#),
+        (ph(vec![v()]).codes(["unspsc:432"]), "a UNSPSC code is 2, 4, 6 or 8 digits"),
+        (ph(vec![v()]).tags(["3D Printing"]), r#"write the tag as "3d printing""#),
         (ph(vec![v(), discount().code("a b c").percent(5)]), "code is letters, digits, - and _ (3 to 40)"),
         (ph(vec![v(), discount().code("SAVE5")]), "takes off one of percent or amountCents, not neither"),
         (ph(vec![v(), d().percent(5)]), "takes off one of percent or amountCents, not both"),
@@ -99,6 +103,8 @@ fn a_product_that_does_not_read_is_refused_with_why() {
         let said = declare(g).unwrap_err();
         assert!(said.contains(why), "{why}: {said}");
     }
+    let (_, classified, _) = document(ph(vec![v()]).codes(["unspsc:43232100", "hs:847989"]).tags(["robotics"]));
+    assert_eq!((classified.get("codes"), classified.get("tags")), (Some(&Json::parse(r#"["unspsc:43232100", "hs:847989"]"#).unwrap()), Some(&Json::parse(r#"["robotics"]"#).unwrap())));
     let twice = declare(ph(vec![v(), v()])).unwrap_err();
     assert!(twice.contains(r#"two variant() in product() have sku "a""#), "{twice}");
     declare(ph(vec![v(), d().starts_at("2026-12-01").ends_at("2026-11-30T23:00:00-03:00")])).expect("the offset moves the end past the start");
