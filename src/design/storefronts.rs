@@ -11,12 +11,15 @@
 //!         .venue("digikey")
 //!         .seller("DigiKey")
 //!         .url("https://www.digikey.com")
+//!         .checkout("agent")
 //!         .hold("10 minutes")
 //! }
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
 //!
-//! The holder is the account whose Drive holds the file, never an attribute. `offer().name(…).kind("service")` is one
+//! The holder is the account whose Drive holds the file, never an attribute. `checkout` says who completes a relisted
+//! purchase: `"agent"` (the holder buys or books it for the person) or `"seller"` (the person is sent to the seller's own
+//! checkout). `offer().name(…).kind("service")` is one
 //! offer, by its name, with `price("25.00 USD")`, `unit`, classification `codes` (product schemes, [`super::classification`]) and `tags`.
 
 use super::classification::{classification_problem, PRODUCT_SCHEMES};
@@ -37,13 +40,14 @@ elements! {
 attributes! {
     /// The fields of a storefront and of its offers, chained on their elements.
     pub trait StorefrontsAttrs {
-        name; venue; seller; seller_record; seller_id; url; source; hold; listings; read; kind; price; unit; codes; tags;
+        name; venue; seller; seller_record; seller_id; url; source; checkout; hold; listings; read; kind; price; unit; codes; tags;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "storefronts", roots: &["Storefront"], declare };
 
-pub const STOREFRONT_FIELDS: &[&str] = &["name", "venue", "seller", "sellerRecord", "sellerId", "url", "source", "hold"];
+pub const STOREFRONT_FIELDS: &[&str] = &["name", "venue", "seller", "sellerRecord", "sellerId", "url", "source", "checkout", "hold"];
+pub const STOREFRONT_CHECKOUTS: &[&str] = &["agent", "seller"];
 pub const STOREFRONT_MIRROR_FIELDS: &[&str] = &["listings", "read"];
 pub const STOREFRONT_OFFER_FIELDS: &[&str] = &["name", "kind", "price", "unit", "codes", "tags"];
 
@@ -167,6 +171,12 @@ pub fn storefront_of(t: &DocTree) -> Result<Json, String> {
         }
     }
     out = optional(t, "source", 500, &at, out)?;
+    if let Some(c) = t.attr_of("checkout") {
+        match c {
+            Json::Str(s) if STOREFRONT_CHECKOUTS.contains(&s.as_str()) => out = out.with("checkout", Json::Str(s.clone())),
+            _ => return Err(format!("{at} checkout is agent or seller, not {}", c.text())),
+        }
+    }
     if let Some(h) = t.attr_of("hold") {
         match h {
             Json::Str(s) if is_hold(s) => out = out.with("hold", Json::Str(s.clone())),

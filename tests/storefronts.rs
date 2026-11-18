@@ -9,7 +9,7 @@ fn a_relisted_store_is_its_document() {
     let mirror = offers().listings("Inventory/listings.csv").read("Inventory/read.mjs");
     let site = mirror.source_json().unwrap();
     let Declared::Document { format, document, sources } = declare(
-        storefront([mirror]).name("DigiKey").venue("digikey").seller("DigiKey").url("https://www.digikey.com").hold("10 minutes"),
+        storefront([mirror]).name("DigiKey").venue("digikey").seller("DigiKey").url("https://www.digikey.com").checkout("agent").hold("10 minutes"),
     )
     .unwrap() else {
         panic!("a storefront is a document")
@@ -17,7 +17,7 @@ fn a_relisted_store_is_its_document() {
     assert_eq!(format, "storefront");
     assert_eq!(
         document,
-        Json::parse(r#"{"name": "DigiKey", "venue": "digikey", "seller": "DigiKey", "url": "https://www.digikey.com", "hold": "10 minutes", "mirror": {"listings": "Inventory/listings.csv", "read": "Inventory/read.mjs"}, "offers": []}"#).unwrap()
+        Json::parse(r#"{"name": "DigiKey", "venue": "digikey", "seller": "DigiKey", "url": "https://www.digikey.com", "checkout": "agent", "hold": "10 minutes", "mirror": {"listings": "Inventory/listings.csv", "read": "Inventory/read.mjs"}, "offers": []}"#).unwrap()
     );
     assert_eq!(sources.get("Offers"), Some(&site));
 }
@@ -48,6 +48,7 @@ fn a_storefront_that_does_not_read_is_refused_with_why() {
     let s = |kids: Vec<El>| storefront(kids).name("Shop").venue("ebay").seller("A seller");
     for (el, why) in [
         (storefront([]).name("Shop").venue("eBay").seller("A seller"), "venue is the platform's word"),
+        (s(vec![]).checkout("cart"), "checkout is agent or seller"),
         (s(vec![]).hold("ten minutes"), "hold is a term like \"10 minutes\""),
         (s(vec![]).url("http://x"), "url is an https:// address"),
         (s(vec![offer().name("A").kind("service").price("25 dollars")]), "price is an amount and an ISO currency"),

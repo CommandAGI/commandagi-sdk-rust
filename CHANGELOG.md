@@ -6,6 +6,11 @@ promises nothing about the next one: read this file before you change the tag yo
 
 ## Unreleased
 
+Added
+
+- `storefront().checkout(…)`: who completes a relisted purchase, `agent` (the holder buys or books it for the person, and its price holds)
+  or `seller` (the person is sent to the seller's own checkout; no hold). Any other value is refused.
+
 Changed (a company file that wrote `compliance().industries(…)` needs an edit)
 
 - Classification (`classification.rs`; CommandAGI's docs/formats.md § classification): `company()`, a company's `product()`
