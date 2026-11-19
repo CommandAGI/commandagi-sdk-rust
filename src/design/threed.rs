@@ -30,7 +30,7 @@
 //! ```text
 //! part([…]).name(…) | assembly([…]).name(…)     the document; an assembly opens in the assembly mode
 //! part([…]).builtin_planes([…])                 the built-in planes the document has (absent: all three; []: none)
-//! parameter().name().value().unit().comment().min().max().step().bindings(json(r#"[{"target", "field"}]"#))
+//! parameter().name().value().expression().unit().comment().min().max().step().bindings(json(r#"[{"target", "field"}]"#))
 //! plane().id().name().origin().normal().x_axis()                      a datum plane
 //! FEATURE().id().name() …fields                  a feature: the function is its type (extrude, revolve, fillet,
 //!                                                chamfer, hole, linear_pattern, box_, import, …); `.suppressed(…)`,
@@ -276,7 +276,7 @@ attributes! {
         colormap; colors; comment; component; conductor; construction; consumes; control_points; corner; count; count2;
         cupsize; currency; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
         draft_angle; drill_mm; dynamics; edge; edge_weights; edges; efficiency; electrical; electron; elements; end; engineering; entities;
-        environment; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
+        environment; expression; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
         footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; home; home_travel; host; id; importer; indices;
         input; inputs; instruction; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
         level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; minutes; mode;
@@ -452,7 +452,7 @@ pub const BUILTIN_PLANES: &[(&str, &str, [f64; 3], [f64; 3], [f64; 3], &str)] = 
 ];
 /// The document's view fields a root element may hold (the graph's `meta`), beside `name`.
 const VIEW_ATTRS: &[&str] = &["semanticVisibility"];
-const PARAM_FIELDS: &[&str] = &["value", "unit", "comment", "min", "max", "step", "tolerance"];
+const PARAM_FIELDS: &[&str] = &["value", "expression", "unit", "comment", "min", "max", "step", "tolerance"];
 /// Document fields a slot may not hold: they have elements of their own, or are the graph itself.
 const NOT_SLOTS: &[&str] = &[
     "id", "name", "units", "planes", "features", "parameters", "presentation", "isAssembly", "bodyMeta", "semanticVisibility", "drawings", "checks",

@@ -66,3 +66,9 @@ fn a_parameters_tolerance_is_read_into_the_graph() {
         assert!(err.ends_with(said), "{err}");
     }
 }
+
+#[test]
+fn a_parameters_expression_is_read_into_the_graph() {
+    let g = doc(vec![parameter().name("depth").value(9).expression("wall * 3")]).unwrap();
+    assert_eq!(g.get("nodes").and_then(|n| n.get("depth")).and_then(|n| n.get("inputs")).map(Json::text), Some(r#"{"value":9,"expression":"wall * 3"}"#.to_string()));
+}
