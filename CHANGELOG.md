@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `commandagi::design::factory`: a factory in a design's scene, the `flow` system: `check_flow_system` and
+  `machines_for`, the same as the TypeScript SDK's `factory-flow.ts`.
 - `storefront().banner(…)` and `company().banner(…)`: the banner of the profile, a ref to a picture (relative to the file,
   or an address) or a colour (`#1f6feb`). A file that names none keeps the colour its name gives.
 - `storefront().checkout(…)`: who completes a relisted purchase, `agent` (the holder buys or books it for the person, and its price holds)

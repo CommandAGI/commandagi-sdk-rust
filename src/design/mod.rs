@@ -48,6 +48,7 @@ pub mod element;
 pub mod evals;
 pub mod facts;
 pub mod fab;
+pub mod factory;
 pub mod firmware;
 pub mod flows;
 pub mod infra;
