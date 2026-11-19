@@ -3785,6 +3785,8 @@ pub enum ConstraintKind {
     Distance,
     /// `"angle"`
     Angle,
+    /// `"concentric"`
+    Concentric,
     /// `"horizontal"`
     Horizontal,
     /// `"vertical"`
@@ -3807,6 +3809,10 @@ pub enum ConstraintKind {
     VerticalDistance,
     /// `"radius"`
     Radius,
+    /// `"collinear"`
+    Collinear,
+    /// `"diameter"`
+    Diameter,
 }
 
 impl ToJson for ConstraintKind {
@@ -3817,6 +3823,7 @@ impl ToJson for ConstraintKind {
             ConstraintKind::Perpendicular => "perpendicular",
             ConstraintKind::Distance => "distance",
             ConstraintKind::Angle => "angle",
+            ConstraintKind::Concentric => "concentric",
             ConstraintKind::Horizontal => "horizontal",
             ConstraintKind::Vertical => "vertical",
             ConstraintKind::Tangent => "tangent",
@@ -3828,6 +3835,8 @@ impl ToJson for ConstraintKind {
             ConstraintKind::HorizontalDistance => "horizontalDistance",
             ConstraintKind::VerticalDistance => "verticalDistance",
             ConstraintKind::Radius => "radius",
+            ConstraintKind::Collinear => "collinear",
+            ConstraintKind::Diameter => "diameter",
         })
     }
 }
