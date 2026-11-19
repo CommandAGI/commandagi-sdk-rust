@@ -23,7 +23,7 @@ use super::Json;
 /// Each part's fields: the ones it needs, then the ones it may have. One table, the same in the three SDKs.
 pub const FACTORY_FIELDS: &[(&str, &[&str], &[&str])] = &[
     ("system", &["id", "kind", "products", "stations", "sources", "sinks"], &["seed", "time_scale", "window_s", "shifts", "record"]),
-    ("station", &["id", "machines", "cycle_s", "buffer"], &["label", "at", "cycle_cv", "batch", "setup_s", "availability", "mtbf_s", "mttr_s", "yield"]),
+    ("station", &["id", "machines", "cycle_s", "buffer"], &["label", "at", "cycle_cv", "batch", "setup_s", "availability", "mtbf_s", "mttr_s", "yield", "energy_j", "cell"]),
     ("product", &["id", "route", "sink"], &["label", "demand_per_period", "color"]),
     ("source", &["id", "product"], &["label", "at", "per_hour", "arrivals"]),
     ("sink", &["id"], &["label", "at"]),
@@ -36,6 +36,7 @@ const NUMBERS: &[(&str, &str)] = &[
     ("availability", "the share of time it is not under repair, above 0 and at most 1"), ("mtbf_s", "the mean operating seconds between failures, more than 0"),
     ("mttr_s", "the mean seconds a repair takes, more than 0"), ("per_hour", "the parts it releases in a working hour, more than 0"),
     ("demand_per_period", "the parts wanted in one shift period, more than 0"),
+    ("energy_j", "the joules one batch takes, 0 or more"),
 ];
 
 fn is_number(v: &Json) -> bool {
