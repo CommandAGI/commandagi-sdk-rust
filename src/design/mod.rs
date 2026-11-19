@@ -75,6 +75,7 @@ pub mod postal;
 pub(crate) mod read;
 pub mod records;
 pub mod routing;
+pub mod scene_agents;
 pub mod schema;
 pub mod schematic;
 pub mod scripts;
