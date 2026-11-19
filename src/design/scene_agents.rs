@@ -13,6 +13,9 @@
 //! check_scene_agents(&scene).unwrap();
 //! ```
 //!
+//! An agent's `model` is `<route>/<model>` on a route of the agent runtime (openrouter, deepinfra, deepseek, dashscope);
+//! absent, `deepseek/deepseek-flash`.
+//!
 //! `check_scene_agents` refuses what the engine refuses, in its words: an unknown field, a malformed or repeated id, an
 //! id that is a policy's principal, a unit that is no robot of the scene nor a joint of one, an empty text.
 
