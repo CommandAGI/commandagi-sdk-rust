@@ -2740,6 +2740,9 @@ pub struct DatumPlaneProps {
     /// Unit: mm.
     /// Default: `10`.
     pub offset: Option<f64>,
+    /// A plane at an angle: the base turned about its own x axis (through its origin) by this angle, before the offset, which then runs along the turned normal.
+    /// Unit: rad.
+    pub angle: Option<f64>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -2756,6 +2759,9 @@ impl ToJson for DatumPlaneProps {
         o.set("base", self.base.to_json());
         if let Some(v) = &self.offset {
             o.set("offset", v.to_json());
+        }
+        if let Some(v) = &self.angle {
+            o.set("angle", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
