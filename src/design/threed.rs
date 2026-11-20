@@ -243,6 +243,12 @@ elements! {
     full_round = "fullRound": leaf;
     /// Sheet-metal rules: `sheet_metal().id("rules").thickness(2).bend_radius(2).k_factor(0.44).relief("rectangular")`.
     sheet_metal = "sheetMetal": leaf;
+    /// One corner's relief: `sheet_corner().id("c1").flanges(json(r#"["front", "side"]"#)).relief("round")`.
+    sheet_corner = "sheetCorner": leaf;
+    /// A thin-walled part made sheet metal, from a face of its base wall.
+    sheet_convert = "sheetConvert": leaf;
+    /// The bends an unfold flattened, bent again: `sheet_refold().id("r").unfold("u")`.
+    sheet_refold = "sheetRefold": leaf;
     /// A base flange: a closed sketch profile made as thick as the rules' sheet.
     sheet_base = "sheetBase": leaf;
     sheet_flange = "sheetFlange": leaf;
