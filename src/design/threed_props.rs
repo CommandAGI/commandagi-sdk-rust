@@ -4090,7 +4090,7 @@ pub struct FrameMemberProps {
     pub segments: Option<Vec<String>>,
     /// The section.
     /// Default: `"squareTube"`.
-    pub profile: Option<FrameProfile>,
+    pub section: Option<FrameProfile>,
     /// The standard size, as the profile library names it (width × height × wall, or diameter × wall).
     /// Default: `"40x40x3"`.
     pub size: Option<String>,
@@ -4117,8 +4117,8 @@ impl ToJson for FrameMemberProps {
         if let Some(v) = &self.segments {
             o.set("segments", v.to_json());
         }
-        if let Some(v) = &self.profile {
-            o.set("profile", v.to_json());
+        if let Some(v) = &self.section {
+            o.set("section", v.to_json());
         }
         if let Some(v) = &self.size {
             o.set("size", v.to_json());
