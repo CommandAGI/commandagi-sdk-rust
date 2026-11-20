@@ -288,6 +288,10 @@ elements! {
     constraint: leaf;
     /// A projection of a feature's edge into the sketch.
     projection: leaf;
+    /// An equation curve: `.x("…").y("…").from(…).to(…).points(…)`, x and y arithmetic of t.
+    equation: leaf;
+    /// A text: `.text(…).font(…).anchor(…).along(…).contours(…)`, placed by two points of the sketch.
+    text: leaf;
 }
 
 attributes! {
@@ -296,10 +300,10 @@ attributes! {
         a; actuator; african; age; align_to_path; anchor; angle; animation; annotations; area; armatures; asian; assembly;
         at; axis; axis_b; b; base; bend_radius; bias; bindings; bodies; body_id; bond_orders; bonds; both_sides;
         break_after; builtin; builtin_planes; by; cap; caucasian; cell; center; centreline; chains; closed; collapsed;
-        colormap; colors; comment; component; conductor; construction; consumes; control_points; corner; count; count2;
+        colormap; colors; comment; component; conductor; construction; consumes; contours; control_points; corner; count; count2;
         cupsize; currency; data; decals; depth; diameter; dims; dir; directed; direction; direction2; distance; distance2;
         draft_angle; drill_mm; dynamics; edge; edge_weights; edges; efficiency; electrical; electron; elements; end; engineering; entities;
-        environment; expression; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus;
+        environment; expression; fabrication; face; faces; factor; fasteners; feature; file_id; file_name; firmness; fixed; fixture; focus; font;
         footprint; format; from; gender; graph; groups; head_depth; head_diameter; height; hidden_lines; hole_callouts; home; home_travel; host; id; importer; indices;
         input; inputs; instruction; internal; iso; join; k_factor; keep_original; kind; knots; label; layer; layers; length;
         level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; minutes; mode;
@@ -465,7 +469,7 @@ pub const THREED_ANNOTATIONS: &[&str] =
 /// Tags with a meaning of their own: never a `feature().type_(…)`.
 const NOT_FEATURES: &[&str] = &[
     "feature", "part", "assembly", "parameter", "plane", "body", "slot", "joint", "contact", "mate", "sheet", "check", "accept", "permitted", "fastener", "tactile", "port", "item", "assemble", "library", "product", "unit", "capture", "view", "point", "constraint",
-    "projection", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input", "linearDimension", "radialDimension", "sizeDimension",
+    "projection", "equation", "text", "line", "circle", "arc", "spline", "ellipse", "ellipseArc", "input", "linearDimension", "radialDimension", "sizeDimension",
     "angularDimension", "note", "datumFeature", "datumTarget", "featureControlFrame", "surfaceFinish",
 ];
 /// A sketch's segment kinds, by tag.
@@ -579,6 +583,7 @@ fn keys(entries: &[(String, Json)]) -> Json {
 /// The sketch a sketch element's children declare, and where each entity was written.
 fn sketch_of(el: &El) -> Result<(Json, Sources), String> {
     let (mut points, mut segments, mut constraints, mut projections) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut equations, mut texts): (Vec<(String, Json)>, Vec<(String, Json)>) = (Vec::new(), Vec::new());
     let mut sources = Sources::new();
     let mut taken: Vec<String> = Vec::new();
     for child in el.child_elements() {
@@ -619,9 +624,30 @@ fn sketch_of(el: &El) -> Result<(Json, Sources), String> {
         } else if child.tag == "projection" {
             let id = claim("projection")?;
             projections.push((id, Json::Obj(fields(child, &[])?)));
+        } else if child.tag == "equation" {
+            let id = claim("equation")?;
+            let f = fields(child, &[])?;
+            let get = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+            let num = |k: &str| matches!(get(k), Some(Json::Num(_)));
+            if !matches!(get("x"), Some(Json::Str(_))) || !matches!(get("y"), Some(Json::Str(_))) || !num("from") || !num("to") || !num("points") {
+                return Err(format!("{} {}: an equation curve has x and y (arithmetic of t), from, to and points", at(el), at(child)));
+            }
+            let mut e = vec![("id".to_string(), Json::from(id.as_str()))];
+            e.extend(f);
+            equations.push((id, Json::Obj(e)));
+        } else if child.tag == "text" {
+            let id = claim("text")?;
+            let f = fields(child, &[])?;
+            let get = |k: &str| f.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+            if !matches!(get("text"), Some(Json::Str(_))) || !matches!(get("anchor"), Some(Json::Str(_))) || !matches!(get("along"), Some(Json::Str(_))) || !matches!(get("contours"), Some(Json::Arr(_))) {
+                return Err(format!("{} {}: a text has its words, its anchor and along points and its contours", at(el), at(child)));
+            }
+            let mut e = vec![("id".to_string(), Json::from(id.as_str()))];
+            e.extend(f);
+            texts.push((id, Json::Obj(e)));
         } else {
             let segs: Vec<String> = SKETCH_SEGMENTS.iter().map(|s| fn_name(s)).collect();
-            return Err(format!("{}: {}() is not read in a sketch (point, {}, constraint, projection)", at(el), fn_name(child.tag), segs.join(", ")));
+            return Err(format!("{}: {}() is not read in a sketch (point, {}, constraint, projection, equation, text)", at(el), fn_name(child.tag), segs.join(", ")));
         }
     }
     for (id, s) in &segments {
@@ -646,6 +672,26 @@ fn sketch_of(el: &El) -> Result<(Json, Sources), String> {
         if let Json::Obj(entries) = &mut sketch {
             let at = entries.len() - 1;
             entries.insert(at, ("projections".into(), Json::Obj(projections)));
+        }
+    }
+    for (group, order, list) in [("equations", "equationOrder", equations), ("texts", "textOrder", texts)] {
+        if list.is_empty() {
+            continue;
+        }
+        if group == "texts" {
+            for (id, t) in &list {
+                for k in ["anchor", "along"] {
+                    let p = t.get(k).and_then(|p| p.as_str());
+                    if !p.is_some_and(|p| points.iter().any(|(q, _)| q == p)) {
+                        return Err(format!("{}: text {id}'s {k} names no point of the sketch", at(el)));
+                    }
+                }
+            }
+        }
+        sketch.set(order, keys(&list));
+        if let Json::Obj(entries) = &mut sketch {
+            let at = entries.len() - 1;
+            entries.insert(at, (group.into(), Json::Obj(list)));
         }
     }
     Ok((sketch, sources))

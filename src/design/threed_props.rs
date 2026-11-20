@@ -209,6 +209,8 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("point", "SketchPointProps"),
     ("constraint", "SketchConstraintProps"),
     ("projection", "SketchProjectionProps"),
+    ("equation", "SketchEquationProps"),
+    ("text", "SketchTextProps"),
     ("line", "LineProps"),
     ("circle", "CircleProps"),
     ("arc", "ArcProps"),
@@ -4490,6 +4492,71 @@ impl ToJson for SketchProjection {
     }
 }
 
+/// AN EQUATION CURVE: x(t) and y(t), arithmetic of `t` in the document's expression grammar (`../expressions.ts`: + - * / ^, sin, cos, sqrt, pi …), drawn as the spline through `points` even steps of t from `from` to `to`. The record is what the file holds; the spline and its points are made from it on every rebuild (their `from` names it), so editing the equation redraws the curve. A curve whose last point meets its first is closed.
+#[derive(Clone, Debug)]
+pub struct SketchEquation {
+    pub id: String,
+    /// The horizontal coordinate as arithmetic of `t`, in millimetres.
+    pub x: String,
+    /// The vertical coordinate as arithmetic of `t`, in millimetres.
+    pub y: String,
+    /// The first value of t.
+    pub from: f64,
+    /// The last value of t.
+    pub to: f64,
+    /// How many points the curve passes through, its ends included.
+    pub points: i64,
+    /// Drawn as construction (reference) geometry.
+    pub construction: Option<bool>,
+}
+
+impl ToJson for SketchEquation {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        o.set("x", self.x.to_json());
+        o.set("y", self.y.to_json());
+        o.set("from", self.from.to_json());
+        o.set("to", self.to.to_json());
+        o.set("points", self.points.to_json());
+        if let Some(v) = &self.construction {
+            o.set("construction", v.to_json());
+        }
+        o
+    }
+}
+
+/// A TEXT: the outlines of `text` in the typeface `font`, placed by two of the sketch's own points: `anchor`, the start of its baseline, and `along`, a letter height further along the baseline. The text's place, angle and size are then those points' (a dimension between them is the size; one on the line between them, the angle). `contours` are the outlines at a letter height of 1, baseline from the origin along +x, kept so the outlines are made again from the two points on every rebuild with no font at hand; the outline lines and points are made from them (their `from` names it). Changing the words or the typeface writes new contours.
+#[derive(Clone, Debug)]
+pub struct SketchText {
+    pub id: String,
+    /// The words.
+    pub text: String,
+    /// The typeface's id (the editor's bundled faces).
+    pub font: String,
+    /// The point the baseline starts at.
+    pub anchor: String,
+    /// The point one letter height along the baseline from `anchor`.
+    pub along: String,
+    /// Each closed outline as flat `[x0, y0, x1, y1, …]` at a letter height of 1.
+    pub contours: Vec<Vec<f64>>,
+}
+
+impl ToJson for SketchText {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        o.set("text", self.text.to_json());
+        o.set("font", self.font.to_json());
+        o.set("anchor", self.anchor.to_json());
+        o.set("along", self.along.to_json());
+        o.set("contours", self.contours.to_json());
+        o
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SketchSegmentLine {
     pub id: String,
@@ -4846,6 +4913,8 @@ pub enum ConstraintKind {
     PointLineDistance,
     /// `"arcLength"`
     ArcLength,
+    /// `"conicRho"`
+    ConicRho,
 }
 
 impl ToJson for ConstraintKind {
@@ -4872,6 +4941,7 @@ impl ToJson for ConstraintKind {
             ConstraintKind::Diameter => "diameter",
             ConstraintKind::PointLineDistance => "pointLineDistance",
             ConstraintKind::ArcLength => "arcLength",
+            ConstraintKind::ConicRho => "conicRho",
         })
     }
 }
@@ -4933,6 +5003,12 @@ pub struct Sketch {
     /// Live projections of model edges. Absent on a sketch that has none.
     pub projections: Option<Vec<(String, SketchProjection)>>,
     pub projection_order: Option<Vec<String>>,
+    /// Equation curves. Absent on a sketch that has none.
+    pub equations: Option<Vec<(String, SketchEquation)>>,
+    pub equation_order: Option<Vec<String>>,
+    /// Texts. Absent on a sketch that has none.
+    pub texts: Option<Vec<(String, SketchText)>>,
+    pub text_order: Option<Vec<String>>,
     pub segments: Vec<(String, SketchSegment)>,
     pub constraints: Vec<(String, SketchConstraint)>,
     pub point_order: Vec<String>,
@@ -4954,6 +5030,18 @@ impl ToJson for Sketch {
         }
         if let Some(v) = &self.projection_order {
             o.set("projectionOrder", v.to_json());
+        }
+        if let Some(v) = &self.equations {
+            o.set("equations", v.to_json());
+        }
+        if let Some(v) = &self.equation_order {
+            o.set("equationOrder", v.to_json());
+        }
+        if let Some(v) = &self.texts {
+            o.set("texts", v.to_json());
+        }
+        if let Some(v) = &self.text_order {
+            o.set("textOrder", v.to_json());
         }
         o.set("segments", self.segments.to_json());
         o.set("constraints", self.constraints.to_json());
@@ -8669,6 +8757,99 @@ impl SketchProjectionProps {
     #[track_caller]
     pub fn el(self) -> El {
         let mut el = El::new("projection");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// AN EQUATION CURVE: x(t) and y(t), arithmetic of `t` in the document's expression grammar (`../expressions.ts`: + - * / ^, sin, cos, sqrt, pi …), drawn as the spline through `points` even steps of t from `from` to `to`. The record is what the file holds; the spline and its points are made from it on every rebuild (their `from` names it), so editing the equation redraws the curve. A curve whose last point meets its first is closed.
+#[derive(Clone, Debug)]
+pub struct SketchEquationProps {
+    pub id: String,
+    /// The horizontal coordinate as arithmetic of `t`, in millimetres.
+    pub x: String,
+    /// The vertical coordinate as arithmetic of `t`, in millimetres.
+    pub y: String,
+    /// The first value of t.
+    pub from: f64,
+    /// The last value of t.
+    pub to: f64,
+    /// How many points the curve passes through, its ends included.
+    pub points: i64,
+    /// Drawn as construction (reference) geometry.
+    pub construction: Option<bool>,
+}
+
+impl ToJson for SketchEquationProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        o.set("x", self.x.to_json());
+        o.set("y", self.y.to_json());
+        o.set("from", self.from.to_json());
+        o.set("to", self.to.to_json());
+        o.set("points", self.points.to_json());
+        if let Some(v) = &self.construction {
+            o.set("construction", v.to_json());
+        }
+        o
+    }
+}
+
+impl SketchEquationProps {
+    /// The `equation` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("equation");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// A TEXT: the outlines of `text` in the typeface `font`, placed by two of the sketch's own points: `anchor`, the start of its baseline, and `along`, a letter height further along the baseline. The text's place, angle and size are then those points' (a dimension between them is the size; one on the line between them, the angle). `contours` are the outlines at a letter height of 1, baseline from the origin along +x, kept so the outlines are made again from the two points on every rebuild with no font at hand; the outline lines and points are made from them (their `from` names it). Changing the words or the typeface writes new contours.
+#[derive(Clone, Debug)]
+pub struct SketchTextProps {
+    pub id: String,
+    /// The words.
+    pub text: String,
+    /// The typeface's id (the editor's bundled faces).
+    pub font: String,
+    /// The point the baseline starts at.
+    pub anchor: String,
+    /// The point one letter height along the baseline from `anchor`.
+    pub along: String,
+    /// Each closed outline as flat `[x0, y0, x1, y1, …]` at a letter height of 1.
+    pub contours: Vec<Vec<f64>>,
+}
+
+impl ToJson for SketchTextProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        o.set("text", self.text.to_json());
+        o.set("font", self.font.to_json());
+        o.set("anchor", self.anchor.to_json());
+        o.set("along", self.along.to_json());
+        o.set("contours", self.contours.to_json());
+        o
+    }
+}
+
+impl SketchTextProps {
+    /// The `text` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("text");
         if let Json::Obj(entries) = self.to_json() {
             for (k, v) in entries {
                 el = el.with_attr(k, v);

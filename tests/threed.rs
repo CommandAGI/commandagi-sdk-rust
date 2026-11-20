@@ -865,3 +865,24 @@ fn groups_and_rollback_are_the_left_hand_lists() {
     assert!(bad(part(blocks()).name("P").rollback("z")).contains(r#"rollback: "z" is not a feature of this document"#));
     assert!(bad(part(blocks()).name("P").groups(json(r#"[{"id": "g", "name": "G", "members": ["z"]}]"#))).contains(r#"member "z" is not a feature of this document"#));
 }
+
+// A sketch's equation curve and text are records of it, read as written; a text names points of the sketch.
+#[test]
+fn an_equation_curve_and_a_text_are_records_of_the_sketch() {
+    let doc = |anchor: &str| {
+        part([sketch([
+            point().id("a").x(0).y(0),
+            point().id("b").x(8).y(0),
+            equation().id("eq").x("5 * cos(t)").y("5 * sin(t)").from(0).to(6.283185307179586).points(25),
+            text().id("t").text("VC").font("liberation-sans").anchor(anchor).along("b").contours(json("[[0, 0, 0.5, 0, 0.5, 0.7]]")),
+        ])
+        .id("s1")
+        .plane(json(r#"{"type": "datum", "plane": "plane_xy"}"#))])
+        .name("Marks")
+    };
+    let g = graph(doc("a"));
+    let sk = node(&g, "s1").get("inputs").and_then(|i| i.get("sketch")).unwrap();
+    assert_eq!(sk.get("equationOrder").unwrap().text(), r#"["eq"]"#);
+    assert_eq!(sk.get("textOrder").unwrap().text(), r#"["t"]"#);
+    assert!(bad(doc("nowhere")).contains("text t's anchor names no point of the sketch"));
+}
