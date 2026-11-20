@@ -305,7 +305,7 @@ attributes! {
         level; lib_id; limits; local_placement; material; material_groups; mates; max; members; min; minor_radius; minutes; mode;
         model_id; modifier; muscle; name; node_colors; node_groups; node_positions; node_sizes; node_types; normal;
         normals; nucleus; nurbs; offset; operation; optimization; order; origin; outward; overall_dimensions; pad; pad_diameter_mm;
-        pads; paint; params; parents; part; parts; path; pin; pitch; placement; planar; plane; point; point_size; points;
+        pads; paint; params; parents; part; parts; parts_list; path; pin; pitch; placement; planar; plane; point; point_size; points;
         polygons; position; positions; profile; profiles; projection; proportions; provenance; pull_direction; qty; quaternion;
         radii; radius; radius1; radius2; rate_per_hour; ref_; ref_a; ref_b; reference; refs; regions; render; representation; requires; reverse;
         right_handed; rings; rotate_angle; rotate_axis; rotation_deg; rotations; rule; ruled; scale; scale_x_y_z;
