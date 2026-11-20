@@ -213,6 +213,10 @@ elements! {
     path_pattern = "pathPattern": leaf;
     mirror: leaf;
     datum_plane = "datumPlane": leaf;
+    /// A construction axis: `datum_axis().id("a1").method("twoPoints").point(…).point2(…)`.
+    datum_axis = "datumAxis": leaf;
+    /// A construction point: `datum_point().id("q1").method("threePlanes").plane(…).plane2(…).plane3(…)`.
+    datum_point = "datumPoint": leaf;
     draft: leaf;
     hole: leaf;
     thread: leaf;
@@ -221,6 +225,16 @@ elements! {
     combine: leaf;
     offset_faces = "offsetFaces": leaf;
     thicken: leaf;
+    /// A surface trimmed by a plane: `trim_surface().id("t").body("skin").tool(json(r#"{"type":"datum","plane":"p1"}"#))`.
+    trim_surface = "trimSurface": leaf;
+    /// A surface with the openings cut into it filled.
+    untrim_surface = "untrimSurface": leaf;
+    /// A surface grown past its open edges.
+    extend_surface = "extendSurface": leaf;
+    /// Surfaces joined into one body (a solid when they close).
+    stitch: leaf;
+    /// A surface offset along its normal.
+    offset_surface = "offsetSurface": leaf;
     split: leaf;
     scale: leaf;
     dome: leaf;
@@ -343,6 +357,9 @@ attributes! {
         text_at; notes; formats; measure; spherical; of; datum; rim; angle_selection; vertex; text; leader_to; property;
         letter; placed; on; characteristic; diameter_zone; datums; modifiers; zone; unequal; projected; per_unit; maximum;
         segment_of; roughness; requirement;
+        /// A construction plane's second plane, edge and points; a construction axis's or point's second and third
+        /// planes; a hole's thread; a surface feature's surface flag, tool and side; the left-hand list's rollback.
+        base2; edge2; point2; point3; plane2; plane3; surface; thread; thread_depth; thread_kind; tool; keep_front; rollback;
     }
 }
 
@@ -651,6 +668,54 @@ fn builtin_planes_of(root: &El) -> Result<Vec<&'static str>, String> {
     Ok(out)
 }
 
+/// The left-hand list: the order of the feature calls, the root's `groups` (named bands of features, each
+/// `{ id, name, members, collapsed? }`) and its `rollback` (the feature the history is rolled back to). A member or a
+/// rollback that names no feature is refused by name.
+fn presentation_of(root: &El, order: Vec<Json>) -> Result<Option<Json>, String> {
+    let features: Vec<String> = order.iter().filter_map(|j| j.as_str().map(String::from)).collect();
+    let mut out = Json::obj();
+    let mut any = false;
+    if !order.is_empty() {
+        out.set("order", order);
+        any = true;
+    }
+    if let Some(groups) = root.attr_of("groups") {
+        let Json::Arr(items) = groups else { return Err(format!("{} groups: a list of {{ id, name, members, collapsed? }}", at(root))) };
+        let mut made = Vec::new();
+        for (i, g) in items.iter().enumerate() {
+            let here = format!("{} groups[{i}]", at(root));
+            let (Some(Json::Str(id)), Some(Json::Str(name)), Some(Json::Arr(members))) = (g.get("id"), g.get("name"), g.get("members")) else {
+                return Err(format!("{here}: a group is {{ id, name, members, collapsed? }}"));
+            };
+            if id.is_empty() {
+                return Err(format!("{here}: a group is {{ id, name, members, collapsed? }}"));
+            }
+            for m in members {
+                if !m.as_str().is_some_and(|m| features.iter().any(|f| f == m)) {
+                    return Err(format!("{here}: member {} is not a feature of this document", m.text()));
+                }
+            }
+            let mut group = Json::obj().with("id", id.as_str()).with("name", name.as_str()).with("members", Json::Arr(members.clone()));
+            if matches!(g.get("collapsed"), Some(Json::Bool(true))) {
+                group.set("collapsed", true);
+            }
+            made.push(group);
+        }
+        out.set("groups", Json::Arr(made));
+        any = true;
+    }
+    if let Some(rollback) = root.attr_of("rollback") {
+        match rollback.as_str() {
+            Some(r) if features.iter().any(|f| f == r) => {
+                out.set("rollback", r);
+                any = true;
+            }
+            _ => return Err(format!("{} rollback: {} is not a feature of this document", at(root), rollback.text())),
+        }
+    }
+    Ok(if any { Some(out) } else { None })
+}
+
 fn declare(root: El) -> Result<Declared, String> {
     declare_threed(&root, &super::source::stem().unwrap_or_else(|| "Part".into())).map(Declared::Graph)
 }
@@ -662,7 +727,7 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
         return Err("a 3D document is one part() or assembly() element".into());
     }
     for (k, _) in &root.attrs {
-        if !["name", "id", "builtinPlanes"].contains(&k.as_str()) && !VIEW_ATTRS.contains(&k.as_str()) {
+        if !["name", "id", "builtinPlanes", "groups", "rollback"].contains(&k.as_str()) && !VIEW_ATTRS.contains(&k.as_str()) {
             return Err(format!("{}: {} is not read on a 3D document", at(root), rust_name(k)));
         }
     }
@@ -1003,8 +1068,8 @@ pub fn declare_threed(root: &El, fallback_name: &str) -> Result<Json, String> {
     if root.tag == "assembly" {
         view.set("isAssembly", true);
     }
-    if !order.is_empty() {
-        view.set("presentation", Json::obj().with("order", order));
+    if let Some(presentation) = presentation_of(root, order)? {
+        view.set("presentation", presentation);
     }
     let id = match root.attr_of("id") {
         Some(Json::Str(i)) if !i.is_empty() => i.clone(),

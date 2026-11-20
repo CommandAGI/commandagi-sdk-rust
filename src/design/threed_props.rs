@@ -89,6 +89,8 @@ pub const THREED_FEATURES: &[&str] = &[
     "pathPattern",
     "mirror",
     "datumPlane",
+    "datumAxis",
+    "datumPoint",
     "draft",
     "hole",
     "transform",
@@ -110,6 +112,11 @@ pub const THREED_FEATURES: &[&str] = &[
     "combine",
     "offsetFaces",
     "thicken",
+    "trimSurface",
+    "untrimSurface",
+    "extendSurface",
+    "stitch",
+    "offsetSurface",
     "split",
     "scale",
     "rib",
@@ -154,6 +161,8 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("pathPattern", "PathPatternProps"),
     ("mirror", "MirrorProps"),
     ("datumPlane", "DatumPlaneProps"),
+    ("datumAxis", "DatumAxisProps"),
+    ("datumPoint", "DatumPointProps"),
     ("draft", "DraftProps"),
     ("hole", "HoleProps"),
     ("transform", "TransformProps"),
@@ -175,6 +184,11 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("combine", "CombineProps"),
     ("offsetFaces", "OffsetFacesProps"),
     ("thicken", "ThickenProps"),
+    ("trimSurface", "TrimSurfaceProps"),
+    ("untrimSurface", "UntrimSurfaceProps"),
+    ("extendSurface", "ExtendSurfaceProps"),
+    ("stitch", "StitchProps"),
+    ("offsetSurface", "OffsetSurfaceProps"),
     ("split", "SplitProps"),
     ("scale", "ScaleProps"),
     ("rib", "RibProps"),
@@ -655,6 +669,9 @@ pub struct ExtrudeProps {
     pub through: Option<bool>,
     /// "Up to face": extrude until the profile reaches this target face's plane.
     pub up_to_face: Option<Json>,
+    /// A SURFACE, not a solid: the profile's edges (the outer edges of its closed regions, or the sketch's open chain when it has no closed region) are moved along the direction, and the faces they sweep are a body of their own with no inside. A surface is always a new body.
+    /// Default: `false`.
+    pub surface: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -692,6 +709,9 @@ impl ToJson for ExtrudeProps {
         }
         if let Some(v) = &self.up_to_face {
             o.set("upToFace", v.to_json());
+        }
+        if let Some(v) = &self.surface {
+            o.set("surface", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
@@ -756,6 +776,21 @@ impl ToJson for AxisRefDatumAxis {
 }
 
 #[derive(Clone, Debug)]
+pub struct AxisRefDatum {
+    pub axis: String,
+}
+
+impl ToJson for AxisRefDatum {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("type", "datum");
+        o.set("axis", self.axis.to_json());
+        o
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct AxisRefSketchLine {
     pub sketch: String,
     pub segment: String,
@@ -807,6 +842,7 @@ impl ToJson for AxisRefPoints {
 #[derive(Clone, Debug)]
 pub enum AxisRef {
     DatumAxis(AxisRefDatumAxis),
+    Datum(AxisRefDatum),
     SketchLine(AxisRefSketchLine),
     Edge(AxisRefEdge),
     Points(AxisRefPoints),
@@ -816,6 +852,7 @@ impl ToJson for AxisRef {
     fn to_json(&self) -> Json {
         match self {
             AxisRef::DatumAxis(x) => x.to_json(),
+            AxisRef::Datum(x) => x.to_json(),
             AxisRef::SketchLine(x) => x.to_json(),
             AxisRef::Edge(x) => x.to_json(),
             AxisRef::Points(x) => x.to_json(),
@@ -826,6 +863,12 @@ impl ToJson for AxisRef {
 impl From<AxisRefDatumAxis> for AxisRef {
     fn from(x: AxisRefDatumAxis) -> AxisRef {
         AxisRef::DatumAxis(x)
+    }
+}
+
+impl From<AxisRefDatum> for AxisRef {
+    fn from(x: AxisRefDatum) -> AxisRef {
+        AxisRef::Datum(x)
     }
 }
 
@@ -863,6 +906,9 @@ pub struct RevolveProps {
     pub angle: Option<f64>,
     /// Turn the other way.
     pub reverse: Option<bool>,
+    /// A SURFACE, not a solid: the profile's edges (the outer edges of its closed regions, or the sketch's open chain) turned about the axis, a body of their own with no inside. A surface is always a new body.
+    /// Default: `false`.
+    pub surface: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -886,6 +932,9 @@ impl ToJson for RevolveProps {
         }
         if let Some(v) = &self.reverse {
             o.set("reverse", v.to_json());
+        }
+        if let Some(v) = &self.surface {
+            o.set("surface", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
@@ -960,6 +1009,9 @@ pub struct SweepProps {
     /// How far the profile turns about the path from its start to its end, evenly along its length (a twisted bar, a cable's lay), on top of the frame: "minimal", "frenet" or "up". For a path that is an open, smooth curve.
     /// Unit: rad.
     pub twist: Option<f64>,
+    /// A SURFACE, not a solid: the profile's outer edges (or the sketch's open chain) swept along the path, a body of its own with no inside and no end caps. A surface is always a new body.
+    /// Default: `false`.
+    pub surface: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -989,6 +1041,9 @@ impl ToJson for SweepProps {
         }
         if let Some(v) = &self.twist {
             o.set("twist", v.to_json());
+        }
+        if let Some(v) = &self.surface {
+            o.set("surface", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
@@ -1433,6 +1488,9 @@ pub struct LoftProps {
     pub ruled: Option<bool>,
     /// Join the last section back to the first.
     pub closed: Option<bool>,
+    /// A SURFACE, not a solid: a skin through the sections' outer edges (or each sketch's open chain), with no end caps and no inside, a body of its own. A surface is always a new body.
+    /// Default: `false`.
+    pub surface: Option<bool>,
     /// How the solid combines with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -1455,6 +1513,9 @@ impl ToJson for LoftProps {
         }
         if let Some(v) = &self.closed {
             o.set("closed", v.to_json());
+        }
+        if let Some(v) = &self.surface {
+            o.set("surface", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
@@ -2740,19 +2801,158 @@ impl MirrorProps {
     }
 }
 
+/// How a construction plane is placed: offset `base` moved along its normal (and turned about its x axis by `angle`: a plane at an angle) midplane halfway between `base` and `base2` (two parallel planes: between them; two that meet: the plane that halves the angle between them) twoEdges through two straight edges that lie in one plane (`edge`, `edge2`) axisPoint through an axis (`axis`) and a point off it (`point`) threePoints through three points (`point`, `point2`, `point3`) tangent touching a cylinder, cone or sphere (`face`), at `angle` about its axis from `base`'s normal alongPath at right angles to an edge (`edge`), at the fraction `along` of its length perpendicular through a straight edge (`edge`), at right angles to `base` Every method then moves the plane `offset` along its own normal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DatumPlaneMethod {
+    /// `"offset"`
+    Offset,
+    /// `"perpendicular"`
+    Perpendicular,
+    /// `"midplane"`
+    Midplane,
+    /// `"twoEdges"`
+    TwoEdges,
+    /// `"axisPoint"`
+    AxisPoint,
+    /// `"threePoints"`
+    ThreePoints,
+    /// `"tangent"`
+    Tangent,
+    /// `"alongPath"`
+    AlongPath,
+}
+
+impl ToJson for DatumPlaneMethod {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            DatumPlaneMethod::Offset => "offset",
+            DatumPlaneMethod::Perpendicular => "perpendicular",
+            DatumPlaneMethod::Midplane => "midplane",
+            DatumPlaneMethod::TwoEdges => "twoEdges",
+            DatumPlaneMethod::AxisPoint => "axisPoint",
+            DatumPlaneMethod::ThreePoints => "threePoints",
+            DatumPlaneMethod::Tangent => "tangent",
+            DatumPlaneMethod::AlongPath => "alongPath",
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PointRefVertex {
+    pub ref_: TopoRef,
+}
+
+impl ToJson for PointRefVertex {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("type", "vertex");
+        o.set("ref", self.ref_.to_json());
+        o
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PointRefDatum {
+    pub point: String,
+}
+
+impl ToJson for PointRefDatum {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("type", "datum");
+        o.set("point", self.point.to_json());
+        o
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PointRefAt {
+    pub at: Vec3,
+}
+
+impl ToJson for PointRefAt {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("type", "at");
+        o.set("at", self.at.to_json());
+        o
+    }
+}
+
+/// A point a construction feature goes through: a corner of a body (a vertex picked), a construction point (a `datumPoint` feature, by id), or a fixed point in model coordinates.
+#[derive(Clone, Debug)]
+pub enum PointRef {
+    Vertex(PointRefVertex),
+    Datum(PointRefDatum),
+    At(PointRefAt),
+}
+
+impl ToJson for PointRef {
+    fn to_json(&self) -> Json {
+        match self {
+            PointRef::Vertex(x) => x.to_json(),
+            PointRef::Datum(x) => x.to_json(),
+            PointRef::At(x) => x.to_json(),
+        }
+    }
+}
+
+impl From<PointRefVertex> for PointRef {
+    fn from(x: PointRefVertex) -> PointRef {
+        PointRef::Vertex(x)
+    }
+}
+
+impl From<PointRefDatum> for PointRef {
+    fn from(x: PointRefDatum) -> PointRef {
+        PointRef::Datum(x)
+    }
+}
+
+impl From<PointRefAt> for PointRef {
+    fn from(x: PointRefAt) -> PointRef {
+        PointRef::At(x)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DatumPlaneProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// Offset from a base plane along its normal.
+    /// How the plane is placed.
+    /// Default: `"offset"`.
+    pub method: Option<DatumPlaneMethod>,
+    /// The plane it starts from: the plane offset or turned; the first of a midplane's two; the plane a tangent plane's angle and a perpendicular plane's right angle are measured from; else the plane whose x axis it keeps where it can.
     pub base: String,
-    /// How far from the base plane, along its normal.
+    /// The second plane of a midplane.
+    pub base2: Option<String>,
+    /// The edge it goes through (two edges, perpendicular), or is at right angles to (along a path).
+    pub edge: Option<TopoRef>,
+    /// The second edge it goes through.
+    pub edge2: Option<TopoRef>,
+    /// The axis it goes through.
+    pub axis: Option<AxisRef>,
+    /// A point it goes through.
+    pub point: Option<PointRef>,
+    /// The second point it goes through.
+    pub point2: Option<PointRef>,
+    /// The third point it goes through.
+    pub point3: Option<PointRef>,
+    /// The cylinder, cone or sphere it touches.
+    pub face: Option<TopoRef>,
+    /// Where along the edge, as a fraction of its length from its start.
+    /// Default: `0.5`.
+    pub along: Option<f64>,
+    /// How far the plane is moved along its own normal.
     /// Unit: mm.
     /// Default: `10`.
     pub offset: Option<f64>,
-    /// A plane at an angle: the base turned about its own x axis (through its origin) by this angle, before the offset, which then runs along the turned normal.
+    /// Offset: the base turned about its own x axis (through its origin) by this angle, before the offset, which then runs along the turned normal (a plane at an angle). Tangent: where on the face it touches, turned about the face's axis from the base's normal.
     /// Unit: rad.
     pub angle: Option<f64>,
     pub suppressed: Option<bool>,
@@ -2768,7 +2968,37 @@ impl ToJson for DatumPlaneProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
+        if let Some(v) = &self.method {
+            o.set("method", v.to_json());
+        }
         o.set("base", self.base.to_json());
+        if let Some(v) = &self.base2 {
+            o.set("base2", v.to_json());
+        }
+        if let Some(v) = &self.edge {
+            o.set("edge", v.to_json());
+        }
+        if let Some(v) = &self.edge2 {
+            o.set("edge2", v.to_json());
+        }
+        if let Some(v) = &self.axis {
+            o.set("axis", v.to_json());
+        }
+        if let Some(v) = &self.point {
+            o.set("point", v.to_json());
+        }
+        if let Some(v) = &self.point2 {
+            o.set("point2", v.to_json());
+        }
+        if let Some(v) = &self.point3 {
+            o.set("point3", v.to_json());
+        }
+        if let Some(v) = &self.face {
+            o.set("face", v.to_json());
+        }
+        if let Some(v) = &self.along {
+            o.set("along", v.to_json());
+        }
         if let Some(v) = &self.offset {
             o.set("offset", v.to_json());
         }
@@ -2790,6 +3020,217 @@ impl DatumPlaneProps {
     #[track_caller]
     pub fn el(self) -> El {
         let mut el = El::new("datumPlane");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// How a construction axis is placed: cylinder the axis of a cylinder, cone or torus (`face`) perpendicular at right angles to a flat face (`face`), through a point (`point`) twoPlanes where two planes meet (`plane`, `plane2`) twoPoints through two points (`point`, `point2`) edge along a straight edge (`edge`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DatumAxisMethod {
+    /// `"edge"`
+    Edge,
+    /// `"cylinder"`
+    Cylinder,
+    /// `"perpendicular"`
+    Perpendicular,
+    /// `"twoPlanes"`
+    TwoPlanes,
+    /// `"twoPoints"`
+    TwoPoints,
+}
+
+impl ToJson for DatumAxisMethod {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            DatumAxisMethod::Edge => "edge",
+            DatumAxisMethod::Cylinder => "cylinder",
+            DatumAxisMethod::Perpendicular => "perpendicular",
+            DatumAxisMethod::TwoPlanes => "twoPlanes",
+            DatumAxisMethod::TwoPoints => "twoPoints",
+        })
+    }
+}
+
+/// A CONSTRUCTION AXIS: a line a revolve, a pattern or a coil turns about, or a plane goes through (`axis={{ type: "datum", axis: <id> }}`). It makes no body.
+#[derive(Clone, Debug)]
+pub struct DatumAxisProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// How the axis is placed.
+    /// Default: `"edge"`.
+    pub method: Option<DatumAxisMethod>,
+    /// The cylinder, cone or torus whose axis it is; the flat face it is at right angles to.
+    pub face: Option<TopoRef>,
+    /// The straight edge it lies along.
+    pub edge: Option<TopoRef>,
+    /// The first plane.
+    pub plane: Option<PlaneRef>,
+    /// The second plane.
+    pub plane2: Option<PlaneRef>,
+    /// The point it goes through (perpendicular), the first of two points.
+    pub point: Option<PointRef>,
+    /// The second point.
+    pub point2: Option<PointRef>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for DatumAxisProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        if let Some(v) = &self.method {
+            o.set("method", v.to_json());
+        }
+        if let Some(v) = &self.face {
+            o.set("face", v.to_json());
+        }
+        if let Some(v) = &self.edge {
+            o.set("edge", v.to_json());
+        }
+        if let Some(v) = &self.plane {
+            o.set("plane", v.to_json());
+        }
+        if let Some(v) = &self.plane2 {
+            o.set("plane2", v.to_json());
+        }
+        if let Some(v) = &self.point {
+            o.set("point", v.to_json());
+        }
+        if let Some(v) = &self.point2 {
+            o.set("point2", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl DatumAxisProps {
+    /// The `datumAxis` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("datumAxis");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// How a construction point is placed: vertex at a point (`point`: a body's corner, another construction point, or coordinates) edgePlane where an edge (`edge`) meets a plane (`plane`); the edge's line where it is straight threePlanes where three planes meet (`plane`, `plane2`, `plane3`) center at the centre of a circle or an arc (`edge`), or of a sphere (`face`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DatumPointMethod {
+    /// `"vertex"`
+    Vertex,
+    /// `"edgePlane"`
+    EdgePlane,
+    /// `"threePlanes"`
+    ThreePlanes,
+    /// `"center"`
+    Center,
+}
+
+impl ToJson for DatumPointMethod {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            DatumPointMethod::Vertex => "vertex",
+            DatumPointMethod::EdgePlane => "edgePlane",
+            DatumPointMethod::ThreePlanes => "threePlanes",
+            DatumPointMethod::Center => "center",
+        })
+    }
+}
+
+/// A CONSTRUCTION POINT: a point a plane or an axis goes through (`{ type: "datum", point: <id> }`). It makes no body.
+#[derive(Clone, Debug)]
+pub struct DatumPointProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// How the point is placed.
+    /// Default: `"vertex"`.
+    pub method: Option<DatumPointMethod>,
+    /// The point it is at.
+    pub point: Option<PointRef>,
+    /// The edge: the one a plane cuts, or the circle or arc whose centre it is.
+    pub edge: Option<TopoRef>,
+    /// The sphere whose centre it is (in place of an edge).
+    pub face: Option<TopoRef>,
+    /// The (first) plane.
+    pub plane: Option<PlaneRef>,
+    /// The second plane.
+    pub plane2: Option<PlaneRef>,
+    /// The third plane.
+    pub plane3: Option<PlaneRef>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for DatumPointProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        if let Some(v) = &self.method {
+            o.set("method", v.to_json());
+        }
+        if let Some(v) = &self.point {
+            o.set("point", v.to_json());
+        }
+        if let Some(v) = &self.edge {
+            o.set("edge", v.to_json());
+        }
+        if let Some(v) = &self.face {
+            o.set("face", v.to_json());
+        }
+        if let Some(v) = &self.plane {
+            o.set("plane", v.to_json());
+        }
+        if let Some(v) = &self.plane2 {
+            o.set("plane2", v.to_json());
+        }
+        if let Some(v) = &self.plane3 {
+            o.set("plane3", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl DatumPointProps {
+    /// The `datumPoint` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("datumPoint");
         if let Json::Obj(entries) = self.to_json() {
             for (k, v) in entries {
                 el = el.with_attr(k, v);
@@ -2866,6 +3307,8 @@ pub enum HoleStyle {
     Counterbore,
     /// `"countersink"`
     Countersink,
+    /// `"tapped"`
+    Tapped,
 }
 
 impl ToJson for HoleStyle {
@@ -2874,6 +3317,26 @@ impl ToJson for HoleStyle {
             HoleStyle::Simple => "simple",
             HoleStyle::Counterbore => "counterbore",
             HoleStyle::Countersink => "countersink",
+            HoleStyle::Tapped => "tapped",
+        })
+    }
+}
+
+/// The thread is cosmetic (the hole is drilled at the tap drill and the thread is drawn and called out, not cut), or modelled (its helix is cut into the wall).
+/// Default: `"cosmetic"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HolePropsThreadKind {
+    /// `"cosmetic"`
+    Cosmetic,
+    /// `"modeled"`
+    Modeled,
+}
+
+impl ToJson for HolePropsThreadKind {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            HolePropsThreadKind::Cosmetic => "cosmetic",
+            HolePropsThreadKind::Modeled => "modeled",
         })
     }
 }
@@ -2935,9 +3398,17 @@ pub struct HoleProps {
     /// Through-all instead of a fixed depth.
     /// Default: `true`.
     pub through: Option<bool>,
-    /// Plain, counterbored or countersunk.
+    /// Plain, counterbored, countersunk, or tapped (drilled at the thread's tap drill and threaded).
     /// Default: `"simple"`.
     pub style: Option<HoleStyle>,
+    /// A tapped hole's thread: an ISO metric coarse thread ("M6") or a Unified one ("1/4-20", "#10-24"), from the shipped tables (`./hole-sizes.ts` tappedHole). It gives `diameter` (the tap drill), the thread's major diameter and its pitch.
+    pub thread: Option<String>,
+    /// How deep the thread goes from the face (default: the whole hole).
+    /// Unit: mm.
+    pub thread_depth: Option<f64>,
+    /// The thread is cosmetic (the hole is drilled at the tap drill and the thread is drawn and called out, not cut), or modelled (its helix is cut into the wall).
+    /// Default: `"cosmetic"`.
+    pub thread_kind: Option<HolePropsThreadKind>,
     /// Counterbore/countersink head diameter.
     /// Unit: mm.
     /// Default: `12`.
@@ -2984,6 +3455,15 @@ impl ToJson for HoleProps {
         }
         if let Some(v) = &self.style {
             o.set("style", v.to_json());
+        }
+        if let Some(v) = &self.thread {
+            o.set("thread", v.to_json());
+        }
+        if let Some(v) = &self.thread_depth {
+            o.set("threadDepth", v.to_json());
+        }
+        if let Some(v) = &self.thread_kind {
+            o.set("threadKind", v.to_json());
         }
         if let Some(v) = &self.head_diameter {
             o.set("headDiameter", v.to_json());
@@ -3866,10 +4346,10 @@ impl From<SketchPinTargetPad> for SketchPinTarget {
 pub enum SketchPinAnchor {
     /// `"vertex"`
     Vertex,
-    /// `"centroid"`
-    Centroid,
     /// `"center"`
     Center,
+    /// `"centroid"`
+    Centroid,
     /// `"minU"`
     MinU,
     /// `"maxU"`
@@ -3892,8 +4372,8 @@ impl ToJson for SketchPinAnchor {
     fn to_json(&self) -> Json {
         Json::from(match self {
             SketchPinAnchor::Vertex => "vertex",
-            SketchPinAnchor::Centroid => "centroid",
             SketchPinAnchor::Center => "center",
+            SketchPinAnchor::Centroid => "centroid",
             SketchPinAnchor::MinU => "minU",
             SketchPinAnchor::MaxU => "maxU",
             SketchPinAnchor::MinV => "minV",
@@ -4329,12 +4809,12 @@ pub enum ConstraintKind {
     Angle,
     /// `"concentric"`
     Concentric,
+    /// `"tangent"`
+    Tangent,
     /// `"horizontal"`
     Horizontal,
     /// `"vertical"`
     Vertical,
-    /// `"tangent"`
-    Tangent,
     /// `"equal"`
     Equal,
     /// `"pointOnLine"`
@@ -4366,9 +4846,9 @@ impl ToJson for ConstraintKind {
             ConstraintKind::Distance => "distance",
             ConstraintKind::Angle => "angle",
             ConstraintKind::Concentric => "concentric",
+            ConstraintKind::Tangent => "tangent",
             ConstraintKind::Horizontal => "horizontal",
             ConstraintKind::Vertical => "vertical",
-            ConstraintKind::Tangent => "tangent",
             ConstraintKind::Equal => "equal",
             ConstraintKind::PointOnLine => "pointOnLine",
             ConstraintKind::Midpoint => "midpoint",
@@ -5060,10 +5540,14 @@ pub struct ThickenProps {
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// Uniform offset on every body (positive grows, negative shrinks).
+    /// The bodies to thicken, by id (a surface becomes a solid of this thickness). Absent: every body, each grown (or, negative, shrunk) evenly.
+    pub bodies: Option<Vec<String>>,
+    /// How thick, along the surface's normal (negative: the other side); for a solid, the uniform offset.
     /// Unit: mm.
     /// Default: `1`.
     pub distance: Option<f64>,
+    /// A surface thickens to both sides of itself, half each way.
+    pub symmetric: Option<bool>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -5077,8 +5561,14 @@ impl ToJson for ThickenProps {
         if let Some(v) = &self.name {
             o.set("name", v.to_json());
         }
+        if let Some(v) = &self.bodies {
+            o.set("bodies", v.to_json());
+        }
         if let Some(v) = &self.distance {
             o.set("distance", v.to_json());
+        }
+        if let Some(v) = &self.symmetric {
+            o.set("symmetric", v.to_json());
         }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
@@ -5095,6 +5585,271 @@ impl ThickenProps {
     #[track_caller]
     pub fn el(self) -> El {
         let mut el = El::new("thicken");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// TRIM A SURFACE: cut a surface body by a plane or a face and keep one side.
+#[derive(Clone, Debug)]
+pub struct TrimSurfaceProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The surface body to trim, by id.
+    pub body: String,
+    /// What cuts it: a construction plane, a base plane or a flat face.
+    pub tool: PlaneRef,
+    /// Keep the side the tool's normal points away from (the other side is kept when false).
+    /// Default: `true`.
+    pub keep_front: Option<bool>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for TrimSurfaceProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("body", self.body.to_json());
+        o.set("tool", self.tool.to_json());
+        if let Some(v) = &self.keep_front {
+            o.set("keepFront", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl TrimSurfaceProps {
+    /// The `trimSurface` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("trimSurface");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// UNTRIM A SURFACE: fill the openings cut into a surface body's faces (each face's holes are taken away).
+#[derive(Clone, Debug)]
+pub struct UntrimSurfaceProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The surface body, by id.
+    pub body: String,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for UntrimSurfaceProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("body", self.body.to_json());
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl UntrimSurfaceProps {
+    /// The `untrimSurface` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("untrimSurface");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// EXTEND A SURFACE: grow a surface body past its open edges, each tangent to the surface where the edge is (a ruled strip along the face's own direction, joined to the body).
+#[derive(Clone, Debug)]
+pub struct ExtendSurfaceProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The open edges to extend.
+    pub edges: Vec<TopoRef>,
+    /// How far each is extended.
+    /// Unit: mm.
+    /// Default: `5`.
+    pub distance: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for ExtendSurfaceProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("edges", self.edges.to_json());
+        if let Some(v) = &self.distance {
+            o.set("distance", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl ExtendSurfaceProps {
+    /// The `extendSurface` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("extendSurface");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// STITCH SURFACES: join surface bodies that share their edges into one body. When the joined faces close a volume, the body is a solid.
+#[derive(Clone, Debug)]
+pub struct StitchProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The surface bodies to join, by id.
+    pub bodies: Vec<String>,
+    /// How far apart two edges may be and still be joined.
+    /// Unit: mm.
+    /// Default: `0.01`.
+    pub tolerance: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for StitchProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("bodies", self.bodies.to_json());
+        if let Some(v) = &self.tolerance {
+            o.set("tolerance", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl StitchProps {
+    /// The `stitch` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("stitch");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// OFFSET A SURFACE: a new surface body at a distance from a surface body, along its normal.
+#[derive(Clone, Debug)]
+pub struct OffsetSurfaceProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The surface body to offset, by id.
+    pub body: String,
+    /// How far along its normal (negative: the other way).
+    /// Unit: mm.
+    /// Default: `2`.
+    pub distance: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for OffsetSurfaceProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("body", self.body.to_json());
+        if let Some(v) = &self.distance {
+            o.set("distance", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl OffsetSurfaceProps {
+    /// The `offsetSurface` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("offsetSurface");
         if let Json::Obj(entries) = self.to_json() {
             for (k, v) in entries {
                 el = el.with_attr(k, v);

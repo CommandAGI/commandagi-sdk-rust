@@ -292,6 +292,7 @@ fn the_tags_are_the_schemas_roots_and_its_typed_props_make_the_elements_the_read
         draft_angle: None,
         through: None,
         up_to_face: None,
+        surface: None,
         operation: Some(BooleanMode::New),
         suppressed: None,
         consumes: None,
@@ -851,4 +852,16 @@ fn each_annotation_is_a_call_whose_function_is_its_type_and_the_calls_are_the_an
         refused(slot().name("annotations").value(json("[]"))),
         r#"slot().name("annotations"): annotations is not a slot (its items are written as their own elements: linear_dimension(), radial_dimension(), size_dimension(), angular_dimension(), note(), datum_feature(), datum_target(), feature_control_frame(), surface_finish())"#
     );
+}
+
+#[test]
+fn groups_and_rollback_are_the_left_hand_lists() {
+    let blocks = || [box_().id("a"), box_().id("b"), box_().id("c")];
+    let g = graph(part(blocks()).name("P").groups(json(r#"[{"id": "g1", "name": "Blocks", "members": ["a", "b"], "collapsed": true}]"#)).rollback("b"));
+    assert_eq!(
+        g.get("meta").unwrap().get("presentation").unwrap(),
+        &parse(r#"{"order": ["a", "b", "c"], "groups": [{"id": "g1", "name": "Blocks", "members": ["a", "b"], "collapsed": true}], "rollback": "b"}"#)
+    );
+    assert!(bad(part(blocks()).name("P").rollback("z")).contains(r#"rollback: "z" is not a feature of this document"#));
+    assert!(bad(part(blocks()).name("P").groups(json(r#"[{"id": "g", "name": "G", "members": ["z"]}]"#))).contains(r#"member "z" is not a feature of this document"#));
 }

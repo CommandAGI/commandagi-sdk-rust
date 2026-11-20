@@ -8,6 +8,12 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- 3D documents: surfaces (`surface` on `<extrude>`, `<revolve>`, `<sweep>`, `<loft>`; `<trimSurface>`,
+  `<untrimSurface>`, `<extendSurface>`, `<stitch>`, `<offsetSurface>`; `<thicken bodies>`), construction geometry
+  (`<datumPlane method>` with midplane, two edges, axis and point, three points, tangent, along an edge and
+  perpendicular; `<datumAxis>`; `<datumPoint>`; an axis `{ type: "datum", axis }` and a point `PointRef`), a tapped
+  hole (`<hole style="tapped" thread threadDepth threadKind>`), and the history's groups and rollback marker on the root
+  (`<part groups rollback>`).
 - `commandagi::design::scene_agents`: the agents a design's scene attaches to its robots or their joints:
   `check_scene_agents`, the same as the TypeScript SDK's `scene-agents.ts`.
 - `commandagi::design::factory`: a station's `energy_j` and `cell`, as the TypeScript SDK's.
