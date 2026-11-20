@@ -233,6 +233,8 @@ elements! {
     extend_surface = "extendSurface": leaf;
     /// Surfaces joined into one body (a solid when they close).
     stitch: leaf;
+    /// A solid's face replaced by a surface: `replace_face().id("r").face(…).surface("sheet")`.
+    replace_face = "replaceFace": leaf;
     /// A surface offset along its normal.
     offset_surface = "offsetSurface": leaf;
     split: leaf;
@@ -369,7 +371,7 @@ attributes! {
         segment_of; roughness; requirement;
         /// A construction plane's second plane, edge and points; a construction axis's or point's second and third
         /// planes; a hole's thread; a surface feature's surface flag, tool and side; the left-hand list's rollback.
-        base2; edge2; point2; point3; plane2; plane3; surface; thread; thread_depth; thread_kind; tool; keep_front; rollback;
+        base2; edge2; point2; point3; plane2; plane3; surface; thread; thread_depth; thread_kind; tool; tool_body; keep_front; rollback;
     }
 }
 

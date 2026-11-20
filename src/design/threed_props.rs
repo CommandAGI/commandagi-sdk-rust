@@ -119,6 +119,7 @@ pub const THREED_FEATURES: &[&str] = &[
     "untrimSurface",
     "extendSurface",
     "stitch",
+    "replaceFace",
     "offsetSurface",
     "split",
     "scale",
@@ -194,6 +195,7 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("untrimSurface", "UntrimSurfaceProps"),
     ("extendSurface", "ExtendSurfaceProps"),
     ("stitch", "StitchProps"),
+    ("replaceFace", "ReplaceFaceProps"),
     ("offsetSurface", "OffsetSurfaceProps"),
     ("split", "SplitProps"),
     ("scale", "ScaleProps"),
@@ -6049,7 +6051,7 @@ impl ThickenProps {
     }
 }
 
-/// TRIM A SURFACE: cut a surface body by a plane or a face and keep one side.
+/// TRIM A SURFACE: cut a surface body by a plane, a flat face or another surface, and keep one side.
 #[derive(Clone, Debug)]
 pub struct TrimSurfaceProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -6058,9 +6060,11 @@ pub struct TrimSurfaceProps {
     pub name: Option<String>,
     /// The surface body to trim, by id.
     pub body: String,
-    /// What cuts it: a construction plane, a base plane or a flat face.
-    pub tool: PlaneRef,
-    /// Keep the side the tool's normal points away from (the other side is kept when false).
+    /// What cuts it, when it is a plane: a construction plane, a base plane or a flat face.
+    pub tool: Option<PlaneRef>,
+    /// What cuts it, when it is another surface body (in place of `tool`), by id.
+    pub tool_body: Option<String>,
+    /// Keep the side the tool's normal points to (the other side is kept when false).
     /// Default: `true`.
     pub keep_front: Option<bool>,
     pub suppressed: Option<bool>,
@@ -6077,7 +6081,12 @@ impl ToJson for TrimSurfaceProps {
             o.set("name", v.to_json());
         }
         o.set("body", self.body.to_json());
-        o.set("tool", self.tool.to_json());
+        if let Some(v) = &self.tool {
+            o.set("tool", v.to_json());
+        }
+        if let Some(v) = &self.tool_body {
+            o.set("toolBody", v.to_json());
+        }
         if let Some(v) = &self.keep_front {
             o.set("keepFront", v.to_json());
         }
@@ -6105,7 +6114,7 @@ impl TrimSurfaceProps {
     }
 }
 
-/// UNTRIM A SURFACE: fill the openings cut into a surface body's faces (each face's holes are taken away).
+/// UNTRIM A SURFACE: fill its openings. With no `edges`, each face's own holes are taken away; with `edges`, each opening whose boundary holds one of them (a loop of open edges, which may run along several faces: a box with no lid) is closed by a face, flat when the loop is, else a filling surface through it.
 #[derive(Clone, Debug)]
 pub struct UntrimSurfaceProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -6114,6 +6123,8 @@ pub struct UntrimSurfaceProps {
     pub name: Option<String>,
     /// The surface body, by id.
     pub body: String,
+    /// An open edge of each opening to fill.
+    pub edges: Option<Vec<TopoRef>>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -6128,6 +6139,9 @@ impl ToJson for UntrimSurfaceProps {
             o.set("name", v.to_json());
         }
         o.set("body", self.body.to_json());
+        if let Some(v) = &self.edges {
+            o.set("edges", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -6152,7 +6166,7 @@ impl UntrimSurfaceProps {
     }
 }
 
-/// EXTEND A SURFACE: grow a surface body past its open edges, each tangent to the surface where the edge is (a ruled strip along the face's own direction, joined to the body).
+/// EXTEND A SURFACE: grow a surface body past its open edges, each face continued along its own surface (the natural extension: a plane stays the plane, a cylinder goes on round, a B-spline goes on as its last span), joined to the body. An edge is a side of its face's parameter rectangle.
 #[derive(Clone, Debug)]
 pub struct ExtendSurfaceProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -6251,6 +6265,56 @@ impl StitchProps {
     #[track_caller]
     pub fn el(self) -> El {
         let mut el = El::new("stitch");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// REPLACE A FACE of a solid by a surface: the faces next to it are continued along their own surfaces to the surface, and the surface closes the body there. The body grows to it or is cut back to it.
+#[derive(Clone, Debug)]
+pub struct ReplaceFaceProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The face replaced.
+    pub face: Json,
+    /// The surface body it is replaced by, by id (it stays a body of its own).
+    pub surface: String,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for ReplaceFaceProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("face", self.face.to_json());
+        o.set("surface", self.surface.to_json());
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl ReplaceFaceProps {
+    /// The `replaceFace` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("replaceFace");
         if let Json::Obj(entries) = self.to_json() {
             for (k, v) in entries {
                 el = el.with_attr(k, v);
