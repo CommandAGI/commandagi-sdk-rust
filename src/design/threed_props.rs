@@ -4798,11 +4798,11 @@ impl ToJson for SketchPoint {
 #[derive(Clone, Debug)]
 pub struct SketchProjection {
     pub id: String,
-    /// The model edge this follows, signature-matched across rebuilds like every other reference. Absent on a section, which follows a whole body.
+    /// The model edge this follows, signature-matched across rebuilds like every other reference. On a section, the one FACE it cuts (the curves where that face crosses the sketch's plane), or absent: the whole body.
     pub ref_: Option<TopoRef>,
     /// The feature that built the body — the timeline dependency, exactly as for a pin.
     pub feature: Option<String>,
-    /// AN INTERSECTION, not a projection: the curves where the body `feature` built crosses the sketch's plane, cut again on every rebuild. It needs `feature` and names no `ref`.
+    /// AN INTERSECTION, not a projection: the curves where the body `feature` built (or the face of it `ref` names) crosses the sketch's plane, cut again on every rebuild. It needs `feature`.
     pub section: Option<bool>,
     /// Generate as construction (reference) geometry rather than profile geometry.
     pub construction: Option<bool>,
@@ -4875,7 +4875,7 @@ pub struct SketchText {
     pub id: String,
     /// The words.
     pub text: String,
-    /// The typeface's id (the editor's bundled faces).
+    /// The typeface: a bundled face's id (`liberation-sans`, `noto-serif`, `noto-sans-mono`), or a font file in the design's folder by its path from there (`.ttf`, `.otf` or `.woff`). The outlines are kept in `contours`: the face is read only to make or change the text.
     pub font: String,
     /// The point the baseline starts at.
     pub anchor: String,
@@ -5257,6 +5257,14 @@ pub enum ConstraintKind {
     ArcLength,
     /// `"conicRho"`
     ConicRho,
+    /// `"ordinateX"`
+    OrdinateX,
+    /// `"ordinateY"`
+    OrdinateY,
+    /// `"axisAngle"`
+    AxisAngle,
+    /// `"chamferDistance"`
+    ChamferDistance,
 }
 
 impl ToJson for ConstraintKind {
@@ -5284,6 +5292,10 @@ impl ToJson for ConstraintKind {
             ConstraintKind::PointLineDistance => "pointLineDistance",
             ConstraintKind::ArcLength => "arcLength",
             ConstraintKind::ConicRho => "conicRho",
+            ConstraintKind::OrdinateX => "ordinateX",
+            ConstraintKind::OrdinateY => "ordinateY",
+            ConstraintKind::AxisAngle => "axisAngle",
+            ConstraintKind::ChamferDistance => "chamferDistance",
         })
     }
 }
@@ -9058,11 +9070,11 @@ impl SketchConstraintProps {
 #[derive(Clone, Debug)]
 pub struct SketchProjectionProps {
     pub id: String,
-    /// The model edge this follows, signature-matched across rebuilds like every other reference. Absent on a section, which follows a whole body.
+    /// The model edge this follows, signature-matched across rebuilds like every other reference. On a section, the one FACE it cuts (the curves where that face crosses the sketch's plane), or absent: the whole body.
     pub ref_: Option<TopoRef>,
     /// The feature that built the body — the timeline dependency, exactly as for a pin.
     pub feature: Option<String>,
-    /// AN INTERSECTION, not a projection: the curves where the body `feature` built crosses the sketch's plane, cut again on every rebuild. It needs `feature` and names no `ref`.
+    /// AN INTERSECTION, not a projection: the curves where the body `feature` built (or the face of it `ref` names) crosses the sketch's plane, cut again on every rebuild. It needs `feature`.
     pub section: Option<bool>,
     /// Generate as construction (reference) geometry rather than profile geometry.
     pub construction: Option<bool>,
@@ -9163,7 +9175,7 @@ pub struct SketchTextProps {
     pub id: String,
     /// The words.
     pub text: String,
-    /// The typeface's id (the editor's bundled faces).
+    /// The typeface: a bundled face's id (`liberation-sans`, `noto-serif`, `noto-sans-mono`), or a font file in the design's folder by its path from there (`.ttf`, `.otf` or `.woff`). The outlines are kept in `contours`: the face is read only to make or change the text.
     pub font: String,
     /// The point the baseline starts at.
     pub anchor: String,
