@@ -227,8 +227,17 @@ elements! {
     wrap_text = "wrapText": leaf;
     delete_face = "deleteFace": leaf;
     full_round = "fullRound": leaf;
+    /// Sheet-metal rules: `sheet_metal().id("rules").thickness(2).bend_radius(2).k_factor(0.44).relief("rectangular")`.
+    sheet_metal = "sheetMetal": leaf;
+    /// A base flange: a closed sketch profile made as thick as the rules' sheet.
+    sheet_base = "sheetBase": leaf;
     sheet_flange = "sheetFlange": leaf;
+    sheet_hem = "sheetHem": leaf;
+    sheet_fold = "sheetFold": leaf;
     unfold: leaf;
+    /// Frame members along a sketch's lines: `frame_member().id("frame").sketch("s1").profile("squareTube").size("40x40x3")`.
+    frame_member = "frameMember": leaf;
+    end_cap = "endCap": leaf;
     copy_body = "copyBody": leaf;
     transform: leaf;
     subdiv_body = "subdivBody": leaf;

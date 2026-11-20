@@ -92,8 +92,14 @@ pub const THREED_FEATURES: &[&str] = &[
     "draft",
     "hole",
     "transform",
+    "sheetMetal",
+    "sheetBase",
     "sheetFlange",
+    "sheetHem",
+    "sheetFold",
     "unfold",
+    "frameMember",
+    "endCap",
     "wrapText",
     "deleteFace",
     "fullRound",
@@ -151,8 +157,14 @@ pub const THREED_PROPS: &[(&str, &str)] = &[
     ("draft", "DraftProps"),
     ("hole", "HoleProps"),
     ("transform", "TransformProps"),
+    ("sheetMetal", "SheetMetalProps"),
+    ("sheetBase", "SheetBaseProps"),
     ("sheetFlange", "SheetFlangeProps"),
+    ("sheetHem", "SheetHemProps"),
+    ("sheetFold", "SheetFoldProps"),
     ("unfold", "UnfoldProps"),
+    ("frameMember", "FrameMemberProps"),
+    ("endCap", "EndCapProps"),
     ("wrapText", "WrapTextProps"),
     ("deleteFace", "DeleteFaceProps"),
     ("fullRound", "FullRoundProps"),
@@ -3075,6 +3087,187 @@ impl TransformProps {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SheetRelief {
+    /// `"none"`
+    None,
+    /// `"rectangular"`
+    Rectangular,
+    /// `"obround"`
+    Obround,
+}
+
+impl ToJson for SheetRelief {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            SheetRelief::None => "none",
+            SheetRelief::Rectangular => "rectangular",
+            SheetRelief::Obround => "obround",
+        })
+    }
+}
+
+/// SHEET-METAL RULES: the sheet's thickness, bend radius, K-factor and bend relief, one element of the part (`<sheetMetal>`). Every sheet-metal feature of the part reads them where it states no value of its own; a part holds at most one. It makes no geometry.
+#[derive(Clone, Debug)]
+pub struct SheetMetalProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The sheet's thickness.
+    /// Unit: mm.
+    /// Default: `2`.
+    pub thickness: Option<f64>,
+    /// The inner bend radius.
+    /// Unit: mm.
+    /// Default: `2`.
+    pub bend_radius: Option<f64>,
+    /// Where the neutral fibre lies through the thickness (0 inside, 1 outside): bend allowance = angle × (radius + K × thickness).
+    /// Default: `0.44`.
+    pub k_factor: Option<f64>,
+    /// The relief cut at each end of a bend that does not run the whole edge: none, a rectangle, or a slot with a round end.
+    /// Default: `"rectangular"`.
+    pub relief: Option<SheetRelief>,
+    /// The relief's width along the bend; the thickness when omitted.
+    /// Unit: mm.
+    pub relief_width: Option<f64>,
+    /// How far the relief runs past the bend; the thickness when omitted.
+    /// Unit: mm.
+    pub relief_depth: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for SheetMetalProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
+        if let Some(v) = &self.bend_radius {
+            o.set("bendRadius", v.to_json());
+        }
+        if let Some(v) = &self.k_factor {
+            o.set("kFactor", v.to_json());
+        }
+        if let Some(v) = &self.relief {
+            o.set("relief", v.to_json());
+        }
+        if let Some(v) = &self.relief_width {
+            o.set("reliefWidth", v.to_json());
+        }
+        if let Some(v) = &self.relief_depth {
+            o.set("reliefDepth", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl SheetMetalProps {
+    /// The `sheetMetal` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("sheetMetal");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// A BASE FLANGE: the first sheet of a sheet-metal part, a closed sketch profile made as thick as the rules' sheet.
+#[derive(Clone, Debug)]
+pub struct SheetBaseProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The closed sketch regions the sheet takes.
+    pub profile: ProfileRef,
+    /// The sheet's thickness; the rules' when omitted.
+    /// Unit: mm.
+    pub thickness: Option<f64>,
+    /// Make the sheet on the other side of the sketch plane.
+    pub reverse: Option<bool>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for SheetBaseProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("profile", self.profile.to_json());
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
+        if let Some(v) = &self.reverse {
+            o.set("reverse", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl SheetBaseProps {
+    /// The `sheetBase` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("sheetBase");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// Where an edge flange's bend sits against the edge it is built on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlangePosition {
+    /// `"outside"`
+    Outside,
+    /// `"materialInside"`
+    MaterialInside,
+    /// `"materialOutside"`
+    MaterialOutside,
+}
+
+impl ToJson for FlangePosition {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            FlangePosition::Outside => "outside",
+            FlangePosition::MaterialInside => "materialInside",
+            FlangePosition::MaterialOutside => "materialOutside",
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SheetFlangeProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
@@ -3094,9 +3287,18 @@ pub struct SheetFlangeProps {
     /// Sheet thickness (mm); auto-derived from the body when omitted.
     /// Unit: mm.
     pub thickness: Option<f64>,
-    /// Inner bend radius (mm); defaults to the thickness when omitted.
+    /// Inner bend radius (mm); the rules' when omitted, else the thickness.
     /// Unit: mm.
     pub bend_radius: Option<f64>,
+    /// Where the bend sits: "outside" adds the bend beyond the edge; "materialInside" sets the edge back so the wall's outer face is where the edge was; "materialOutside" so its inner face is.
+    /// Default: `"outside"`.
+    pub position: Option<FlangePosition>,
+    /// How far the flange starts in from the edge's first end.
+    /// Unit: mm.
+    pub start_offset: Option<f64>,
+    /// How far the flange stops short of the edge's other end.
+    /// Unit: mm.
+    pub end_offset: Option<f64>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
     pub consumes: Option<Vec<String>>,
@@ -3123,6 +3325,15 @@ impl ToJson for SheetFlangeProps {
         if let Some(v) = &self.bend_radius {
             o.set("bendRadius", v.to_json());
         }
+        if let Some(v) = &self.position {
+            o.set("position", v.to_json());
+        }
+        if let Some(v) = &self.start_offset {
+            o.set("startOffset", v.to_json());
+        }
+        if let Some(v) = &self.end_offset {
+            o.set("endOffset", v.to_json());
+        }
         if let Some(v) = &self.suppressed {
             o.set("suppressed", v.to_json());
         }
@@ -3147,14 +3358,156 @@ impl SheetFlangeProps {
     }
 }
 
+/// A HEM: the sheet's edge bent right back on itself (180°), leaving `gap` between the two layers.
+#[derive(Clone, Debug)]
+pub struct SheetHemProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The straight edge to hem; the side of the sheet it is on is the side the hem folds to.
+    pub edge: Json,
+    /// The length of the folded-back layer.
+    /// Unit: mm.
+    /// Default: `8`.
+    pub length: Option<f64>,
+    /// The gap between the sheet and its folded-back layer (twice the hem's inner radius).
+    /// Unit: mm.
+    /// Default: `1`.
+    pub gap: Option<f64>,
+    /// Sheet thickness; the rules' when omitted.
+    /// Unit: mm.
+    pub thickness: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for SheetHemProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("edge", self.edge.to_json());
+        if let Some(v) = &self.length {
+            o.set("length", v.to_json());
+        }
+        if let Some(v) = &self.gap {
+            o.set("gap", v.to_json());
+        }
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl SheetHemProps {
+    /// The `sheetHem` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("sheetHem");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// A FOLD: a flat sheet bent along a line of a sketch drawn on it; the bend's middle is on the line.
+#[derive(Clone, Debug)]
+pub struct SheetFoldProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The sketch whose line the sheet bends along.
+    pub sketch: String,
+    /// The line of the sketch, by its id; the sketch's first line when omitted.
+    pub line: Option<String>,
+    /// The bend angle.
+    /// Unit: rad.
+    /// Default: `1.5707963267948966`.
+    pub angle: Option<f64>,
+    /// Inner bend radius; the rules' when omitted.
+    /// Unit: mm.
+    pub bend_radius: Option<f64>,
+    /// Move the sheet on the other side of the line.
+    pub flip: Option<bool>,
+    /// Bend to the other face of the sheet.
+    pub reverse: Option<bool>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for SheetFoldProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("sketch", self.sketch.to_json());
+        if let Some(v) = &self.line {
+            o.set("line", v.to_json());
+        }
+        if let Some(v) = &self.angle {
+            o.set("angle", v.to_json());
+        }
+        if let Some(v) = &self.bend_radius {
+            o.set("bendRadius", v.to_json());
+        }
+        if let Some(v) = &self.flip {
+            o.set("flip", v.to_json());
+        }
+        if let Some(v) = &self.reverse {
+            o.set("reverse", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl SheetFoldProps {
+    /// The `sheetFold` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("sheetFold");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// THE FLAT PATTERN: every base flange, edge flange, hem and fold of the part developed flat (each bend becomes its bend allowance). Suppressed, the part is folded again.
 #[derive(Clone, Debug)]
 pub struct UnfoldProps {
     /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
     pub id: String,
     /// Its name in the feature list (absent: its id).
     pub name: Option<String>,
-    /// K-factor for bend-allowance (neutral-fibre) computation; default 0.44.
-    /// Default: `0.44`.
+    /// K-factor for bend-allowance (neutral-fibre) computation; the rules' when omitted, else 0.44.
     pub k_factor: Option<f64>,
     pub suppressed: Option<bool>,
     /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
@@ -3187,6 +3540,189 @@ impl UnfoldProps {
     #[track_caller]
     pub fn el(self) -> El {
         let mut el = El::new("unfold");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// A weldment's structural section (`@commandagi/3d-core/weldment` PROFILES holds the standard sizes).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameProfile {
+    /// `"angle"`
+    Angle,
+    /// `"squareTube"`
+    SquareTube,
+    /// `"rectTube"`
+    RectTube,
+    /// `"channel"`
+    Channel,
+    /// `"roundTube"`
+    RoundTube,
+}
+
+impl ToJson for FrameProfile {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            FrameProfile::Angle => "angle",
+            FrameProfile::SquareTube => "squareTube",
+            FrameProfile::RectTube => "rectTube",
+            FrameProfile::Channel => "channel",
+            FrameProfile::RoundTube => "roundTube",
+        })
+    }
+}
+
+/// How two frame members meet at a corner of the sketch: cut at the bisector, one butting on the other, or untrimmed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameCorner {
+    /// `"none"`
+    None,
+    /// `"miter"`
+    Miter,
+    /// `"butt"`
+    Butt,
+}
+
+impl ToJson for FrameCorner {
+    fn to_json(&self) -> Json {
+        Json::from(match self {
+            FrameCorner::None => "none",
+            FrameCorner::Miter => "miter",
+            FrameCorner::Butt => "butt",
+        })
+    }
+}
+
+/// FRAME MEMBERS: a structural section swept along lines of a sketch, one body per line, trimmed where two meet.
+#[derive(Clone, Debug)]
+pub struct FrameMemberProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The sketch whose lines the members run along (their centre lines).
+    pub sketch: String,
+    /// The lines, by id; every line of the sketch when omitted.
+    pub segments: Option<Vec<String>>,
+    /// The section.
+    /// Default: `"squareTube"`.
+    pub profile: Option<FrameProfile>,
+    /// The standard size, as the profile library names it (width × height × wall, or diameter × wall).
+    /// Default: `"40x40x3"`.
+    pub size: Option<String>,
+    /// How members meet at a shared end.
+    /// Default: `"miter"`.
+    pub corner: Option<FrameCorner>,
+    /// The section turned about the member's axis.
+    /// Unit: rad.
+    pub rotate: Option<f64>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for FrameMemberProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("sketch", self.sketch.to_json());
+        if let Some(v) = &self.segments {
+            o.set("segments", v.to_json());
+        }
+        if let Some(v) = &self.profile {
+            o.set("profile", v.to_json());
+        }
+        if let Some(v) = &self.size {
+            o.set("size", v.to_json());
+        }
+        if let Some(v) = &self.corner {
+            o.set("corner", v.to_json());
+        }
+        if let Some(v) = &self.rotate {
+            o.set("rotate", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl FrameMemberProps {
+    /// The `frameMember` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("frameMember");
+        if let Json::Obj(entries) = self.to_json() {
+            for (k, v) in entries {
+                el = el.with_attr(k, v);
+            }
+        }
+        el
+    }
+}
+
+/// AN END CAP: a plate that closes the open end of a frame member, on its end face.
+#[derive(Clone, Debug)]
+pub struct EndCapProps {
+    /// Its id: letters, digits, `_ . -`; later features and parameter bindings name it.
+    pub id: String,
+    /// Its name in the feature list (absent: its id).
+    pub name: Option<String>,
+    /// The member's end face.
+    pub face: Json,
+    /// The plate's thickness.
+    /// Unit: mm.
+    /// Default: `3`.
+    pub thickness: Option<f64>,
+    /// Set the plate into the tube's opening, flush with the end, instead of on the end.
+    pub inside: Option<bool>,
+    pub suppressed: Option<bool>,
+    /// THE BODY-STATE EDGE — the explicit form of what a timeline used to supply implicitly as "whatever came before".
+    pub consumes: Option<Vec<String>>,
+}
+
+impl ToJson for EndCapProps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        o.set("id", self.id.to_json());
+        if let Some(v) = &self.name {
+            o.set("name", v.to_json());
+        }
+        o.set("face", self.face.to_json());
+        if let Some(v) = &self.thickness {
+            o.set("thickness", v.to_json());
+        }
+        if let Some(v) = &self.inside {
+            o.set("inside", v.to_json());
+        }
+        if let Some(v) = &self.suppressed {
+            o.set("suppressed", v.to_json());
+        }
+        if let Some(v) = &self.consumes {
+            o.set("consumes", v.to_json());
+        }
+        o
+    }
+}
+
+impl EndCapProps {
+    /// The `endCap` element of these fields, at the caller's line.
+    #[track_caller]
+    pub fn el(self) -> El {
+        let mut el = El::new("endCap");
         if let Json::Obj(entries) = self.to_json() {
             for (k, v) in entries {
                 el = el.with_attr(k, v);
@@ -6673,10 +7209,10 @@ impl ToJson for OffsetJoin {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OffsetCap {
-    /// `"round"`
-    Round,
     /// `"butt"`
     Butt,
+    /// `"round"`
+    Round,
     /// `"square"`
     Square,
 }
@@ -6684,8 +7220,8 @@ pub enum OffsetCap {
 impl ToJson for OffsetCap {
     fn to_json(&self) -> Json {
         Json::from(match self {
-            OffsetCap::Round => "round",
             OffsetCap::Butt => "butt",
+            OffsetCap::Round => "round",
             OffsetCap::Square => "square",
         })
     }
