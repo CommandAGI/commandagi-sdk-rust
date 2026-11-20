@@ -4454,10 +4454,12 @@ impl ToJson for SketchPoint {
 #[derive(Clone, Debug)]
 pub struct SketchProjection {
     pub id: String,
-    /// The model edge this follows, signature-matched across rebuilds like every other reference.
-    pub ref_: TopoRef,
+    /// The model edge this follows, signature-matched across rebuilds like every other reference. Absent on a section, which follows a whole body.
+    pub ref_: Option<TopoRef>,
     /// The feature that built the body — the timeline dependency, exactly as for a pin.
     pub feature: Option<String>,
+    /// AN INTERSECTION, not a projection: the curves where the body `feature` built crosses the sketch's plane, cut again on every rebuild. It needs `feature` and names no `ref`.
+    pub section: Option<bool>,
     /// Generate as construction (reference) geometry rather than profile geometry.
     pub construction: Option<bool>,
     /// Human label captured at creation, for the panel ("Extrude1 edge").
@@ -4469,9 +4471,14 @@ impl ToJson for SketchProjection {
         #[allow(unused_mut)]
         let mut o = Json::obj();
         o.set("id", self.id.to_json());
-        o.set("ref", self.ref_.to_json());
+        if let Some(v) = &self.ref_ {
+            o.set("ref", v.to_json());
+        }
         if let Some(v) = &self.feature {
             o.set("feature", v.to_json());
+        }
+        if let Some(v) = &self.section {
+            o.set("section", v.to_json());
         }
         if let Some(v) = &self.construction {
             o.set("construction", v.to_json());
@@ -4835,6 +4842,10 @@ pub enum ConstraintKind {
     Collinear,
     /// `"diameter"`
     Diameter,
+    /// `"pointLineDistance"`
+    PointLineDistance,
+    /// `"arcLength"`
+    ArcLength,
 }
 
 impl ToJson for ConstraintKind {
@@ -4859,6 +4870,8 @@ impl ToJson for ConstraintKind {
             ConstraintKind::Radius => "radius",
             ConstraintKind::Collinear => "collinear",
             ConstraintKind::Diameter => "diameter",
+            ConstraintKind::PointLineDistance => "pointLineDistance",
+            ConstraintKind::ArcLength => "arcLength",
         })
     }
 }
@@ -8615,10 +8628,12 @@ impl SketchConstraintProps {
 #[derive(Clone, Debug)]
 pub struct SketchProjectionProps {
     pub id: String,
-    /// The model edge this follows, signature-matched across rebuilds like every other reference.
-    pub ref_: TopoRef,
+    /// The model edge this follows, signature-matched across rebuilds like every other reference. Absent on a section, which follows a whole body.
+    pub ref_: Option<TopoRef>,
     /// The feature that built the body — the timeline dependency, exactly as for a pin.
     pub feature: Option<String>,
+    /// AN INTERSECTION, not a projection: the curves where the body `feature` built crosses the sketch's plane, cut again on every rebuild. It needs `feature` and names no `ref`.
+    pub section: Option<bool>,
     /// Generate as construction (reference) geometry rather than profile geometry.
     pub construction: Option<bool>,
     /// Human label captured at creation, for the panel ("Extrude1 edge").
@@ -8630,9 +8645,14 @@ impl ToJson for SketchProjectionProps {
         #[allow(unused_mut)]
         let mut o = Json::obj();
         o.set("id", self.id.to_json());
-        o.set("ref", self.ref_.to_json());
+        if let Some(v) = &self.ref_ {
+            o.set("ref", v.to_json());
+        }
         if let Some(v) = &self.feature {
             o.set("feature", v.to_json());
+        }
+        if let Some(v) = &self.section {
+            o.set("section", v.to_json());
         }
         if let Some(v) = &self.construction {
             o.set("construction", v.to_json());
