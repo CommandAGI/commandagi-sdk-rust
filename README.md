@@ -46,6 +46,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::testplans` | a test plan |
 | `commandagi::design::factory` | a factory in a scene (`check_flow_system`, `machines_for`) |
 | `commandagi::design::scene_agents` | the agents of a scene (`check_scene_agents`) |
+| `commandagi::design::scene_people` | a person in a scene (`check_look`, `check_goal`, `check_humanoid_policy`, `check_motors`, `check_assist`) |
 | `commandagi::design::firmware` | a firmware release, a rollout |
 | `commandagi::design::office` | a workbook, a page, a deck |
 | `commandagi::design::twod` | a drawing, a painting, a photo, a nest |
