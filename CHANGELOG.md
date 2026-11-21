@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- Connectors: an entry's `picture` (the source's own picture of it: a url, absolute or under the base, on a declared
+  host; its files inherit it), and the template filter `|fit:<px>` (of a list of images, the narrowest at least px wide).
 - 3D documents: `<replaceFace face surface>`; `<trimSurface toolBody>` (trim by another surface; `tool` is now
   optional); `<untrimSurface edges>` (fill the opening an open edge bounds).
 - 3D documents: surfaces (`surface` on `<extrude>`, `<revolve>`, `<sweep>`, `<loft>`; `<trimSurface>`,

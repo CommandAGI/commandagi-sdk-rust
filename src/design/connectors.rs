@@ -22,10 +22,10 @@
 //! ```
 //!
 //! Elements: `connector` (`name`, `base`, `rate`, `cache`, `home`, `terms`, `robots`, `hosts`, and every entry's `title`,
-//! `author`, `licence`, `source`, `credit`), `credential`, `licence()` (`value` to `spdx`), `folder` (`path`, `get`,
+//! `author`, `licence`, `source`, `credit`, `picture`: the source's own picture of it, a url on a declared host), `credential`, `licence()` (`value` to `spdx`), `folder` (`path`, `get`,
 //! `decode`, `page`, `page_size`, `total`, `next`), `request`, `here`, `each` (`in_`, `as_`, `where_`, `is`, `not_`: the JSX
 //! attributes `in`, `as`, `where`, `is` and `not`), `dir` and `file`. A text attribute is a template (`{a}`, `{a/name}`, `{slug}`,
-//! `|keys`, `|join:<sep>`, `|base`, `|stem`, `|ext`, `|text`, `|name`, `|lower`, `|first`, `|unique`; `{@}` is the folder's own
+//! `|keys`, `|join:<sep>`, `|base`, `|stem`, `|ext`, `|text`, `|name`, `|lower`, `|first`, `|unique`, `|fit:<px>`; `{@}` is the folder's own
 //! entry). A connector that would make an impolite or unreadable request is refused with why.
 
 use super::documents::{declare_document, js_string, DocTree, TagRule, Vocabulary};
@@ -58,7 +58,7 @@ attributes! {
     /// The fields of a connector's elements, chained on them.
     pub trait ConnectorsAttrs {
         name; id; base; rate; cache; home; terms; robots; hosts;
-        title; author; licence; source; credit;
+        title; author; licence; source; credit; picture;
         service; field; query; header; prefix; optional;
         value; spdx;
         path; get; decode; page; page_size; total; next;
@@ -69,15 +69,15 @@ attributes! {
 
 pub(crate) const FAMILY: Family = Family { module: "connectors", roots: &["connector"], declare };
 
-pub const PROVENANCE_FIELDS: &[&str] = &["title", "author", "licence", "source", "credit"];
+pub const PROVENANCE_FIELDS: &[&str] = &["title", "author", "licence", "source", "credit", "picture"];
 pub const CONNECTOR_DECODES: &[&str] = &["json", "gzip-json"];
 
-const CONNECTOR_ATTRS: &[&str] = &["name", "base", "rate", "cache", "home", "terms", "robots", "hosts", "title", "author", "licence", "source", "credit"];
+const CONNECTOR_ATTRS: &[&str] = &["name", "base", "rate", "cache", "home", "terms", "robots", "hosts", "title", "author", "licence", "source", "credit", "picture"];
 const CREDENTIAL_ATTRS: &[&str] = &["service", "field", "query", "header", "prefix", "hosts", "optional"];
 const FOLDER_ATTRS: &[&str] = &["path", "get", "decode", "page", "pageSize", "total", "next"];
 const EACH_ATTRS: &[&str] = &["in", "as", "where", "is", "not"];
-const DIR_ATTRS: &[&str] = &["name", "id", "zip", "title", "author", "licence", "source", "credit"];
-const FILE_ATTRS: &[&str] = &["path", "url", "zip", "member", "size", "title", "author", "licence", "source", "credit"];
+const DIR_ATTRS: &[&str] = &["name", "id", "zip", "title", "author", "licence", "source", "credit", "picture"];
+const FILE_ATTRS: &[&str] = &["path", "url", "zip", "member", "size", "title", "author", "licence", "source", "credit", "picture"];
 
 const CONNECTOR: Vocabulary = Vocabulary {
     format: "connector",
