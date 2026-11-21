@@ -44,7 +44,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::fab` | a machining setup, a slicing setup |
 | `commandagi::design::study` | a study (the question of an analysis: `structural`, `flow` or `step-response`) |
 | `commandagi::design::testplans` | a test plan |
-| `commandagi::design::factory` | a factory in a scene (`check_flow_system`, `machines_for`) |
+| `commandagi::design::factory` | a plant in a scene (`check_operations_system`, `machines_for`) |
 | `commandagi::design::scene_agents` | the agents of a scene (`check_scene_agents`) |
 | `commandagi::design::scene_people` | a person in a scene (`check_look`, `check_goal`, `check_humanoid_policy`, `check_motors`, `check_assist`) |
 | `commandagi::design::firmware` | a firmware release, a rollout |

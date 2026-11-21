@@ -1,12 +1,12 @@
-// The factory module against factory_flow.json, the golden of the three SDKs (factory-flow.golden.json in the
-// TypeScript SDK): a factory the engine runs passes, each refusal is the engine's own words, and the sizing gives the
+// The plant module against factory_operations.json, the golden of the three SDKs (factory-operations.golden.json in the
+// TypeScript SDK): a plant the engine runs passes, each refusal is the engine's own words, and the sizing gives the
 // machines the engine's sizing gives.
 
 use commandagi::design::factory::*;
 use commandagi::design::Json;
 
 fn golden() -> Json {
-    Json::parse(include_str!("factory_flow.json")).unwrap()
+    Json::parse(include_str!("factory_operations.json")).unwrap()
 }
 fn at<'a>(j: &'a mut Json, key: &Json) -> &'a mut Json {
     match (j, key) {
@@ -19,7 +19,7 @@ fn at<'a>(j: &'a mut Json, key: &Json) -> &'a mut Json {
 #[test]
 fn the_engines_refusals() {
     let g = golden();
-    check_flow_system(g.get("valid").unwrap()).unwrap();
+    check_operations_system(g.get("valid").unwrap()).unwrap();
     let Some(Json::Arr(refusals)) = g.get("refusals") else { panic!() };
     for r in refusals {
         let Some(Json::Arr(path)) = r.get("change") else { panic!() };
@@ -29,7 +29,7 @@ fn the_engines_refusals() {
             node = at(node, k);
         }
         node.set(path[path.len() - 2].as_str().unwrap(), path[path.len() - 1].clone());
-        let said = check_flow_system(&spec).unwrap_err();
+        let said = check_operations_system(&spec).unwrap_err();
         let want = r.get("says").unwrap().as_str().unwrap();
         assert!(said.contains(want), "{want}: {said}");
     }

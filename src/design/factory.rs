@@ -1,42 +1,48 @@
-//! A FACTORY IN A SCENE — the `flow` system a design's `slot().name("scene")` holds (docs/formats.md § simulations,
-//! "A factory", in the CommandAGI repository): products on routes through stations of machines with finite buffers,
-//! from sources to sinks, run by the simulation engine as discrete events. The same factory as the TypeScript SDK's
-//! (`factory-flow.ts`) and the Python SDK's (`commandagi.design.factory`):
+//! A PLANT IN A SCENE — the `operations` system a design's `slot().name("scene")` holds (docs/formats.md § factories,
+//! in the CommandAGI repository): items with their BOMs, locations, stations of machines, routings of ops, work
+//! orders, resources, moves, deliveries and shipments, run by the simulation engine as discrete events whose material
+//! is entities. The same plant as the TypeScript SDK's (`factory-operations.ts`) and the Python SDK's
+//! (`commandagi.design.factory`):
 //!
 //! ```
 //! use commandagi::design::factory::*;
 //! use commandagi::design::Json;
 //!
-//! let line = Json::parse(r#"{ "id": "line", "kind": "flow",
-//!   "products": [{ "id": "motor", "route": ["wind"], "sink": "dock" }],
-//!   "sources": [{ "id": "kits", "product": "motor" }], "sinks": [{ "id": "dock" }],
-//!   "stations": [{ "id": "wind", "machines": 4, "cycle_s": 75, "buffer": 12 }] }"#).unwrap();
-//! check_flow_system(&line).unwrap();
+//! let line = Json::parse(r#"{ "id": "line", "kind": "operations",
+//!   "items": [{ "id": "kit" }, { "id": "motor", "bom": [{ "item": "kit", "qty": 1 }] }],
+//!   "locations": [{ "id": "kits", "kind": "store", "capacity": 500, "stock": [{ "item": "kit", "qty": 400 }] }, { "id": "fg", "kind": "store", "capacity": 500 }],
+//!   "stations": [{ "id": "wind", "machines": 4, "in": "kits", "out": "fg" }],
+//!   "routings": [{ "item": "motor", "to": "fg", "ops": [{ "id": "wind", "station": "wind", "cycle_s": 75, "consumes": [{ "item": "kit", "qty": 1 }] }] }] }"#).unwrap();
+//! check_operations_system(&line).unwrap();
 //! assert_eq!(machines_for(2000.0 / 57600.0, 90.0, 1.0, 0.9, 0.85).unwrap(), 5);
 //! ```
 //!
-//! `check_flow_system` refuses an unknown field, a missing one, a number that is not a number or a `"$parameter"`, and
-//! a name that points nowhere, in the engine's own words. The engine checks the rest when the scene runs.
+//! `check_operations_system` refuses an unknown field, a missing one, a number that is not a number or a
+//! `"$parameter"`, and a name that points nowhere, in the engine's own words. The engine checks the rest when the scene
+//! runs.
 
 use super::Json;
 
 /// Each part's fields: the ones it needs, then the ones it may have. One table, the same in the three SDKs.
-pub const FACTORY_FIELDS: &[(&str, &[&str], &[&str])] = &[
-    ("system", &["id", "kind", "products", "stations", "sources", "sinks"], &["seed", "time_scale", "window_s", "shifts", "record"]),
-    ("station", &["id", "machines", "cycle_s", "buffer"], &["label", "at", "cycle_cv", "batch", "setup_s", "availability", "mtbf_s", "mttr_s", "yield", "energy_j", "cell"]),
-    ("product", &["id", "route", "sink"], &["label", "demand_per_period", "color"]),
-    ("source", &["id", "product"], &["label", "at", "per_hour", "arrivals"]),
-    ("sink", &["id"], &["label", "at"]),
+pub const PLANT_FIELDS: &[(&str, &[&str], &[&str])] = &[
+    ("system", &["id", "kind", "items", "locations", "stations", "routings"], &["seed", "time_scale", "window_s", "shifts", "record", "resources", "orders", "inbound", "outbound", "moves"]),
+    ("item", &["id"], &["label", "bom", "body", "ideal_cycle_s"]),
+    ("location", &["id", "kind", "capacity"], &["label", "stock", "zone", "slots", "transit_s", "to", "drive"]),
+    ("resource", &["id", "kind", "skills"], &["label", "members", "count", "physical"]),
+    ("station", &["id", "in", "out"], &["label", "units", "machines", "mtbf_s", "mttr_s", "repair", "maintenance", "tool", "plc", "zone"]),
+    ("routing", &["item", "to", "ops"], &[]),
+    ("op", &["id", "station", "cycle_s"], &["cycle_cv", "ideal_s", "setup_s", "consumes", "needs", "load_s", "inspect", "rework", "then", "body", "energy_j", "cell"]),
+    ("order", &["id", "item", "qty"], &["label", "release_s", "due_s", "priority"]),
+    ("inbound", &["id", "item", "qty", "to"], &["label", "at_s", "every_s", "first_s"]),
+    ("outbound", &["id", "item", "qty", "from"], &["label", "at_s", "every_s", "first_s"]),
+    ("move", &["id", "from", "to", "lot", "reorder_at", "by", "travel_s"], &["label", "item"]),
     ("shifts", &["windows"], &["period_s"]),
 ];
 const NUMBERS: &[(&str, &str)] = &[
-    ("machines", "a whole number from 1 to 256"), ("buffer", "a whole number from 1 to 100000"), ("batch", "a whole number from 1 to 1024"),
-    ("cycle_s", "the seconds one batch takes, more than 0"), ("cycle_cv", "the spread of the cycle time over its mean, 0 to 4"),
-    ("setup_s", "the seconds a change of product takes, 0 or more"), ("yield", "the share of parts that survive, above 0 and at most 1"),
-    ("availability", "the share of time it is not under repair, above 0 and at most 1"), ("mtbf_s", "the mean operating seconds between failures, more than 0"),
-    ("mttr_s", "the mean seconds a repair takes, more than 0"), ("per_hour", "the parts it releases in a working hour, more than 0"),
-    ("demand_per_period", "the parts wanted in one shift period, more than 0"),
-    ("energy_j", "the joules one batch takes, 0 or more"),
+    ("capacity", "a whole number from 1 to 100000"), ("machines", "a whole number from 1 to 1000"), ("qty", "a whole number from 1 to 100000"),
+    ("cycle_s", "the seconds one entity takes, more than 0"), ("setup_s", "seconds, 0 or more"), ("mtbf_s", "the mean operating seconds between failures, more than 0"),
+    ("mttr_s", "the mean seconds a repair takes, more than 0"), ("energy_j", "the joules one entity takes, 0 or more"), ("lot", "a whole number from 1 to 100000"),
+    ("reorder_at", "a whole number from 0 to 100000"), ("travel_s", "seconds, 0 or more"), ("transit_s", "the seconds an entity rides it, more than 0"),
 ];
 
 fn is_number(v: &Json) -> bool {
@@ -56,18 +62,25 @@ fn text(v: Option<&Json>) -> String {
         None => "undefined".into(),
     }
 }
-fn list<'a>(spec: &'a Json, key: &str) -> Option<&'a Vec<Json>> {
-    match spec.get(key) {
-        Some(Json::Arr(items)) => Some(items),
-        _ => None,
+fn quoted(v: Option<&Json>) -> String {
+    match v {
+        Some(Json::Str(s)) => format!("\"{s}\""),
+        Some(other) => other.text(),
+        None => "undefined".into(),
+    }
+}
+fn items_of<'a>(o: &'a Json, key: &str) -> &'a [Json] {
+    match o.get(key) {
+        Some(Json::Arr(items)) => items,
+        _ => &[],
     }
 }
 
 /// Refuses what the engine would refuse by shape or by name, with its words.
-pub fn check_flow_system(spec: &Json) -> Result<(), String> {
+pub fn check_operations_system(spec: &Json) -> Result<(), String> {
     let no = |why: String| Err(format!("system {}: {why}", text(spec.get("id"))));
     let fields = |o: &Json, part: &str, at: &str| -> Result<(), String> {
-        let (_, needs, may) = FACTORY_FIELDS.iter().find(|(p, _, _)| *p == part).unwrap();
+        let (_, needs, may) = PLANT_FIELDS.iter().find(|(p, _, _)| *p == part).unwrap();
         let Json::Obj(entries) = o else { return no(format!("{at} is an object")) };
         for (k, _) in entries {
             if !needs.contains(&k.as_str()) && !may.contains(&k.as_str()) {
@@ -87,52 +100,100 @@ pub fn check_flow_system(spec: &Json) -> Result<(), String> {
         Ok(())
     };
     fields(spec, "system", "the system")?;
-    if spec.get("kind").and_then(Json::as_str) != Some("flow") {
-        return no("kind is flow".into());
+    if spec.get("kind").and_then(Json::as_str) != Some("operations") {
+        return no("kind is operations".into());
     }
-    let mut lists = Vec::new();
-    for k in ["stations", "products", "sources", "sinks"] {
-        match list(spec, k) {
-            Some(items) => lists.push(items),
-            None => return no(format!("{k} is a list")),
+    for k in ["items", "locations", "resources", "stations", "routings", "orders", "inbound", "outbound", "moves"] {
+        if spec.get(k).is_some_and(|v| !matches!(v, Json::Arr(_))) {
+            return no(format!("{k} is a list"));
         }
     }
-    let (stations, products, sources, sinks) = (lists[0], lists[1], lists[2], lists[3]);
-    for (part, items) in [("station", stations), ("product", products), ("source", sources), ("sink", sinks)] {
-        for x in items {
+    let (items, locations, resources, stations, routings) = (items_of(spec, "items"), items_of(spec, "locations"), items_of(spec, "resources"), items_of(spec, "stations"), items_of(spec, "routings"));
+    let (orders, inbound, outbound, moves) = (items_of(spec, "orders"), items_of(spec, "inbound"), items_of(spec, "outbound"), items_of(spec, "moves"));
+    for (part, xs) in [("item", items), ("location", locations), ("resource", resources), ("station", stations), ("order", orders), ("inbound", inbound), ("outbound", outbound), ("move", moves)] {
+        for x in xs {
             fields(x, part, &format!("{part} {}", text(x.get("id"))))?;
         }
     }
     if let Some(shifts) = spec.get("shifts") {
         fields(shifts, "shifts", "shifts")?;
     }
-    let ids = |items: &Vec<Json>| items.iter().map(|x| text(x.get("id"))).collect::<Vec<_>>();
-    let (station_ids, sink_ids, product_ids) = (ids(stations), ids(sinks), ids(products));
-    for p in products {
-        for step in list(p, "route").map(|v| v.as_slice()).unwrap_or(&[]) {
-            let id = match step {
-                Json::Str(s) => s.clone(),
-                other => text(other.get("station")),
-            };
-            if !station_ids.contains(&id) {
-                return no(format!("product {}: route names \"{id}\", which is not a station", text(p.get("id"))));
-            }
+    let ids = |xs: &[Json]| xs.iter().map(|x| text(x.get("id"))).collect::<Vec<_>>();
+    let (item_ids, loc_ids, station_ids) = (ids(items), ids(locations), ids(stations));
+    let skills: Vec<String> = resources.iter().flat_map(|r| items_of(r, "skills").iter().map(|s| text(Some(s)))).collect();
+    let item = |v: Option<&Json>, at: &str| if item_ids.contains(&text(v)) { Ok(()) } else { no(format!("{at}: item {} is not one of the items", quoted(v))) };
+    let loc = |v: Option<&Json>, at: &str| if loc_ids.contains(&text(v)) { Ok(()) } else { no(format!("{at}: location {} is not one of the locations", quoted(v))) };
+    let skill = |v: Option<&Json>, at: &str| if skills.contains(&text(v)) { Ok(()) } else { no(format!("{at}: skill {} is no resource's", quoted(v))) };
+    let lines = |o: &Json, key: &str, at: &str| -> Result<(), String> {
+        for (i, l) in items_of(o, key).iter().enumerate() {
+            item(l.get("item"), &format!("{at} {}", i + 1))?;
         }
-        let sink = text(p.get("sink"));
-        if !sink_ids.contains(&sink) {
-            return no(format!("product {}: sink \"{sink}\" is not one of the sinks", text(p.get("id"))));
+        Ok(())
+    };
+    for x in items {
+        lines(x, "bom", &format!("item {}: bom", text(x.get("id"))))?;
+    }
+    for x in locations {
+        lines(x, "stock", &format!("location {}: stock", text(x.get("id"))))?;
+        if x.get("to").is_some() {
+            loc(x.get("to"), &format!("location {}", text(x.get("id"))))?;
         }
     }
-    for x in sources {
-        let product = text(x.get("product"));
-        if !product_ids.contains(&product) {
-            return no(format!("source {}: product \"{product}\" is not one of the products", text(x.get("id"))));
+    for x in stations {
+        let id = text(x.get("id"));
+        loc(x.get("in"), &format!("station {id}: in"))?;
+        loc(x.get("out"), &format!("station {id}: out"))?;
+        if x.get("repair").is_some() {
+            skill(x.get("repair"), &format!("station {id}: repair"))?;
         }
+    }
+    let mut made = Vec::new();
+    for (i, r) in routings.iter().enumerate() {
+        let at = format!("routing {}", i + 1);
+        fields(r, "routing", &at)?;
+        item(r.get("item"), &at)?;
+        made.push(text(r.get("item")));
+        loc(r.get("to"), &format!("{at}: to"))?;
+        for op in items_of(r, "ops") {
+            let wh = format!("{at} op {}", text(op.get("id")));
+            fields(op, "op", &wh)?;
+            if !station_ids.contains(&text(op.get("station"))) {
+                return no(format!("{wh}: station {} is not one of the stations", quoted(op.get("station"))));
+            }
+            lines(op, "consumes", &format!("{wh}: consumes"))?;
+            if op.get("needs").is_some() {
+                skill(op.get("needs"), &wh)?;
+            }
+        }
+    }
+    for x in orders {
+        if !made.contains(&text(x.get("item"))) {
+            return no(format!("order {}: no routing makes {}", text(x.get("id")), quoted(x.get("item"))));
+        }
+    }
+    for x in inbound {
+        let id = text(x.get("id"));
+        item(x.get("item"), &format!("inbound {id}"))?;
+        loc(x.get("to"), &format!("inbound {id}: to"))?;
+    }
+    for x in outbound {
+        let id = text(x.get("id"));
+        item(x.get("item"), &format!("outbound {id}"))?;
+        loc(x.get("from"), &format!("outbound {id}: from"))?;
+    }
+    for x in moves {
+        let id = text(x.get("id"));
+        if x.get("item").is_some() {
+            item(x.get("item"), &format!("move {id}"))?;
+        }
+        loc(x.get("from"), &format!("move {id}: from"))?;
+        loc(x.get("to"), &format!("move {id}: to"))?;
+        skill(x.get("by"), &format!("move {id}"))?;
     }
     Ok(())
 }
 
-/// The machines a rate needs: CEIL(rate * cycle / (batch * availability * load)); `rate` in parts a second into the
+/// The machines a rate needs: CEIL(rate * cycle / (batch * availability * load)); `rate` in entities a second into the
 /// station, `load` the planned share of a machine's time (0.85).
 pub fn machines_for(rate: f64, cycle_s: f64, batch: f64, availability: f64, load: f64) -> Result<u32, String> {
     if !(rate >= 0.0 && cycle_s > 0.0 && batch > 0.0 && availability > 0.0 && availability <= 1.0 && load > 0.0 && load <= 1.0) {
