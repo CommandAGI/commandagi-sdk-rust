@@ -31,7 +31,7 @@ pub const PLANT_FIELDS: &[(&str, &[&str], &[&str])] = &[
     ("resource", &["id", "kind", "skills"], &["label", "members", "count", "physical"]),
     ("station", &["id", "in", "out"], &["label", "units", "machines", "mtbf_s", "mttr_s", "repair", "maintenance", "tool", "plc", "zone"]),
     ("routing", &["item", "to", "ops"], &[]),
-    ("op", &["id", "station", "cycle_s"], &["cycle_cv", "ideal_s", "setup_s", "consumes", "needs", "load_s", "inspect", "rework", "then", "body", "energy_j", "cell"]),
+    ("op", &["id", "station", "cycle_s"], &["cycle_cv", "ideal_s", "setup_s", "consumes", "needs", "load_s", "inspect", "rework", "then", "body", "energy_j", "cell", "batch", "batch_min", "batch_wait_s"]),
     ("order", &["id", "item", "qty"], &["label", "release_s", "due_s", "priority"]),
     ("inbound", &["id", "item", "qty", "to"], &["label", "at_s", "every_s", "first_s"]),
     ("outbound", &["id", "item", "qty", "from"], &["label", "at_s", "every_s", "first_s"]),
@@ -41,7 +41,7 @@ pub const PLANT_FIELDS: &[(&str, &[&str], &[&str])] = &[
 const NUMBERS: &[(&str, &str)] = &[
     ("capacity", "a whole number from 1 to 100000"), ("machines", "a whole number from 1 to 1000"), ("qty", "a whole number from 1 to 100000"),
     ("cycle_s", "the seconds one entity takes, more than 0"), ("setup_s", "seconds, 0 or more"), ("mtbf_s", "the mean operating seconds between failures, more than 0"),
-    ("mttr_s", "the mean seconds a repair takes, more than 0"), ("energy_j", "the joules one entity takes, 0 or more"), ("lot", "a whole number from 1 to 100000"),
+    ("mttr_s", "the mean seconds a repair takes, more than 0"), ("energy_j", "the joules one entity takes, 0 or more"), ("lot", "a whole number from 1 to 100000"), ("batch", "a whole number from 1 to 10000"), ("batch_wait_s", "seconds, 0 or more"),
     ("reorder_at", "a whole number from 0 to 100000"), ("travel_s", "seconds, 0 or more"), ("transit_s", "the seconds an entity rides it, more than 0"),
 ];
 
@@ -157,12 +157,20 @@ pub fn check_operations_system(spec: &Json) -> Result<(), String> {
         for op in items_of(r, "ops") {
             let wh = format!("{at} op {}", text(op.get("id")));
             fields(op, "op", &wh)?;
+            if op.get("batch").is_none() && (op.get("batch_min").is_some() || op.get("batch_wait_s").is_some()) {
+                return no(format!("{wh}: batch_min and batch_wait_s belong to a batch op (batch)"));
+            }
             if !station_ids.contains(&text(op.get("station"))) {
                 return no(format!("{wh}: station {} is not one of the stations", quoted(op.get("station"))));
             }
             lines(op, "consumes", &format!("{wh}: consumes"))?;
             if op.get("needs").is_some() {
                 skill(op.get("needs"), &wh)?;
+            }
+        }
+        if let Some(first) = items_of(r, "ops").iter().find(|o| !matches!(o.get("rework"), Some(Json::Bool(true)))) {
+            if first.get("batch").map_or(false, |b| !matches!(b, Json::Num(n) if *n == 1.0)) {
+                return no(format!("{at}: its first op {} makes its entities one by one; a batch op (batch) comes after it", text(first.get("id"))));
             }
         }
     }
