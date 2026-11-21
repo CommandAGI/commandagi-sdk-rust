@@ -16,6 +16,7 @@ fn the_engines_refusals() {
             "humanoid" => check_humanoid_policy(value),
             "motors" => check_motors(value),
             "assist" => check_assist(value),
+            "face" => check_face(value),
             other => panic!("no check {other}"),
         };
         match c.get("says").and_then(Json::as_str) {
@@ -35,4 +36,13 @@ fn the_joints() {
     joints.dedup();
     assert_eq!(joints.len(), 33);
     assert_eq!(humanoid_constraint("ana", "shoulder_l_abduct"), "ana-shoulder-l-abduct");
+}
+
+#[test]
+fn the_face_units_and_ethnicities() {
+    let mut units = FACE_UNITS.to_vec();
+    units.sort();
+    units.dedup();
+    assert_eq!(units.len(), 52);
+    assert_eq!(ETHNICITIES, ["african", "asian", "caucasian"]);
 }

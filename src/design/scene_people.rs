@@ -1,6 +1,6 @@
 //! A PERSON IN A SCENE — the human avatar (`cloud://global/devices/human-avatar/definition.tsx`) placed in a design's
 //! `slot().name("scene")` as a `robots` entry with a `look`, the `humanoid` policy that drives it, and the `goal`,
-//! `motors` and `assist` commands an agent sends it (docs/formats.md § a person in the scene, in the CommandAGI
+//! `motors`, `assist` and `face` commands an agent sends it (docs/formats.md § a person in the scene, in the CommandAGI
 //! repository). The same as the TypeScript SDK's (`scene-people.ts`) and the Python SDK's
 //! (`commandagi.design.scene_people`):
 //!
@@ -14,8 +14,8 @@
 //! assert_eq!(humanoid_constraint("ana", "knee_l"), "ana-knee-l");
 //! ```
 //!
-//! `check_look`, `check_goal`, `check_humanoid_policy`, `check_motors` and `check_assist` refuse what the engine
-//! refuses, in its words. They check the shape only: whether a unit, a body or a constraint is in the scene is the
+//! `check_look`, `check_goal`, `check_humanoid_policy`, `check_motors`, `check_assist` and `check_face` refuse what
+//! the engine refuses, in its words. They check the shape only: whether a unit, a body or a constraint is in the scene is the
 //! engine's to say.
 
 use super::Json;
@@ -27,13 +27,16 @@ pub const OUTFITS: &[&str] = &[
     "fitted_tee_jeans", "tee_shorts", "blouse_skirt", "sport_top_leggings",
 ];
 pub const FOOTWEAR: &[&str] = &["leather_shoes", "hiking_shoes", "boots", "black_shoes", "white_trainers", "blue_trainers"];
-/// A look's numbers and their bounds (`weight`, `muscle`, `proportions`: MakeHuman's macros, 0.5 average or neutral),
+/// MakeHuman's ethnic macros. A look's `ethnicity` weighs them (each 0 or more, not all 0); absent, an even blend.
+pub const ETHNICITIES: &[&str] = &["african", "asian", "caucasian"];
+/// A look's numbers and their bounds (`weight`, `muscle`, `proportions`: MakeHuman's macros, 0.5 average or neutral;
+/// `age_years`: MakeHuman's adult ages, absent 25),
 /// and its colours (sRGB 0 to 1; `top`, `bottom`, `shoes` tint the outfit's and the footwear's own). One table, the
 /// same in the three SDKs.
-pub const LOOK_BOUNDS: &[(&str, f64, f64)] = &[("height_m", 1.2, 2.2), ("weight", 0.0, 1.0), ("muscle", 0.0, 1.0), ("proportions", 0.0, 1.0)];
+pub const LOOK_BOUNDS: &[(&str, f64, f64)] = &[("height_m", 1.2, 2.2), ("weight", 0.0, 1.0), ("muscle", 0.0, 1.0), ("proportions", 0.0, 1.0), ("age_years", 25.0, 90.0)];
 pub const LOOK_COLOURS: &[&str] = &["skin", "hair", "top", "bottom", "shoes"];
 pub const LOOK_FIELDS: &[&str] = &[
-    "body", "height_m", "weight", "muscle", "proportions", "skin", "hair", "top", "bottom", "shoes", "hair_style", "outfit", "footwear",
+    "body", "height_m", "weight", "muscle", "proportions", "age_years", "ethnicity", "skin", "hair", "top", "bottom", "shoes", "hair_style", "outfit", "footwear",
 ];
 /// Each goal's own fields, beside `do` and `plan`. One table, the same in the three SDKs.
 pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
@@ -104,6 +107,17 @@ pub fn check_look(look: &Json, where_: &str) -> Result<(), String> {
         let ok = point(look.get(k), 3) && matches!(look.get(k), Some(Json::Arr(c)) if c.iter().all(|x| x.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v))));
         if look.get(k).is_some() && !ok {
             return no(format!("look.{k} is [r, g, b], sRGB from 0 to 1"));
+        }
+    }
+    if let Some(e) = look.get("ethnicity") {
+        let ok = entries(e).is_some_and(|w| {
+            unknown(e, ETHNICITIES, "").is_none()
+                && w.iter().all(|(_, v)| num(Some(v)).is_some_and(|v| v >= 0.0))
+                && w.iter().any(|(_, v)| num(Some(v)).is_some_and(|v| v > 0.0))
+        });
+        if !ok {
+            let keys = ETHNICITIES.iter().map(|k| format!("{k}?")).collect::<Vec<_>>().join(", ");
+            return no(format!("look.ethnicity is {{ {keys} }}, each a number 0 or more, not all 0"));
         }
     }
     for (k, list) in [("hair_style", HAIR_STYLES), ("outfit", OUTFITS), ("footwear", FOOTWEAR)] {
@@ -295,6 +309,66 @@ pub fn check_assist(cmd: &Json) -> Result<(), String> {
     }
     if !matches!(cmd.get("heading"), Some(Json::Null)) && num(cmd.get("heading")).is_none() {
         return Err("assist needs a heading (radians) or null".into());
+    }
+    Ok(())
+}
+
+/// ARKit's 52 face units (blendshapes), each from 0 (rest) to 1. A `face` command
+/// (`{ verb: "face", unit, set?: { <unit>: 0..1 }, path?: [{ at, set }], since? }`) names them.
+pub const FACE_UNITS: &[&str] = &[
+    "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight", "cheekPuff", "cheekSquintLeft", "cheekSquintRight",
+    "eyeBlinkLeft", "eyeBlinkRight", "eyeLookDownLeft", "eyeLookDownRight", "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight",
+    "eyeLookUpLeft", "eyeLookUpRight", "eyeSquintLeft", "eyeSquintRight", "eyeWideLeft", "eyeWideRight", "jawForward", "jawLeft", "jawOpen",
+    "jawRight", "mouthClose", "mouthDimpleLeft", "mouthDimpleRight", "mouthFrownLeft", "mouthFrownRight", "mouthFunnel", "mouthLeft",
+    "mouthLowerDownLeft", "mouthLowerDownRight", "mouthPressLeft", "mouthPressRight", "mouthPucker", "mouthRight", "mouthRollLower",
+    "mouthRollUpper", "mouthShrugLower", "mouthShrugUpper", "mouthSmileLeft", "mouthSmileRight", "mouthStretchLeft", "mouthStretchRight",
+    "mouthUpperUpLeft", "mouthUpperUpRight", "noseSneerLeft", "noseSneerRight", "tongueOut",
+];
+
+fn face_weights(where_: &str, w: &[(String, Json)]) -> Result<(), String> {
+    for (name, v) in w {
+        if !FACE_UNITS.contains(&name.as_str()) {
+            return Err(format!("face {where_}: {name} is not one of ARKit's 52 face units (browDownLeft … tongueOut)"));
+        }
+        if !num(Some(v)).is_some_and(|v| (0.0..=1.0).contains(&v)) {
+            return Err(format!("face {where_}: {name} is a number from 0 to 1"));
+        }
+    }
+    Ok(())
+}
+
+/// Refuses what the engine would refuse of a `face` command's shape.
+pub fn check_face(cmd: &Json) -> Result<(), String> {
+    let no = |why: &str| Err(format!("face {why}"));
+    if cmd.get("verb").and_then(Json::as_str) != Some("face") {
+        return no(r#"is { verb: "face", unit, set?, path?, since? }"#);
+    }
+    if let Some(bad) = unknown(cmd, &["verb", "unit", "set", "path", "since"], "face") {
+        return Err(bad);
+    }
+    if !text(cmd.get("unit")) {
+        return no("needs a unit (the person whose face it moves)");
+    }
+    let empty_set = Json::Obj(Vec::new());
+    let empty_path = Json::Arr(Vec::new());
+    let (set, path) = (cmd.get("set").unwrap_or(&empty_set), cmd.get("path").unwrap_or(&empty_path));
+    let needs = "needs set { <face unit>: 0 to 1 } or path [{ at, set: { <face unit>: 0 to 1 } }]";
+    let (Some(weights), Json::Arr(points)) = (entries(set), path) else { return no(needs) };
+    if weights.is_empty() && points.is_empty() {
+        return no(needs);
+    }
+    face_weights("set", weights)?;
+    let mut before = f64::NEG_INFINITY;
+    for pt in points {
+        let at = num(pt.get("at")).filter(|a| *a >= 0.0 && *a > before && *a <= 10.0);
+        let (Some(at), Some(targets)) = (at, pt.get("set").and_then(entries)) else {
+            return no("path: each point is { at (seconds from now, increasing, at most 10), set: { <face unit>: 0 to 1 } }");
+        };
+        before = at;
+        face_weights("path", targets)?;
+    }
+    if cmd.get("since").is_some() && num(cmd.get("since")).is_none() {
+        return no("since is the scene time its path starts at, not later than now");
     }
     Ok(())
 }
