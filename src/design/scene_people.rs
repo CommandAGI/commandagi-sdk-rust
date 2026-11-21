@@ -41,7 +41,7 @@ pub const LOOK_FIELDS: &[&str] = &[
 /// Each goal's own fields, beside `do`, `plan` and `task`. One table, the same in the three SDKs. `take` … `ride` are a
 /// worker's actions on a factory floor, `drive` … `stop` a vehicle's (CommandAGI's docs/formats.md § a factory floor).
 pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
-    ("walk", &["route", "speed"]),
+    ("walk", &["route", "speed", "straight"]),
     ("step", &["to", "heading"]),
     ("turn", &["heading"]),
     ("sit", &["seat", "facing"]),
@@ -169,6 +169,9 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
     }
     if has("speed") && !num(g.get("speed")).is_some_and(|v| v > 0.0 && v <= 1.6) {
         return Some("walk speed is metres a second, above 0 and at most 1.6".into());
+    }
+    if has("straight") && !matches!(g.get("straight"), Some(Json::Bool(_))) {
+        return Some("walk straight is true or false".into());
     }
     if BODY_GOALS.contains(kind) && !text(g.get("body")) {
         return Some(format!("{kind} needs a body (what it takes, pushes, steers, inspects, hands over or rides on)"));
