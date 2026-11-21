@@ -38,7 +38,8 @@ pub const LOOK_COLOURS: &[&str] = &["skin", "hair", "top", "bottom", "shoes"];
 pub const LOOK_FIELDS: &[&str] = &[
     "body", "height_m", "weight", "muscle", "proportions", "age_years", "ethnicity", "skin", "hair", "top", "bottom", "shoes", "hair_style", "outfit", "footwear",
 ];
-/// Each goal's own fields, beside `do` and `plan`. One table, the same in the three SDKs.
+/// Each goal's own fields, beside `do`, `plan` and `task`. One table, the same in the three SDKs. `take` … `ride` are a
+/// worker's actions on a factory floor, `drive` … `stop` a vehicle's (CommandAGI's docs/formats.md § a factory floor).
 pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
     ("walk", &["route", "speed"]),
     ("step", &["to", "heading"]),
@@ -47,7 +48,22 @@ pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
     ("stand", &[]),
     ("idle", &["activity", "seconds", "at", "with"]),
     ("reach", &["at", "hand", "seconds"]),
+    ("take", &["body", "hands"]),
+    ("put", &["at"]),
+    ("push", &["body", "handle"]),
+    ("jack", &["body", "handle"]),
+    ("press", &["at"]),
+    ("inspect", &["body", "seconds"]),
+    ("hand", &["body", "to"]),
+    ("ride", &["body"]),
+    ("drive", &["route", "speed", "reverse"]),
+    ("dock", &["at", "heading", "speed", "reverse"]),
+    ("lift", &["height", "load"]),
+    ("stop", &[]),
 ];
+pub const BODY_GOALS: &[&str] = &["take", "push", "jack", "inspect", "hand", "ride"];
+pub const VEHICLE_GOALS: &[&str] = &["drive", "dock", "lift", "stop"];
+pub const WORK_HANDS: &[&str] = &["both", "left", "right"];
 pub const IDLE_ACTIVITIES: &[&str] = &["type", "look", "still", "talk"];
 pub const REACH_HANDS: &[&str] = &["left", "right", "both"];
 pub const HUMANOID_POLICY_FIELDS: &[&str] = &["id", "kind", "unit", "hz", "lookahead", "routine", "repeat"];
@@ -136,17 +152,41 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
         return Some(format!("do is one of {}", kinds.join(", ")));
     };
     for (k, _) in fields {
-        if k != "do" && k != "plan" && !besides.contains(&k.as_str()) && !own.contains(&k.as_str()) {
-            return Some(format!("{kind} has no field {k} (it has {})", [*own, &["plan"]].concat().join(", ")));
+        if k != "do" && k != "plan" && k != "task" && !besides.contains(&k.as_str()) && !own.contains(&k.as_str()) {
+            return Some(format!("{kind} has no field {k} (it has {})", [*own, &["plan", "task"]].concat().join(", ")));
         }
     }
     let has = |k: &str| g.get(k).is_some();
+    if has("task") && !text(g.get("task")) {
+        return Some("task is a text (the dispatcher's token)".into());
+    }
+    if VEHICLE_GOALS.contains(kind) {
+        return vehicle_goal_problem(g, kind);
+    }
     let route_ok = matches!(g.get("route"), Some(Json::Arr(r)) if (1..=64).contains(&r.len()) && r.iter().all(|p| point(Some(p), 2)));
     if *kind == "walk" && !route_ok {
         return Some("walk needs a route: 1 to 64 points [x, y] (metres)".into());
     }
     if has("speed") && !num(g.get("speed")).is_some_and(|v| v > 0.0 && v <= 1.6) {
         return Some("walk speed is metres a second, above 0 and at most 1.6".into());
+    }
+    if BODY_GOALS.contains(kind) && !text(g.get("body")) {
+        return Some(format!("{kind} needs a body (what it takes, pushes, steers, inspects, hands over or rides on)"));
+    }
+    if has("hands") && !one_of(WORK_HANDS, g.get("hands")) {
+        return Some("hands is both, left or right".into());
+    }
+    if *kind == "press" && !point(g.get("at"), 3) {
+        return Some("press needs at [x, y, z] (metres): the button".into());
+    }
+    if *kind == "put" && has("at") && !point(g.get("at"), 3) {
+        return Some("at is [x, y, z] (metres)".into());
+    }
+    if has("handle") && !point(g.get("handle"), 3) {
+        return Some("handle is [x, y, z] (metres): where the hands close on it".into());
+    }
+    if *kind == "hand" && !text(g.get("to")) {
+        return Some("hand needs to (the unit it hands the body to)".into());
     }
     if *kind == "step" && !point(g.get("to"), 2) {
         return Some("step needs to [x, y] (the point it steps to, metres)".into());
@@ -177,6 +217,37 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
     }
     if has("seconds") && !num(g.get("seconds")).is_some_and(|v| v > 0.0) {
         return Some("seconds is a positive number".into());
+    }
+    if let Some(plan) = g.get("plan") {
+        let ok = plan.get("policy").and_then(Json::as_str).is_some() && num(plan.get("step")).is_some_and(|s| s.fract() == 0.0);
+        if !ok {
+            return Some("plan is { policy, step }".into());
+        }
+    }
+    None
+}
+
+/// A vehicle goal's problem (drive, dock, lift, stop), or None.
+fn vehicle_goal_problem(g: &Json, kind: &str) -> Option<String> {
+    let has = |k: &str| g.get(k).is_some();
+    let route_ok = matches!(g.get("route"), Some(Json::Arr(r)) if (1..=128).contains(&r.len()) && r.iter().all(|p| point(Some(p), 2)));
+    if kind == "drive" && !route_ok {
+        return Some("drive needs a route: 1 to 128 points [x, y] (metres)".into());
+    }
+    if kind == "dock" && !(point(g.get("at"), 2) && num(g.get("heading")).is_some()) {
+        return Some("dock needs at [x, y] (metres) and heading (radians)".into());
+    }
+    if kind == "lift" && !num(g.get("height")).is_some_and(|v| v >= 0.0) {
+        return Some("lift needs a height (metres, 0 or more)".into());
+    }
+    if has("speed") && !num(g.get("speed")).is_some_and(|v| v > 0.0 && v <= 10.0) {
+        return Some("speed is metres a second, above 0 and at most 10".into());
+    }
+    if has("reverse") && !matches!(g.get("reverse"), Some(Json::Bool(_))) {
+        return Some("reverse is true or false".into());
+    }
+    if has("load") && g.get("load").and_then(Json::as_str).is_none() {
+        return Some("load names a body".into());
     }
     if let Some(plan) = g.get("plan") {
         let ok = plan.get("policy").and_then(Json::as_str).is_some() && num(plan.get("step")).is_some_and(|s| s.fract() == 0.0);
