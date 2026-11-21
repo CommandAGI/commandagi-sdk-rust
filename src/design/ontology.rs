@@ -186,7 +186,7 @@ pub const NODE_GRAPH_ID: &str = "nodegraph";
 /// The fields of a unit in a world's file (packages/domain/world/worlds.js). `serial`: the serial number of the one physical
 /// thing a unit is; `revision`: its hardware revision (a firmware release says which it supports); `calibration`: a ref to the
 /// unit's own `.calibration.rs` (its joints' zeros and gains, and its re-zeros).
-pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "group", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "tilt_deg", "release", "calibration"];
+pub const UNIT_FIELDS: &[&str] = &["uid", "name", "device", "serial", "revision", "domain", "group", "size_mm", "support", "channels", "manualUrl", "position", "rotation", "tilt_deg", "release", "calibration", "inputs", "equipment_id"];
 /// The fields of a group in a world's file: what one unit stands in. `group` nests a group in another (a shelf holds its
 /// levels); `size_mm` with `position` and `rotation` is the box the world view draws. A group has no device and no
 /// channel: nothing runs or is granted on it.
