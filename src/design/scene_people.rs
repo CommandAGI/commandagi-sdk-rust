@@ -55,14 +55,18 @@ pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
     ("press", &["at"]),
     ("inspect", &["body", "seconds"]),
     ("hand", &["body", "to"]),
-    ("ride", &["body"]),
+    ("ride", &["body", "at", "standing"]),
+    ("get-off", &["to"]),
     ("drive", &["route", "speed", "reverse"]),
     ("dock", &["at", "heading", "speed", "reverse"]),
     ("lift", &["height", "load"]),
+    ("mast", &["out"]),
+    ("couple", &["body", "pin", "axle", "legs"]),
+    ("uncouple", &[]),
     ("stop", &[]),
 ];
 pub const BODY_GOALS: &[&str] = &["take", "push", "jack", "inspect", "hand", "ride"];
-pub const VEHICLE_GOALS: &[&str] = &["drive", "dock", "lift", "stop"];
+pub const VEHICLE_GOALS: &[&str] = &["drive", "dock", "lift", "mast", "couple", "uncouple", "stop"];
 pub const WORK_HANDS: &[&str] = &["both", "left", "right"];
 pub const IDLE_ACTIVITIES: &[&str] = &["type", "look", "still", "talk"];
 pub const REACH_HANDS: &[&str] = &["left", "right", "both"];
@@ -188,6 +192,15 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
     if *kind == "hand" && !text(g.get("to")) {
         return Some("hand needs to (the unit it hands the body to)".into());
     }
+    if *kind == "ride" && has("at") && !point(g.get("at"), 3) {
+        return Some("ride at is [x, y, z] (metres): where its hips go on the seat or above the platform".into());
+    }
+    if has("standing") && !matches!(g.get("standing"), Some(Json::Bool(_))) {
+        return Some("ride standing is true or false (on a stand-up platform)".into());
+    }
+    if *kind == "get-off" && !point(g.get("to"), 2) {
+        return Some("get-off needs to [x, y] (metres): where it steps down to, beside its vehicle".into());
+    }
     if *kind == "step" && !point(g.get("to"), 2) {
         return Some("step needs to [x, y] (the point it steps to, metres)".into());
     }
@@ -227,7 +240,7 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
     None
 }
 
-/// A vehicle goal's problem (drive, dock, lift, stop), or None.
+/// A vehicle goal's problem (drive, dock, lift, mast, couple, uncouple, stop), or None.
 fn vehicle_goal_problem(g: &Json, kind: &str) -> Option<String> {
     let has = |k: &str| g.get(k).is_some();
     let route_ok = matches!(g.get("route"), Some(Json::Arr(r)) if (1..=128).contains(&r.len()) && r.iter().all(|p| point(Some(p), 2)));
@@ -239,6 +252,18 @@ fn vehicle_goal_problem(g: &Json, kind: &str) -> Option<String> {
     }
     if kind == "lift" && !num(g.get("height")).is_some_and(|v| v >= 0.0) {
         return Some("lift needs a height (metres, 0 or more)".into());
+    }
+    if kind == "mast" && !num(g.get("out")).is_some_and(|v| v >= 0.0) {
+        return Some("mast needs out (metres, 0 or more: how far the mast reaches out)".into());
+    }
+    if kind == "couple" && !(text(g.get("body")) && point(g.get("pin"), 3)) {
+        return Some("couple needs a body (what it tows) and pin [x, y, z] (metres, that body's frame: its drawbar eye or kingpin)".into());
+    }
+    if has("axle") && !point(g.get("axle"), 2) {
+        return Some("axle is [x, y] (metres, the towed body's frame: the middle of its axle)".into());
+    }
+    if has("legs") && !text(g.get("legs")) {
+        return Some("legs names the towed unit's joint that cranks its landing gear".into());
     }
     if has("speed") && !num(g.get("speed")).is_some_and(|v| v > 0.0 && v <= 10.0) {
         return Some("speed is metres a second, above 0 and at most 10".into());
