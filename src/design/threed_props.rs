@@ -8637,6 +8637,51 @@ impl ToJson for SurfaceTexture {
     }
 }
 
+/// A surface's photographed maps: a physically based texture set (Poly Haven's CC0 textures, `cloud://home/user-commandagi/assets/polyhaven/textures/<name>/1k/textures/…`), each image by its ref, a path from the document's folder or an address. The images repeat over the body: each face takes them along the axis it is most nearly normal to, in the body's own millimetres, so a box, a wall or a floor needs no unwrap and one copy of the image covers `size` of it. A map multiplies its field: `color` tints the colour map (white when the material states none), and `roughness` and `metalness` scale their maps (1 when it states none). A grey roughness map and Poly Haven's packed `arm` map (occlusion, roughness, metalness in its red, green and blue) are read alike: roughness from green, metalness from blue, occlusion from red.
+#[derive(Clone, Debug)]
+pub struct SurfaceMaps {
+    /// The base colour (sRGB): Poly Haven's `diff`.
+    pub color: Option<String>,
+    /// The tangent-space normal, OpenGL's convention (green up): Poly Haven's `nor_gl`.
+    pub normal: Option<String>,
+    /// The roughness, read from green: Poly Haven's `rough`, or its `arm`.
+    pub roughness: Option<String>,
+    /// The metalness, read from blue: Poly Haven's `metal`, or its `arm`.
+    pub metalness: Option<String>,
+    /// The ambient occlusion, read from red: Poly Haven's `ao`, or its `arm`.
+    pub ao: Option<String>,
+    /// What one copy of the images covers on the surface, along its two directions.
+    /// Unit: mm.
+    /// Default: `[1000,1000]`.
+    pub size: Option<[f64; 2]>,
+}
+
+impl ToJson for SurfaceMaps {
+    fn to_json(&self) -> Json {
+        #[allow(unused_mut)]
+        let mut o = Json::obj();
+        if let Some(v) = &self.color {
+            o.set("color", v.to_json());
+        }
+        if let Some(v) = &self.normal {
+            o.set("normal", v.to_json());
+        }
+        if let Some(v) = &self.roughness {
+            o.set("roughness", v.to_json());
+        }
+        if let Some(v) = &self.metalness {
+            o.set("metalness", v.to_json());
+        }
+        if let Some(v) = &self.ao {
+            o.set("ao", v.to_json());
+        }
+        if let Some(v) = &self.size {
+            o.set("size", v.to_json());
+        }
+        o
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MaterialDef {
     pub preset: MaterialPreset,
@@ -8672,6 +8717,8 @@ pub struct MaterialDef {
     pub emissive_intensity: Option<f64>,
     /// The surface's small relief.
     pub texture: Option<SurfaceTexture>,
+    /// The surface's photographed maps: a wood's grain, a carpet's pile, a brick wall.
+    pub maps: Option<SurfaceMaps>,
 }
 
 impl ToJson for MaterialDef {
@@ -8712,6 +8759,9 @@ impl ToJson for MaterialDef {
         }
         if let Some(v) = &self.texture {
             o.set("texture", v.to_json());
+        }
+        if let Some(v) = &self.maps {
+            o.set("maps", v.to_json());
         }
         o
     }
