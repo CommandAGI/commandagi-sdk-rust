@@ -64,6 +64,7 @@ pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
     ("couple", &["body", "pin", "axle", "legs"]),
     ("uncouple", &[]),
     ("stop", &[]),
+    ("program", &["program"]),
 ];
 pub const BODY_GOALS: &[&str] = &["take", "push", "jack", "inspect", "hand", "ride"];
 pub const VEHICLE_GOALS: &[&str] = &["drive", "dock", "lift", "mast", "couple", "uncouple", "stop"];
@@ -166,6 +167,13 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
     }
     if VEHICLE_GOALS.contains(kind) {
         return vehicle_goal_problem(g, kind);
+    }
+    if *kind == "program" {
+        let ok = match g.get("program").and_then(|p| p.get("steps")) {
+            Some(Json::Arr(steps)) => !steps.is_empty() && steps.iter().all(|s| matches!(s.get("id"), Some(Json::Str(t)) if !t.is_empty()) && num(s.get("dur")).is_some()),
+            _ => false,
+        };
+        return if ok { None } else { Some("program is a program of steps ({ id, dur, … }: g1-skills.js compilePlan)".into()) };
     }
     let route_ok = matches!(g.get("route"), Some(Json::Arr(r)) if (1..=64).contains(&r.len()) && r.iter().all(|p| point(Some(p), 2)));
     if *kind == "walk" && !route_ok {
