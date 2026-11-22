@@ -8650,6 +8650,8 @@ pub struct SurfaceMaps {
     pub metalness: Option<String>,
     /// The ambient occlusion, read from red: Poly Haven's `ao`, or its `arm`.
     pub ao: Option<String>,
+    /// What is there, read from green: white where the surface is, black where it is open (a welded wire mesh's openings, a perforated sheet's holes). The surface is drawn only where the map is over half, on both of its sides.
+    pub alpha: Option<String>,
     /// What one copy of the images covers on the surface, along its two directions.
     /// Unit: mm.
     /// Default: `[1000,1000]`.
@@ -8674,6 +8676,9 @@ impl ToJson for SurfaceMaps {
         }
         if let Some(v) = &self.ao {
             o.set("ao", v.to_json());
+        }
+        if let Some(v) = &self.alpha {
+            o.set("alpha", v.to_json());
         }
         if let Some(v) = &self.size {
             o.set("size", v.to_json());
