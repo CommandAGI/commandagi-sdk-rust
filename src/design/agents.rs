@@ -4,7 +4,7 @@
 //! ```
 //! use commandagi::design::agents::*;
 //!
-//! // cloud://global/agents/harnesses/openai-realtime/harness.rs — a model that converses live
+//! // cloud://home/user-commandagi/global/agents/harnesses/openai-realtime/harness.rs — a model that converses live
 //! fn document() -> El {
 //!     harness()
 //!         .kind("api")
@@ -23,7 +23,7 @@
 //!
 //! // agents/secretary/agent.rs in an account's Drive — a fork
 //! fn document() -> El {
-//!     agent().parent("cloud://global/agents/claude-code").name("Joe's secretary").instructions("Keep Joe's calendar.")
+//!     agent().parent("cloud://home/user-commandagi/global/agents/claude-code").name("Joe's secretary").instructions("Keep Joe's calendar.")
 //! }
 //! # commandagi::design::declare(document()).unwrap();
 //! ```
@@ -42,7 +42,7 @@ pub use super::{fragment, json, El, Json, Value};
 elements! {
     /// A harness: `.kind("cli" | "api" | "program").label(…)` and what its kind needs.
     harness: leaf;
-    /// An agent: a base (`.harness("claude-code")`) or a fork (`.parent("cloud://global/agents/claude-code")`).
+    /// An agent: a base (`.harness("claude-code")`) or a fork (`.parent("cloud://home/user-commandagi/global/agents/claude-code")`).
     agent: leaf;
 }
 
@@ -274,7 +274,7 @@ fn agent_of(t: &DocTree) -> Result<Json, String> {
         return Err(if base {
             "agent() names a harness (a base instance) or a parent (a fork), not both: a fork keeps its parent's harness".into()
         } else {
-            r#"agent() names its harness (a base instance: .harness("claude-code")) or its parent (a fork: .parent("cloud://global/agents/claude-code"))"#.into()
+            r#"agent() names its harness (a base instance: .harness("claude-code")) or its parent (a fork: .parent("cloud://home/user-commandagi/global/agents/claude-code"))"#.into()
         });
     }
     if let Some(Json::Str(h)) = t.attr_of("harness") {

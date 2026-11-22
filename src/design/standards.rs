@@ -11,7 +11,7 @@
 //! ```
 //!
 //! The numbers are data (`standards_data.json`), generated from the shipped tables
-//! (`cloud://global/standards/<table>.csv`, `cloud://global/materials/engineering.csv`). Each row of a table names its
+//! (`cloud://home/user-commandagi/global/standards/<table>.csv`, `cloud://home/user-commandagi/global/materials/engineering.csv`). Each row of a table names its
 //! source, how it was read, by whom and when; `sources` in the data and a material's `source` carry the source's name
 //! here.
 //!

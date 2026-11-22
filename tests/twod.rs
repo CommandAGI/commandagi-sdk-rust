@@ -347,7 +347,7 @@ fn a_link_is_a_draw_instance_node_that_names_another_drawing() {
     let g = graph(
         drawing([layer([
             link().label("Badge").src("parts/Badge.draw.rs").x(40).y(60).inputs(json(r#"{"size": 48, "tone": "warm", "outlined": true}"#)),
-            link().src("cloud://global/examples/2d/Badge.draw.tsx"),
+            link().src("cloud://home/user-commandagi/examples/2d/Badge.draw.tsx"),
         ])
         .name("Badge")])
         .width(400)
@@ -361,7 +361,7 @@ fn a_link_is_a_draw_instance_node_that_names_another_drawing() {
         first.get("inputs").unwrap().text(),
         golden(r#"{"__instance": {"path": "parts/Badge.draw.rs"}, "x": 40, "y": 60, "inputs": {"size": 48, "tone": "warm", "outlined": true}}"#)
     );
-    assert_eq!(inputs(&g, &child("children.2")), golden(r#"{"__instance": {"assetPath": "cloud://global/examples/2d/Badge.draw.tsx"}}"#));
+    assert_eq!(inputs(&g, &child("children.2")), golden(r#"{"__instance": {"assetPath": "cloud://home/user-commandagi/examples/2d/Badge.draw.tsx"}}"#));
 }
 
 #[test]

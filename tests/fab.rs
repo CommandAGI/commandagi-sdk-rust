@@ -24,7 +24,7 @@ fn a_machining_setup_is_its_setup_with_each_site_by_its_path() {
         fixture().name("clamp").x_mm(-14).y_mm(25).w_mm(20).d_mm(20).z_mm(4),
         operation().id("op-2").op("mill_contour").profile("contour_wood").tabs(json(r#"{"count": 4, "lengthMm": 5, "heightMm": 1.5}"#)),
         operation().id("op-1").op("mill_pocket").profile("pocket_wood").enabled(false).params(json(r#"{"toolDiameterMm": 3.175}"#)),
-        runs_on().unit("cloud://global/worlds/fab-cell/world.tsx#cnc-1").channel("gcode").name("cnc"),
+        runs_on().unit("cloud://home/user-commandagi/global/worlds/fab-cell/world.tsx#cnc-1").channel("gcode").name("cnc"),
     ]);
     let (format, doc, sources) = document(root);
     assert_eq!(format, "cam");
@@ -35,7 +35,7 @@ fn a_machining_setup_is_its_setup_with_each_site_by_its_path() {
           "stock":{"materialId":"plywood","thicknessMm":6,"xMm":90,"yMm":70},
           "machine":{"post":"grbl","maxSpindleRpm":10000,"travelMm":[300,180,45]},
           "fixtures":[{"name":"clamp","xMm":-14,"yMm":25,"wMm":20,"dMm":20,"zMm":4}],
-          "runsOn":{"unit":"cloud://global/worlds/fab-cell/world.tsx#cnc-1","channel":"gcode","name":"cnc"}}"#,
+          "runsOn":{"unit":"cloud://home/user-commandagi/global/worlds/fab-cell/world.tsx#cnc-1","channel":"gcode","name":"cnc"}}"#,
     )
     .unwrap();
     assert_eq!(doc.text(), golden.text());
@@ -69,7 +69,7 @@ fn a_slicing_setup_has_its_profile_on_the_root_and_each_record_one_element() {
     let root = slice([
         source().file_id("carrier.stl").name("carrier.stl"),
         spool().material_id("pla").diameter_mm(1.75),
-        machine().unit("cloud://global/worlds/fab-cell/world.tsx#printer-1").channel("gcode").name("ender"),
+        machine().unit("cloud://home/user-commandagi/global/worlds/fab-cell/world.tsx#printer-1").channel("gcode").name("ender"),
     ])
     .profile("fdm_pla_0.20_draft")
     .params(json(r#"{"layerHeightMm": 0.2}"#));
@@ -78,12 +78,12 @@ fn a_slicing_setup_has_its_profile_on_the_root_and_each_record_one_element() {
     let golden = Json::parse(
         r#"{"profile":"fdm_pla_0.20_draft","params":{"layerHeightMm":0.2},"source":{"fileId":"carrier.stl","name":"carrier.stl"},
             "spool":{"materialId":"pla","diameterMm":1.75},
-            "machine":{"unit":"cloud://global/worlds/fab-cell/world.tsx#printer-1","channel":"gcode","name":"ender"}}"#,
+            "machine":{"unit":"cloud://home/user-commandagi/global/worlds/fab-cell/world.tsx#printer-1","channel":"gcode","name":"ender"}}"#,
     )
     .unwrap();
     assert_eq!(doc.text(), golden.text());
     // A setup that runs on no unit names its printer by its definition.
-    let saturn = "cloud://global/devices/elegoo-saturn-4-ultra/definition.tsx";
+    let saturn = "cloud://home/user-commandagi/global/devices/elegoo-saturn-4-ultra/definition.tsx";
     let (_, doc, _) = document(slice([source().file_id("node.stl").name("node.stl")]).profile("sla_resin_0.05").device(saturn));
     let golden = Json::parse(&format!(r#"{{"profile":"sla_resin_0.05","device":"{saturn}","source":{{"fileId":"node.stl","name":"node.stl"}}}}"#)).unwrap();
     assert_eq!(doc.text(), golden.text());

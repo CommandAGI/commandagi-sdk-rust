@@ -46,12 +46,12 @@ fn a_base_names_its_harness_and_a_fork_its_parent() {
     let (format, base, _) = document(agent().harness("anthropic").model("anthropic/claude-opus-5-5").effort("medium").name("Claude Opus 5.5"));
     assert_eq!(format, "agent");
     assert_eq!(base, j(r#"{"harness": "anthropic", "name": "Claude Opus 5.5", "model": "anthropic/claude-opus-5-5", "effort": "medium"}"#));
-    let (_, led, _) = document(agent().parent("cloud://global/agents/claude-code").supervisor("agent:lead"));
-    assert_eq!(led, j(r#"{"parent": "cloud://global/agents/claude-code", "supervisor": "agent:lead"}"#));
-    assert!(bad(agent().parent("cloud://global/agents/claude-code").supervisor("lead")).contains("supervisor is an agent or a person"));
+    let (_, led, _) = document(agent().parent("cloud://home/user-commandagi/global/agents/claude-code").supervisor("agent:lead"));
+    assert_eq!(led, j(r#"{"parent": "cloud://home/user-commandagi/global/agents/claude-code", "supervisor": "agent:lead"}"#));
+    assert!(bad(agent().parent("cloud://home/user-commandagi/global/agents/claude-code").supervisor("lead")).contains("supervisor is an agent or a person"));
     let (_, fork, _) = document(
         agent()
-            .parent("cloud://global/agents/claude-code")
+            .parent("cloud://home/user-commandagi/global/agents/claude-code")
             .name("Joe's secretary")
             .instructions("Keep Joe's calendar.")
             .voice_mode("push-to-talk")
@@ -59,7 +59,7 @@ fn a_base_names_its_harness_and_a_fork_its_parent() {
     );
     assert_eq!(
         fork,
-        j(r#"{"parent": "cloud://global/agents/claude-code", "name": "Joe's secretary", "instructions": "Keep Joe's calendar.",
+        j(r#"{"parent": "cloud://home/user-commandagi/global/agents/claude-code", "name": "Joe's secretary", "instructions": "Keep Joe's calendar.",
               "voiceMode": "push-to-talk", "tools": ["calendar_save_event"]}"#)
     );
 }
@@ -83,7 +83,7 @@ fn a_realtime_harness_says_what_its_model_takes_and_gives_live() {
 fn a_forks_runtime_configuration() {
     let (_, doc, _) = document(
         agent()
-            .parent("cloud://global/agents/commandagi")
+            .parent("cloud://home/user-commandagi/global/agents/commandagi")
             .name("Researcher")
             .avatar("avatar.png")
             .skills(["../../skills/review/SKILL.md"])
@@ -93,7 +93,7 @@ fn a_forks_runtime_configuration() {
     );
     assert_eq!(
         doc,
-        j(r#"{"parent": "cloud://global/agents/commandagi", "name": "Researcher", "avatar": "avatar.png",
+        j(r#"{"parent": "cloud://home/user-commandagi/global/agents/commandagi", "name": "Researcher", "avatar": "avatar.png",
               "skills": ["../../skills/review/SKILL.md"], "routing": {"quality": 2, "cost": 1},
               "access": {"scopes": ["threads:read"], "reach": "own"}, "confirmSpend": true}"#)
     );

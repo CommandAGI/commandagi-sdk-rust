@@ -11,7 +11,7 @@
 //!         machine().post("grbl").max_spindle_rpm(10000).travel_mm([300, 180, 45]),
 //!         fixture().name("left clamp").x_mm(-14).y_mm(25).w_mm(20).d_mm(20).z_mm(4),
 //!         operation().id("op-1").op("mill_adaptive").profile("adaptive_wood").params(json(r#"{"toolDiameterMm": 3.175}"#)),
-//!         runs_on().unit("cloud://global/worlds/fab-cell/world.tsx#cnc-1").channel("gcode").name("cnc 3018 / 01"),
+//!         runs_on().unit("cloud://home/user-commandagi/global/worlds/fab-cell/world.tsx#cnc-1").channel("gcode").name("cnc 3018 / 01"),
 //!     ])
 //! }
 //! # commandagi::design::declare(document()).unwrap();
