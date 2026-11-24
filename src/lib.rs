@@ -1,4 +1,5 @@
-//! THE COMMANDAGI SDK FOR RUST — CommandAGI documents declared as code that is their source of truth.
+//! THE COMMANDAGI SDK FOR RUST — the platform client ([`client`]: agent threads, live sessions on a simulated world) and
+//! CommandAGI documents declared as code that is their source of truth.
 //!
 //! A document's `.rs` file declares it with the vocabulary of one family module of [`design`] (a schematic:
 //! [`design::schematic`]). The CommandAGI editor runs it: the local host compiles it to WebAssembly against this crate,
@@ -20,5 +21,6 @@
 //! ```
 
 pub mod abi;
+pub mod client;
 pub mod design;
 pub mod git;

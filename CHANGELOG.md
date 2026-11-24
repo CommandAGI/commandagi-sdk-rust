@@ -1,8 +1,25 @@
 # Changelog
 
-One entry for each release. A release is the tag `v<version>` in this repository. The crate is not on crates.io: a
-project pins the tag (README § Versions). The Python and TypeScript SDKs carry the same version number. A version
+One entry for each release. A release is the tag `v<version>` in this repository, and the crate on crates.io
+(`cargo add commandagi`) from 0.6.10. The Python and TypeScript SDKs carry the same minor version. A version
 promises nothing about the next one: read this file before you change the tag you pin.
+
+## 0.6.10 (2026-11-24)
+
+Added
+
+- `commandagi::client`: the platform client, with no dependency (requests go through `curl`, or a `Transport` of your
+  own): `CommandAGI::from_env()`, `threads()` (`create`, `send`, `events`, `get`, `list`, `kill`, `delete`), `launch()`
+  of a world you drive and its `Session` (`controls`, `act`, `describe`, `sim()` with `run`, `pause`, `step`, `speed`,
+  `reset`, `ik`, `pose`, `grip`, `stop`), frames (`observe`: the `cam-head` JPEG; `observe_channel("depth")`: the
+  16-bit PNG; `frames`, `observe_changed`) and `call(tool, json)` for any platform tool.
+- The crate is on crates.io: its metadata (homepage, documentation, keywords, categories), and examples (`threads`,
+  `drive_a_sim`, `readme`).
+
+Changed
+
+- `git.rs` points a cloud folder's request at `client::Curl`.
+- The patch number is ahead of the Python and TypeScript SDKs (0.6.9): only the Rust crate changed.
 
 ## 0.6.9 (2026-11-23)
 

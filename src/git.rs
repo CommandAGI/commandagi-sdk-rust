@@ -7,9 +7,9 @@
 //! changes a repository needs a principal credential (`COMMANDAGI_CREDENTIAL`) whose files grant covers the
 //! repository's folder.
 //!
-//! A folder of a cloud home is reached over HTTPS, which this crate does not carry (it has no dependency, so a document's
-//! `.rs` file compiles offline): [`Call::platform`] gives the request (method, path, body) to send with your own HTTP
-//! client and a `cagi_` API key as its bearer, to `https://api.commandagi.com`.
+//! A folder of a cloud home is reached over HTTPS: [`Call::platform`] gives the request (method, path, body) to send,
+//! with a `cagi_` API key as its bearer, to `https://api.commandagi.com`, with [`crate::client::Curl`] or an HTTP client
+//! of your own.
 //!
 //! ```no_run
 //! use commandagi::git::{self, Host};

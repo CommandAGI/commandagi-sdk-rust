@@ -1,13 +1,66 @@
 # commandagi: the CommandAGI SDK for Rust
 
-CommandAGI documents declared in Rust: a schematic, a board, a 3D part, a drawing, a workbook, a world. The file is
-the document's source of truth. The CommandAGI editor opens it with its usual tools and writes each edit back into
-the file as the smallest text edit.
+The CommandAGI platform from Rust: start agents, launch a simulated world and drive it, read what its camera sees.
+And CommandAGI documents declared in Rust: a schematic, a board, a 3D part, a drawing, a workbook, a world. A
+document's file is its source of truth; the CommandAGI editor opens it with its usual tools and writes each edit back
+into the file as the smallest text edit. No dependencies.
 
-```toml
-[dependencies]
-commandagi = { git = "https://github.com/CommandAGI/commandagi-sdk-rust", tag = "v0.6.9" }
+```bash
+cargo add commandagi
+export COMMANDAGI_API_KEY=cagi_...     # Settings → API keys
 ```
+
+```rust
+use commandagi::client::CommandAGI;
+use std::{thread::sleep, time::Duration};
+
+fn main() -> Result<(), commandagi::client::Error> {
+    let cagi = CommandAGI::from_env()?; // reads COMMANDAGI_API_KEY
+
+    // Agents: start one on a goal, then steer it.
+    let thread = cagi.threads().create("Design a bracket for a NEMA 17 motor")?;
+    cagi.threads().send(&thread.id, "Make it 3 mm thick.")?;
+
+    // Embodiments: launch a world YOU drive (no agent in it), watch it, control it.
+    let world = cagi.launch("simulation/arm-cell")?; // waits until it declares its controls
+    world.sim().run()?;                              // a launched simulation starts paused
+    world.sim().ik([0.08, -0.12, 0.86])?;            // the arm's tool point, in metres
+    sleep(Duration::from_secs(2));                   // an answer is not a state: let it move, then read
+    println!("{}", world.describe()?.text().len());  // where everything is now
+    std::fs::write("cell.jpg", world.observe()?.bytes).unwrap(); // what its camera sees: a 320 x 240 JPEG
+    world.stop()?;                                   // (dropping the world stops it too)
+    Ok(())
+}
+```
+
+## The platform client
+
+`commandagi::client` is the Python and TypeScript SDKs' client, over the same one door (`POST /mcp`).
+
+| call | what it does |
+| --- | --- |
+| `CommandAGI::from_env()` / `CommandAGI::new(key)` | a client; `COMMANDAGI_API_KEY`, `COMMANDAGI_BASE_URL` |
+| `cagi.threads().create(intent)` / `.create_with(json)` | start an agent on a goal (or with any `create_thread` arguments) |
+| `.send(id, text)`, `.events(id)`, `.get(id)`, `.list()`, `.kill(id)`, `.delete(id)` | steer, follow and stop it (`kill` and `delete` need a key of the manager scope) |
+| `cagi.launch("simulation/arm-cell")` | launch a world you drive in a new agentless thread; `launch_without_waiting` returns at once |
+| `world.controls()`, `world.act(action, payload)` | what the world accepts, and any declared action |
+| `world.sim().run()`, `.pause()`, `.step(n)`, `.speed(x)`, `.reset()`, `.ik([x, y, z])`, `.pose(&[(joint, rad)])`, `.grip(close)`, `.stop()` | the typed vocabulary of a simulated world |
+| `world.describe()` | the live world: robots, objects, poses |
+| `world.observe()`, `.observe_channel("depth")`, `.frames()`, `.observe_changed(&frame, timeout)` | frames: the camera `cam-head` (a 320 x 240 JPEG) and `depth` (a 16-bit PNG, millimetres, 0 where nothing is); a frame is `{ channel_id, width, height, mime, bytes }` |
+| `cagi.call(tool, json)` | any platform tool by name |
+
+Frames come over HTTP, so the client opens no socket (the TypeScript and Python SDKs read the thread's WebSocket):
+`observe()` is the `observe` tool's latest picture, `observe_channel(id)` the thread's sample route for one channel
+(`depth` is only there), and `observe_changed` waits for a frame that differs.
+
+The crate has no dependency, so it sends its requests with the `curl` program that every computer with a shell has:
+a request's key and body go to curl on standard input, never in its arguments. For another HTTP client, implement
+`client::Transport` (one method) and start with `CommandAGI::with_transport(key, transport)`. An error is
+`client::Error { tool, message, detail }`; a call waits 120 s (`.timeout(…)`).
+
+## Documents
+
+Declare a 3D part:
 
 ```rust
 use commandagi::design::threed::*;
@@ -29,7 +82,7 @@ fn main() {
 
 The crate has no dependencies, no build script and no procedural macros. The CommandAGI local host compiles a
 document's `.rs` file against this crate alone, offline, to WebAssembly (`commandagi::abi`), and its sandbox runs the
-module with no imports.
+module with no imports. (The client starts `curl` only when your program calls it.)
 
 ## Documents: one module for each vocabulary
 
@@ -85,15 +138,16 @@ The editors use it to write an edit back into the file.
 
 ## What the crate does not have
 
-The Python and TypeScript SDKs have these. This crate does not, because each one needs the network and so a
-dependency, and the local host must compile a document against this crate with none.
+The Python and TypeScript SDKs have more than this crate does. The client above covers threads and live sessions of a
+simulated world; the rest needs more than the standard library.
 
 | | Python | TypeScript | Rust |
 | --- | --- | --- | --- |
 | document vocabularies (the table above) | yes | yes | yes |
 | code-part primitives (`part`, `circuit`, `graph` …) and the CadQuery, JSCAD, replicad and tscircuit importers | CadQuery | JSCAD, replicad, tscircuit | no |
-| the platform client (threads, memory, integrations, web, phone, postal …) | yes | yes | no |
-| live sessions (frames and typed control of a computer, a robot or a simulated world) | yes | yes | no |
+| the platform client: threads, live sessions of a simulated world, any tool by name | yes | yes | yes (`commandagi::client`) |
+| the client's typed namespaces for memory, integrations, web, phone, postal … | yes | yes | no: `call(tool, json)` |
+| live sessions: frames and typed control | computer, robot, world | computer, robot, world | a simulated world (`sim()`), any action by `act`; frames by `observe` |
 | the 3D kernel's client (`observe`, `export`, `measure`) | `commandagi.kernel` | `Kernel` | no |
 | a command line (`commandagi code eval`, `commandagi threed serve`, `commandagi daemon`) | no | yes | no |
 
@@ -112,10 +166,11 @@ Or open the `.rs` file in a CommandAGI editor: the local host compiles it and th
 
 ## Versions
 
-- A release is the tag `v<version>` in this repository. The crate is not on crates.io. Pin the tag, as above; a
-  branch moves under you.
-- The three SDKs carry one version number. A vocabulary at version X in Rust is the vocabulary at version X in
-  Python and TypeScript.
+- The crate is on crates.io (`cargo add commandagi`); `cargo add commandagi@=0.6.10` pins a version. A release is also
+  the tag `v<version>` in this repository.
+- The three SDKs carry one minor version (0.6). The crate's patch number may be ahead of the other two when only the
+  Rust crate changed: 0.6.10 is the first with the client. A vocabulary at version 0.6.x in Rust is the vocabulary at
+  0.6.x in Python and TypeScript.
 - A version promises nothing about the next one. CommandAGI keeps no compatibility layers: a release may rename or
   remove a function, an element or an attribute, with no alias and no migration. `CHANGELOG.md` says what changed.
 - So a document belongs with the version that reads it. Keep the pin in the project that holds the documents, and
@@ -124,7 +179,7 @@ Or open the `.rs` file in a CommandAGI editor: the local host compiles it and th
 ## Tests
 
 ```bash
-cargo test                 # 104 tests, offline
+cargo test                 # offline: the client runs against a scripted transport and a loopback server
 cargo test --manifest-path map/Cargo.toml
 ```
 
