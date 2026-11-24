@@ -1,0 +1,26 @@
+[package]
+name = "commandagi-map"
+version = "0.1.0"
+edition = "2021"
+description = "Where a CommandAGI document's .rs file declares each element: its source map, computed by syn, Rust's own parser, compiled to WebAssembly so a browser computes it without compiling the file."
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+# Vendored (`vendor/`, .cargo/config.toml): the map builds offline. `span-locations` gives every token its line,
+# column and byte range.
+[dependencies]
+proc-macro2 = { version = "=1.0.107", default-features = false, features = ["span-locations"] }
+syn = { version = "=2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit", "clone-impls"] }
+commandagi = { path = ".." }
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+strip = true
+lto = true
+
+[workspace]

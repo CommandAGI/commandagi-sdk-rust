@@ -1,0 +1,343 @@
+// A board in Rust declares the board half of a circuit the TypeScript SDK's pcb.test.ts pins for the same elements:
+// the outline and cross-section, each component's footprint and placement, and the copper with what its ends land on;
+// ids that do not change between runs, each call's site in `meta.source`, and the named refusals.
+
+use commandagi::design::pcb::*;
+use commandagi::design::{declare, El, Json};
+
+fn board_of(children: Vec<El>) -> El {
+    board(children).schematic("Divider.sch.rs")
+}
+
+fn graph(root: El) -> Json {
+    declare(root).unwrap().graph().unwrap()
+}
+
+fn bad(root: El) -> String {
+    declare(root).unwrap_err()
+}
+
+fn node<'a>(g: &'a Json, id: &str) -> &'a Json {
+    g.get("nodes").and_then(|n| n.get(id)).unwrap_or_else(|| panic!("no node {id}"))
+}
+
+fn inputs(g: &Json, id: &str) -> String {
+    node(g, id).get("inputs").unwrap().text()
+}
+
+fn compact(text: &str) -> String {
+    Json::parse(text).unwrap().text()
+}
+
+#[test]
+fn a_trace_names_its_routing_rule_and_an_arc_has_none() {
+    let g = graph(board_of(vec![
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [5, 5]]).rule("45"),
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [5, 0]]).rule("90"),
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [3, 1]]),
+        arc().layer("F.Cu").width(0.2).points([[0, 0], [1, 1], [2, 0]]),
+    ]));
+    let rules: Vec<Option<String>> = (1..=4).map(|i| node(&g, &format!("cu_{i}")).get("inputs").and_then(|x| x.get("rule")).and_then(Json::as_str).map(String::from)).collect();
+    assert_eq!(rules, [Some("45".into()), Some("90".into()), Some("any".into()), None]);
+    assert!(bad(board_of(vec![trace().layer("F.Cu").width(0.2).points([[0, 0], [1, 0]]).rule(45)])).contains(r#"rule is "45", "90" or "any", not 45"#));
+    assert!(bad(board_of(vec![arc().layer("F.Cu").width(0.2).points([[0, 0], [1, 1], [2, 0]]).rule("45")])).contains("rule"));
+}
+
+#[test]
+fn a_board_declares_its_outline_stack_footprints_and_copper() {
+    let l0 = line!() + 1;
+    let root = board_of(vec![
+        component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
+        component().name("R2").footprint("axial-7.62").pcb_x(25).pcb_y(10).pcb_rotation(90).layer("bottom").locked(true).ref_at([0.0, -2.5]).ref_rot(90.0).value_at([0.0, 2.5]),
+        component().name("V1").footprint("smd-0805"),
+        trace().layer("F.Cu").width(0.2).points([[11, 10], [18, 14], [24, 10]]).from(".R1 > .pin2").to(".R2 > .1"),
+        trace().layer("B.Cu").width(0.25).points([[18, 14], [18, 20]]).from(".VIA1"),
+        via().name("VIA1").pcb_x(18).pcb_y(14).drill(0.4).diameter(0.8),
+    ])
+    .width(40)
+    .height(30)
+    .core(1.5)
+    .copper(0.035);
+    let g = graph(root);
+    assert_eq!(g.get("meta").and_then(|m| m.get("schematic")), Some(&Json::from("Divider.sch.rs")));
+    assert_eq!(g.get("outputs").unwrap().text(), r#"["board"]"#);
+    let board = node(&g, "board").get("inputs").unwrap();
+    assert_eq!(board.get("thicknessMm"), Some(&Json::Num(1.57)));
+    assert_eq!(board.get("stack").unwrap().text(), r#"{"wire":{"node":"stack","port":"stack"}}"#);
+    assert_eq!(board.get("boardArtwork").unwrap().text(), compact(r#"{"graphics":[{"id":"outline","kind":"rect","points":[{"x":0,"y":0},{"x":40,"y":30}],"widthMm":0.05,"layer":"Edge.Cuts","filled":false}],"texts":[]}"#));
+    assert_eq!(
+        node(&g, "stack").get("inputs").and_then(|i| i.get("layers")).unwrap().text(),
+        compact(r#"[{"name":"F.Cu","role":"conductor","thickness":0.035},{"name":"core","role":"dielectric","thickness":1.5},{"name":"B.Cu","role":"conductor","thickness":0.035}]"#)
+    );
+    let site = |l: u32, c: u32| Json::obj().with("source", Json::obj().with("site", vec![Json::from(l), Json::from(c)])).text();
+    // The root's site is its call in `board_of`.
+    assert_eq!(node(&g, "board").get("meta").unwrap().text(), site(9, 5));
+    assert_eq!(
+        node(&g, "fp_R1").text(),
+        compact(&format!(r#"{{"id":"fp_R1","type":"eda.footprint","inputs":{{"ref":"R1","footprint":"Authored:smd-0805","placement":{{"x":10,"y":10,"rot":0,"side":"top"}}}},"label":"R1","meta":{}}}"#, site(l0 + 1, 9)))
+    );
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("placement")).unwrap().text(), r#"{"x":25,"y":10,"rot":90,"side":"bottom"}"#);
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("locked")).unwrap().text(), "true");
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refAt")).unwrap().text(), "[0,-2.5]");
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("refRot")).unwrap().text(), "90", "the reference text is turned a quarter where it sits");
+    assert_eq!(node(&g, "fp_R2").get("inputs").and_then(|i| i.get("valueAt")).unwrap().text(), "[0,2.5]");
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_at([0.0, 1.0])])).contains("ref_at needs pcb_x and pcb_y"));
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").locked(false)])).contains("locked is true or left out"));
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").ref_rot(90.0)])).contains("ref_rot needs pcb_x and pcb_y"));
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").value_at([0.0, 1.0])])).contains("value_at needs pcb_x and pcb_y"));
+    assert_eq!(node(&g, "fp_V1").get("inputs").and_then(|i| i.get("placement")), None, "a footprint with no pcb_x and pcb_y is not placed");
+    assert_eq!(
+        inputs(&g, "cu_1"),
+        compact(r#"{"kind":"run","points":[{"x":11,"y":10,"id":"start"},{"x":18,"y":14,"id":"p1"},{"x":24,"y":10,"id":"end"}],"widthMm":0.2,"layer":"F.Cu","rule":"any","terminals":[{"point":0,"ref":"R1","number":"2"},{"point":2,"ref":"R2","number":"1"}]}"#)
+    );
+    assert_eq!(node(&g, "cu_1").get("meta").unwrap().text(), site(l0 + 4, 9));
+    assert_eq!(node(&g, "cu_2").get("inputs").and_then(|i| i.get("terminals")).unwrap().text(), r#"[{"point":0,"via":"VIA1"}]"#);
+}
+
+#[test]
+fn an_end_names_a_via_or_another_traces_point_written_before_or_after_it() {
+    let g = graph(board_of(vec![
+        trace().layer("F.Cu").width(0.2).points([[0, 0], [5, 0]]).to(".VIA1"),
+        trace().name("T1").layer("F.Cu").width(0.2).points([[5, 0], [5, 5], [9, 5]]),
+        trace().layer("F.Cu").width(0.2).points([[5, 5], [5, 9]]).from(".T1 > .1"),
+        via().name("VIA1").pcb_x(5).pcb_y(0).drill(0.3).diameter(0.6),
+    ]));
+    assert!(g.get("nodes").and_then(|n| n.get("board")).is_none(), "a board with no width and height declares no outline yet");
+    assert_eq!(g.get("outputs").unwrap().text(), r#"["cu_1","T1","cu_2","VIA1"]"#, "with no board, every node is a terminal");
+    assert_eq!(node(&g, "cu_1").get("inputs").and_then(|i| i.get("terminals")).unwrap().text(), r#"[{"point":1,"via":"VIA1"}]"#);
+    assert_eq!(node(&g, "cu_2").get("inputs").and_then(|i| i.get("terminals")).unwrap().text(), r#"[{"point":0,"run":"T1","runPoint":"p1"}]"#);
+    assert_eq!(inputs(&g, "VIA1"), r#"{"kind":"via","points":[{"x":5,"y":0}],"drillMm":0.3,"padDiameterMm":0.6,"layers":["F.Cu","B.Cu"]}"#);
+}
+
+#[test]
+fn a_library_footprint_is_its_ref_and_the_pretty_folder_that_holds_it() {
+    let g = graph(board_of(vec![component().name("U1").footprint("Package_SO:SOIC-8").library("footprints.pretty").pcb_x(12).pcb_y(8).pcb_rotation(90)]));
+    assert_eq!(inputs(&g, "fp_U1"), r#"{"ref":"U1","footprint":"Package_SO:SOIC-8","library":"footprints.pretty","placement":{"x":12,"y":8,"rot":90,"side":"top"}}"#);
+    assert!(bad(board_of(vec![component().name("U1").footprint("Package_SO/SOIC-8").library("footprints.pretty")])).contains(r#"its ref, "Library:Footprint""#));
+    // A footprint id KiCad gave no library nickname is its bare name: the library names the file.
+    let bare = graph(board_of(vec![component().name("POLY").footprint("POLY").library("board.pretty").pcb_x(1).pcb_y(2)]));
+    assert!(inputs(&bare, "fp_POLY").contains(r#""footprint":"POLY""#));
+    assert!(bad(board_of(vec![component().name("U1").footprint("Package_SO:SOIC-8").library("SOIC-8.kicad_mod")])).contains("a footprint library folder (a .pretty)"));
+    // A second variant of one footprint is its own file in the folder; the part still names the footprint it is.
+    let v = graph(board_of(vec![component().name("U2").footprint("Package_SO:SOIC-8").library("footprints.pretty/SOIC-8 2.kicad_mod").pcb_x(1).pcb_y(2)]));
+    assert!(inputs(&v, "fp_U2").contains(r#""library":"footprints.pretty/SOIC-8 2.kicad_mod""#));
+}
+
+#[test]
+fn a_board_refuses_by_name_what_it_cannot_say() {
+    assert!(bad(board_of(vec![component().name("R1").footprint("0603")])).contains("footprint is one of smd-0805"));
+    assert_eq!(
+        bad(board_of(vec![component().name("R1").footprint("smd-0805").with_attr("schX", 3)])),
+        r#"component().name("R1"): sch_x is the schematic's; a board says only where its parts sit and where its copper runs"#
+    );
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").pcb_x(3)])).ends_with("give pcb_x and pcb_y together"));
+    assert_eq!(bad(board_of(vec![El::new("resistor").with_attr("name", "R1")])), "resistor() is not read on a board (see commandagi::design::pcb)");
+    assert_eq!(bad(board_of(vec![]).width(10)), "board(): give width and height together");
+    assert!(bad(board_of(vec![trace().layer("F.SilkS").width(0.2).points([[0, 0], [1, 0]])])).contains("copper layer"));
+    assert!(bad(board_of(vec![arc().layer("F.Cu").width(0.2).points([[0, 0], [1, 0]])])).ends_with("points is a list of 3 [x, y]"));
+    assert!(bad(board_of(vec![stack().layers(Vec::<i32>::new())]).core(1).copper(0.03).width(5).height(5)).contains("core and copper are a two-layer stack()"));
+    assert_eq!(bad(board_of(vec![kicad(), kicad()])), "a board has one kicad()");
+    assert!(bad(board_of(vec![text().at([0, 0]).layer("F.SilkS").size(1).thickness(0.1)])).contains("give text, or field"));
+    assert!(bad(board_of(vec![trace().layer("F.Cu").width(0.2).points([[0, 0], [1, 0]]).from(".R9 > .pin1")])).ends_with("there is no component or trace R9"));
+    assert_eq!(bad(board_of(vec![component().name("V1").footprint("smd-0805"), via().name("V1").pcb_x(0).pcb_y(0).drill(0.3).diameter(0.6)])), "two elements are called V1");
+    assert!(bad(board([]).schematic("/abs.sch.rs")).contains("relative to this file"));
+    assert!(bad(board([])).contains("a board in code names its schematic"));
+}
+
+#[test]
+fn a_boards_copper_is_the_copper_it_has() {
+    let box_ = [[0, 0], [9, 0], [9, 9]];
+    let run = |layer: &str| trace().layer(layer).width(0.2).points([[0, 0], [9, 0]]);
+    let curve = |layer: &str| arc().layer(layer).width(0.2).points([[0, 0], [4, 4], [9, 0]]);
+    let barrel = || via().pcb_x(5).pcb_y(5).drill(0.3).diameter(0.6);
+    let two = "the board has no copper layer X.Cu (it has F.Cu, B.Cu)";
+    assert_eq!(bad(board_of(vec![run("X.Cu")])), format!("trace(): {two}"));
+    assert_eq!(bad(board_of(vec![curve("X.Cu")])), format!("arc(): {two}"));
+    assert_eq!(bad(board_of(vec![barrel().layers(["X.Cu", "B.Cu"])])), format!("via(): {two}"));
+    assert_eq!(bad(board_of(vec![pour().layers(["X.Cu"]).points(box_)])), format!("pour(): {two}"));
+    // A keep-out on copper the board lacks declares: the DRC reports it, `constraint`, and the board still opens.
+    graph(board_of(vec![keepout().layers(["X.Cu"]).points(box_)]));
+    assert_eq!(bad(board_of(vec![run("In1.Cu")]).width(9).height(9)), "trace(): the board has no copper layer In1.Cu (it has F.Cu, B.Cu)");
+    assert_eq!(bad(board_of(vec![barrel().layers(["F.Cu", "F.Cu"])])), "via(): the ends of a via are two layers, not F.Cu twice");
+    assert!(bad(board_of(vec![barrel().layers(["F.Cu", "In1.Cu", "F.Cu"])])).contains("the board has no copper layer In1.Cu"));
+    assert_eq!(bad(board_of(vec![barrel()]).layers(json(r#"[{"ordinal": 0, "name": "F.Cu", "type": "signal"}]"#))), "via(): the board has no copper layer B.Cu (it has F.Cu)");
+
+    let four = || stack().layers(json(r#"[{"name": "F.Cu", "role": "conductor", "thickness": 0.035}, {"name": "In1.Cu", "role": "conductor", "thickness": 0.035}, {"name": "In2.Cu", "role": "conductor", "thickness": 0.035}, {"name": "B.Cu", "role": "conductor", "thickness": 0.035}]"#));
+    let inner = || vec![run("In1.Cu"), curve("In2.Cu"), barrel().layers(["F.Cu", "In1.Cu"]), pour().layers(["In2.Cu"]).points(box_), keepout().layers(["In1.Cu"]).points(box_)];
+    let mut stacked = vec![four()];
+    stacked.extend(inner());
+    graph(board_of(stacked));
+    graph(board_of(inner()).layers(json(r#"[{"ordinal": 0, "name": "F.Cu"}, {"ordinal": 1, "name": "In1.Cu"}, {"ordinal": 2, "name": "In2.Cu"}, {"ordinal": 31, "name": "B.Cu"}]"#)));
+    assert_eq!(bad(board_of(vec![four(), run("In3.Cu")])), "trace(): the board has no copper layer In3.Cu (it has F.Cu, B.Cu, In1.Cu, In2.Cu)");
+    // A mask or a dielectric named like copper is no copper.
+    assert!(bad(board_of(vec![stack().layers(json(r#"[{"name": "F.Cu", "role": "conductor"}, {"name": "In1.Cu", "role": "dielectric"}]"#)), run("In1.Cu")])).contains("no copper layer In1.Cu"));
+    assert!(bad(board_of(vec![run("Dwgs.User")]).layers(json(r#"[{"ordinal": 0, "name": "F.Cu"}, {"ordinal": 40, "name": "Dwgs.User"}]"#))).contains("layer is a copper layer"));
+}
+
+#[test]
+fn a_polygon_says_its_arcs() {
+    let pts = [[0, 0], [1, 0], [2, 1], [3, 0], [3, 3]];
+    let g = graph(board_of(vec![graphic().kind("poly").layer("F.Mask").points(pts).width(0).filled(true).arcs([1])]).width(10).height(10));
+    assert!(g.text().contains(r#""arcStarts":[1]"#));
+    assert!(bad(board_of(vec![graphic().kind("poly").layer("F.Mask").points(pts).width(0).arcs([3])]).width(10).height(10)).contains("arcs is, on a poly"));
+}
+
+#[test]
+fn a_board_says_what_a_kicad_board_holds() {
+    let layers = r#"[{"ordinal": 0, "name": "F.Cu", "type": "signal"}, {"ordinal": 4, "name": "In1.Cu", "type": "signal"}, {"ordinal": 2, "name": "B.Cu", "type": "signal"}, {"ordinal": 25, "name": "Edge.Cuts", "type": "user"}]"#;
+    let g = graph(
+        board_of(vec![
+            stack().name("four-layer").label("JLC 4-layer").process(json(r#"{"name": "JLC"}"#)).layers(json(r#"[{"name": "F.Cu", "role": "conductor", "thickness": 0.035}]"#)),
+            kicad().version(20260206).generator("pcbnew").forms(r#"(paper "A4")"#),
+            graphic().kind("line").layer("Edge.Cuts").points([[0, 0], [40, 0]]).width(0.1).id("e0").kicad("(stroke (type solid))"),
+            text().text("REV A").at([2, 3]).layer("F.SilkS").size(1).thickness(0.15),
+            net().name("GND").code(1),
+            component().name("C1").footprint("Lib:C_0805").library("Board.pretty").pcb_x(4).pcb_y(5).uuid("u-c1"),
+            trace().layer("In1.Cu").width(0.2).points([[0, 0], [5, 0]]).net("GND").uuid("u-t1").kicad("(locked yes)"),
+            arc().name("A1").layer("F.Cu").width(0.2).points([[0, 0], [1, 1], [2, 0]]).to(".C1 > .pin1"),
+            via().name("V1").pcb_x(5).pcb_y(0).drill(0.3).diameter(0.6).layers(["F.Cu", "In1.Cu", "B.Cu"]).pads([".C1 > .pin2"]).net("GND"),
+            pour().layers(["In1.Cu"]).points([[0, 0], [9, 0], [9, 9]]).terminals(json(r#"[[0, ".V1"]]"#)).net("GND").kicad("(min_thickness 0.25)"),
+        ])
+        .layers(json(layers)),
+    );
+    assert_eq!(inputs(&g, "board"), compact(&format!(r#"{{"layers":{layers},"stack":{{"wire":{{"node":"stack","port":"stack"}}}}}}"#)));
+    let mut stack = node(&g, "stack").clone();
+    stack.remove("meta");
+    assert_eq!(stack.text(), compact(r#"{"id":"stack","type":"eda.stack","inputs":{"id":"four-layer","domain":"pcb","units":"mm","layers":[{"name":"F.Cu","role":"conductor","thickness":0.035}],"process":{"name":"JLC"}},"label":"JLC 4-layer"}"#));
+    let Some(Json::Obj(nodes)) = g.get("nodes") else { panic!() };
+    let facts: Vec<String> = nodes.iter().filter(|(_, n)| n.get("type") == Some(&Json::from("eda.boardfact"))).map(|(_, n)| n.get("inputs").unwrap().text()).collect();
+    assert_eq!(
+        facts,
+        [
+            compact(r#"{"fact":"kicad","version":20260206,"generator":"pcbnew","kicad":"(paper \"A4\")"}"#),
+            compact(r#"{"fact":"graphic","id":"e0","kind":"line","points":[{"x":0,"y":0},{"x":40,"y":0}],"widthMm":0.1,"layer":"Edge.Cuts","kicad":"(stroke (type solid))"}"#),
+            compact(r#"{"fact":"text","text":"REV A","at":{"x":2,"y":3},"rot":0,"layer":"F.SilkS","size":1,"sizeX":1,"thickness":0.15,"kind":"text"}"#),
+            compact(r#"{"fact":"net","name":"GND","code":1}"#),
+        ]
+    );
+    assert_eq!(node(&g, "fp_C1").get("inputs").and_then(|i| i.get("uuid")), Some(&Json::from("u-c1")));
+    assert_eq!(inputs(&g, "cu_1"), compact(r#"{"kind":"run","points":[{"x":0,"y":0,"id":"start"},{"x":5,"y":0,"id":"end"}],"widthMm":0.2,"layer":"In1.Cu","rule":"any","uuid":"u-t1","net":"GND","kicad":"(locked yes)"}"#));
+    assert_eq!(inputs(&g, "A1"), compact(r#"{"kind":"arc","points":[{"x":0,"y":0,"id":"start"},{"x":1,"y":1,"id":"p1"},{"x":2,"y":0,"id":"end"}],"widthMm":0.2,"layer":"F.Cu","terminals":[{"point":2,"ref":"C1","number":"1"}]}"#));
+    assert_eq!(node(&g, "V1").get("inputs").and_then(|i| i.get("pads")).unwrap().text(), r#"[{"ref":"C1","number":"2"}]"#);
+    assert_eq!(inputs(&g, "cu_2"), compact(r#"{"kind":"pour","points":[{"x":0,"y":0},{"x":9,"y":0},{"x":9,"y":9}],"layers":["In1.Cu"],"terminals":[{"point":0,"via":"V1"}],"net":"GND","kicad":"(min_thickness 0.25)"}"#));
+}
+
+#[test]
+fn an_ic_mask_layout_is_declared_by_its_polygons_units_and_library() {
+    let polygons = r#"[{"layer": 1, "datatype": 0, "points": [[0, 0], [4, 0], [4, 2], [0, 2]]}, {"layer": 2, "datatype": 1, "points": [[1, 1], [3, 1], [2, 1.5]]}]"#;
+    let g = graph(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.001).lib_name("Inverter")]).width(10.0).height(10.0));
+    let mut layout = node(&g, "masks").clone();
+    layout.remove("meta");
+    assert_eq!(layout.text(), compact(&format!(r#"{{"id":"masks","type":"eda.masks","inputs":{{"polygons":{polygons},"unitUmPerDb":0.001,"libName":"Inverter"}},"label":"Inverter"}}"#)));
+    // A die is its layout alone: with no board fact the file declares the layout and no board.
+    let die = graph(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.001)]));
+    let Some(Json::Obj(nodes)) = die.get("nodes") else { panic!() };
+    assert!(!nodes.iter().any(|(_, n)| n.get("type") == Some(&Json::from("eda.board"))));
+    assert_eq!(node(&die, "masks").get("label"), Some(&Json::from("Masks")));
+    assert!(bad(board_of(vec![masks().unit_um_per_db(0.001)])).contains("masks() needs polygons"));
+    assert!(bad(board_of(vec![masks().polygons(json(r#"[{"layer": 1, "datatype": 0, "points": [[0, 0], [1, 1]]}]"#)).unit_um_per_db(0.001)])).contains("polygons is the mask layout's polygons"));
+    assert!(bad(board_of(vec![masks().polygons(json(polygons)).unit_um_per_db(0.0)])).contains("unit_um_per_db is more than 0"));
+    assert!(bad(board_of(vec![masks().polygons(json(polygons))])).contains("masks() needs unit_um_per_db"));
+}
+
+#[test]
+fn a_board_on_the_faces_of_a_cad_part() {
+    let surface = r#"{"cadRef": "../case.3d.tsx", "domain": {"charts": [{"id": "top"}]}}"#;
+    let g = graph(
+        board_of(vec![
+            component().name("R1").footprint("smd-0805").pcb_x(4).pcb_y(5).chart("top"),
+            trace().layer("F.Cu").width(0.3).points([[4, 5], [9, 5]]).from(".R1 > .pin1").surface(true),
+        ])
+        .surface(json(surface)),
+    );
+    assert_eq!(node(&g, "board").get("inputs").and_then(|i| i.get("surfaceMount")).unwrap().text(), compact(surface));
+    assert_eq!(node(&g, "fp_R1").get("inputs").and_then(|i| i.get("surfaceMount")).unwrap().text(), r#"{"chart":"top"}"#);
+    assert_eq!(node(&g, "cu_1").get("inputs").and_then(|i| i.get("mount")).unwrap().text(), r#"{"kind":"unwrap","domain":{"charts":[{"id":"top"}]}}"#);
+    assert!(bad(board_of(vec![component().name("R1").footprint("smd-0805").pcb_x(4).pcb_y(5).chart("top")])).contains("has no surface"));
+    assert!(bad(board_of(vec![trace().layer("F.Cu").width(0.3).points([[4, 5], [9, 5]]).surface(true)])).contains("has no surface"));
+}
+
+#[test]
+fn the_layouts_constraints_are_board_facts() {
+    let g = graph(
+        board_of(vec![
+            netclass().name("supply").nets(["P24", "FIN*"]).kind("power").width(0.5).clearance(0.25).current(0.5).criticality(0.8).max_vias(2),
+            diffpair().name("usb").positive("D+").negative("D-").gap(0.15).max_skew(0.5),
+            group().name("in1").parts(["R1", "U1"]).region([10, 30, 30, 50]).near(".J1 > .pin5").max_distance(4).conviction(0.5),
+            group().name("io").parts(["J1"]).side("any").edge("left").mating("top"),
+            keepout().name("label").points([[80, 20], [96, 20], [96, 28]]).no(["track", "via"]),
+            thermal().name("fets").parts(["Q1", "Q2"]).watts(0.3).spacing(4).away_from(["U1"]).distance(6),
+            bus().name("data").nets(["D*"]).pitch(0.6),
+            objective().weights(json(r#"{"wirelength": 1, "vias": 3}"#)),
+        ])
+        .width(100)
+        .height(60),
+    );
+    let Some(Json::Obj(nodes)) = g.get("nodes") else { panic!() };
+    let facts: Vec<String> = nodes.iter().filter(|(_, n)| n.get("type") == Some(&Json::from("eda.boardfact"))).map(|(_, n)| n.get("inputs").unwrap().text()).collect();
+    assert_eq!(
+        facts,
+        [
+            compact(r#"{"fact":"netclass","name":"supply","nets":["P24","FIN*"],"kind":"power","width":0.5,"clearance":0.25,"current":0.5,"criticality":0.8,"maxVias":2}"#),
+            compact(r#"{"fact":"diffpair","name":"usb","positive":"D+","negative":"D-","gap":0.15,"maxSkew":0.5}"#),
+            compact(r#"{"fact":"group","name":"in1","parts":["R1","U1"],"region":[10,30,30,50],"near":".J1 > .pin5","maxDistance":4,"conviction":0.5}"#),
+            compact(r#"{"fact":"group","name":"io","parts":["J1"],"side":"any","edge":"left","mating":"top"}"#),
+            compact(r#"{"fact":"keepout","name":"label","points":[[80,20],[96,20],[96,28]],"no":["track","via"]}"#),
+            compact(r#"{"fact":"thermal","name":"fets","parts":["Q1","Q2"],"watts":0.3,"spacing":4,"awayFrom":["U1"],"distance":6}"#),
+            compact(r#"{"fact":"bus","name":"data","nets":["D*"],"pitch":0.6}"#),
+            compact(r#"{"fact":"objective","weights":{"wirelength":1,"vias":3}}"#),
+        ]
+    );
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).kind("loud")])).contains("kind is signal, power"));
+    let rules = graph(
+        board_of(vec![netclass().name("Default").nets(["*"]).width(0.2).min_width(0.15).clearance(0.2).edge_clearance(0.3).hole_clearance(0.15).inner(json(r#"{"clearance": 0.15, "width": 0.15}"#)).min_spokes(1)])
+            .width(60)
+            .height(40),
+    );
+    let Some(Json::Obj(nodes)) = rules.get("nodes") else { panic!() };
+    let fact = nodes.iter().find(|(_, n)| n.get("type") == Some(&Json::from("eda.boardfact"))).map(|(_, n)| n.get("inputs").unwrap().text()).unwrap();
+    assert_eq!(fact, compact(r#"{"fact":"netclass","name":"Default","nets":["*"],"width":0.2,"minWidth":0.15,"clearance":0.2,"edgeClearance":0.3,"holeClearance":0.15,"inner":{"clearance":0.15,"width":0.15},"minSpokes":1}"#));
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).width(0.2).min_width(0.3)])).contains("min_width is at most width"));
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).inner(json(r#"{"gap": 0.1}"#))])).contains("the rules on inner copper layers"));
+    assert!(bad(board_of(vec![netclass().name("a").nets(["X"]).min_spokes(1.5)])).contains("min_spokes is a whole number from 0 to 4"));
+    assert!(bad(board_of(vec![group().name("g").parts(["R1"]).max_distance(3)])).contains("max_distance needs near"));
+    assert!(bad(board_of(vec![group().name("g").parts(["R1"]).near("R1")])).contains("near is a part"));
+    assert!(bad(board_of(vec![group().name("g").parts(["J1"]).edge("front")])).contains(r#"edge is "left", "right", "top", "bottom""#));
+    assert!(bad(board_of(vec![group().name("g").parts(["J1"]).mating("top")])).contains("mating needs edge"));
+    assert!(bad(board_of(vec![bus().name("b").nets(["D0"]).pitch(-1)])).contains("pitch"));
+    assert!(bad(board_of(vec![bus().name("b").nets(["D0"]).width(0.2)])).contains("width"));
+    assert!(bad(board_of(vec![objective().weights(json(r#"{"vias": 1}"#)), objective().weights(json(r#"{"vias": 2}"#))])).contains("one objective()"));
+}
+
+#[test]
+fn a_boards_checks_and_accepts_are_kept_in_the_graphs_meta() {
+    let meta = graph(board_of(vec![
+        component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
+        check().id("drc").kind("drc"),
+        accept().id("edge").check("drc").rule("clearance").net("GND").region(json(r#"{"min": [0, 0], "max": [3, 3]}"#)).reason("the mounting hole's keep-out"),
+    ]))
+    .get("meta")
+    .cloned()
+    .unwrap();
+    assert_eq!(meta.get("schematic").and_then(Json::as_str), Some("Divider.sch.rs"));
+    let Some(Json::Arr(accepted)) = meta.get("accepted") else { panic!("no accepted") };
+    let mut a = accepted[0].clone();
+    assert!(a.remove("source").is_some(), "an accept carries its call");
+    assert_eq!(a.text(), r#"{"id":"edge","check":"drc","rule":"clearance","net":"GND","region":{"min":[0,0],"max":[3,3]},"reason":"the mounting hole's keep-out"}"#);
+    let Some(Json::Arr(checks)) = meta.get("checks") else { panic!("no checks") };
+    assert_eq!(checks[0].get("kind").and_then(Json::as_str), Some("drc"));
+    assert!(bad(board_of(vec![check().id("drc").kind("drc").width(1)])).contains("width is not read (it takes id, kind, severity, options)"));
+}
+
+#[test]
+fn a_wire_is_a_hand_soldered_wire_from_pin_to_pin() {
+    let g = graph(board_of(vec![
+        component().name("R1").footprint("smd-0805").pcb_x(10).pcb_y(10),
+        component().name("R2").footprint("smd-0805").pcb_x(25).pcb_y(10),
+        wire().name("W1").from(".R1 > .pin1").to(".R2 > .pin2").material("WIRE-22AWG-SOLID-PVC").points(json("[[9, 10, 0], [17, 4, 3], [26, 10, 0]]")),
+        wire().from(".R1 > .pin2").to(".R2 > .1").slack(0.3),
+    ]));
+    assert_eq!(node(&g, "W1").get("type").and_then(Json::as_str), Some("eda.wire"));
+    assert_eq!(inputs(&g, "W1"), compact(r#"{"from": {"ref": "R1", "number": "1"}, "to": {"ref": "R2", "number": "2"}, "material": "WIRE-22AWG-SOLID-PVC", "points": [[9, 10, 0], [17, 4, 3], [26, 10, 0]]}"#));
+    assert_eq!(inputs(&g, "wire_2"), compact(r#"{"from": {"ref": "R1", "number": "2"}, "to": {"ref": "R2", "number": "1"}, "slack": 0.3}"#));
+}

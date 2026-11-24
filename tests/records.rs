@@ -1,0 +1,157 @@
+// Signed records in Rust against the documents the TypeScript SDK's records.test.ts pins for the same elements: a
+// contract's terms come back as written (nulls and empty strings kept), parties and events are children in order; an
+// event chain out of order and a field with no attribute are refused by name.
+
+use commandagi::design::records::*;
+use commandagi::design::{declare, Declared};
+
+fn document(root: El) -> (String, Json, Json) {
+    match declare(root).unwrap() {
+        Declared::Document { format, document, sources } => (format, document, sources),
+        Declared::Graph(_) => panic!("a record is a document"),
+    }
+}
+
+fn bad(root: El) -> String {
+    declare(root).unwrap_err()
+}
+
+fn j(text: &str) -> Json {
+    Json::parse(text).unwrap()
+}
+
+const TERMS: &str = r#"{"subject": {"kind": "data_stream", "resourceType": "device", "resourceId": "dev-1"}, "title": "Bench camera", "description": "",
+    "price": {"type": "metered", "rate": 1, "unit": "minute"}, "schedule": null, "takeRateBps": 1000, "channels": ["screen"]}"#;
+
+#[test]
+fn a_contract_is_its_body_terms_as_written_parties_in_order() {
+    let offeror = party().principal("u-1").role("offeror").sig("ed25519:k:abc").signed_at(1780765664000_i64);
+    let offeror_site = offeror.source_json().unwrap();
+    let root = contract([offeror, party().principal("acct:org:o-2").role("acceptor").acted_by("u-3")])
+        .id("c-1")
+        .terms(json(TERMS))
+        .created_at(1780765664000_i64);
+    let root_site = root.source_json().unwrap();
+    let (format, doc, sources) = document(root);
+    assert_eq!(format, "contract");
+    assert_eq!(sources.get(""), Some(&root_site));
+    assert_eq!(sources.get("party@0"), Some(&offeror_site));
+    assert_eq!(
+        doc,
+        j(&format!(
+            r#"{{"id": "c-1", "terms": {TERMS}, "parties": [{{"principal": "u-1", "role": "offeror", "sig": "ed25519:k:abc", "signedAt": 1780765664000}},
+                {{"principal": "acct:org:o-2", "role": "acceptor", "actedBy": "u-3"}}], "createdAt": 1780765664000}}"#
+        ))
+    );
+    assert_eq!(doc.get("terms").unwrap().text(), j(TERMS).text(), "the signed object, null and \"\" kept, in its order");
+
+    assert!(bad(contract([]).id("c").terms(json(TERMS))).contains("contract() needs created_at"));
+    assert!(bad(contract([]).id("c").terms(json(TERMS)).created_at(1).with_attr("title", "x")).contains("title is not read"));
+    assert!(bad(contract([]).id("c").terms(json(TERMS)).created_at("today")).contains(r#"created_at is epoch milliseconds, not "today""#));
+    assert!(bad(contract([]).id("c").terms("x").created_at(1)).contains("terms is the object the parties sign"));
+    assert!(bad(contract([party().role("offeror")]).id("c").terms(json(TERMS)).created_at(1)).contains("party() needs principal"));
+}
+
+#[test]
+fn a_product_instance_is_its_chain_oldest_first_each_by_its_seq() {
+    let first = event().seq(0).kind("manufacture").at(1).prev(json("null")).by("org-acme").data(json(r#"{"plate": "P-1"}"#)).sig("ed25519:k:s0");
+    let first_site = first.source_json().unwrap();
+    let root = instance([first, event().seq(1).kind("transfer").at(2).prev("h0").by("org-acme").to("u-2").contract_ref("c-1").sig("ed25519:k:s1")])
+        .serial("SN-1")
+        .product_id("fleet-unit");
+    let (format, doc, sources) = document(root);
+    assert_eq!(format, "instance");
+    assert_eq!(sources.get("event#0"), Some(&first_site));
+    assert_eq!(
+        doc,
+        j(r#"{"serial": "SN-1", "productId": "fleet-unit", "events": [
+              {"seq": 0, "kind": "manufacture", "at": 1, "prev": null, "by": "org-acme", "data": {"plate": "P-1"}, "sig": "ed25519:k:s0"},
+              {"seq": 1, "kind": "transfer", "at": 2, "prev": "h0", "by": "org-acme", "to": "u-2", "contractRef": "c-1", "sig": "ed25519:k:s1"}]}"#)
+    );
+    assert!(bad(instance([event().seq(1).kind("service").at(1).by("x")]).serial("S").product_id("p")).contains("events are written oldest first"));
+    assert!(bad(instance([event().seq(0).kind("service").at(1).by("x").with_attr("note", "n")]).serial("S").product_id("p")).contains("note is not read"));
+}
+
+#[test]
+fn a_release_is_its_files_check_verdicts_and_outputs_in_order() {
+    let (a, b) = ("a".repeat(64), "b".repeat(64));
+    let root = release([
+        file().path("cad/Plate.3d.rs").digest(a.as_str()),
+        check().file("cad/Plate.3d.rs").id("interference").kind("interference").status("passed"),
+        output().path("outputs/Plate.step").digest(b.as_str()).from("cad/Plate.3d.rs").kind("step"),
+    ])
+    .id("plate-A")
+    .rev("A")
+    .of("../..")
+    .frozen("files")
+    .created_at(1792000000000_i64);
+    let (format, doc, _) = document(root);
+    assert_eq!(format, "release");
+    assert_eq!(
+        doc,
+        j(&format!(
+            r#"{{"id": "plate-A", "rev": "A", "of": "../..", "frozen": "files", "createdAt": 1792000000000,
+                "files": [{{"path": "cad/Plate.3d.rs", "digest": "{a}"}}],
+                "checks": [{{"file": "cad/Plate.3d.rs", "id": "interference", "kind": "interference", "status": "passed"}}],
+                "outputs": [{{"path": "outputs/Plate.step", "digest": "{b}", "from": "cad/Plate.3d.rs", "kind": "step"}}]}}"#
+        ))
+    );
+    assert!(bad(release([file().path("x").digest("abc")]).id("r").rev("A").of(".").frozen("files")).contains("digest is its content's SHA-256"));
+    assert!(bad(release([check().file("x").id("i").kind("k").status("ok")]).id("r").rev("A").of(".").frozen("files")).contains("status is passed, failed, skipped, accepted"));
+    let (_, nested, _) = document(release([]).id("r").rev("A").of("../..").frozen("files/product"));
+    assert_eq!(nested.get("frozen"), Some(&Json::from("files/product")));
+    assert!(bad(release([]).id("r").rev("A").of(".").frozen("../files")).contains("frozen is a folder beside the record"));
+    let (_, unit, _) = document(instance([]).serial("S").product_id("p").release("../releases/A/A.release.rs"));
+    assert_eq!(unit.get("release"), Some(&Json::from("../releases/A/A.release.rs")));
+}
+
+#[test]
+fn a_calibration_is_its_joints_and_its_rezeros_oldest_first_each_checked() {
+    let root = calibration([
+        joint().name("shoulder_lift").zero(0.012).kp(12).kv(0.6).run("runs/lift/run.json"),
+        rezero().joint("shoulder_lift").zero(0.015).at(1793318400000_i64).by("person:owner").reason("motor replaced"),
+    ])
+    .device("../../devices/so101-follower-arm/definition.tsx")
+    .serial("SO101-0007");
+    let (format, doc, _) = document(root);
+    assert_eq!(format, "calibration");
+    assert_eq!(
+        doc,
+        j(r#"{"device": "../../devices/so101-follower-arm/definition.tsx", "serial": "SO101-0007",
+              "joints": [{"name": "shoulder_lift", "zero": 0.012, "kp": 12, "kv": 0.6, "run": "runs/lift/run.json"}],
+              "rezeros": [{"joint": "shoulder_lift", "zero": 0.015, "at": 1793318400000, "by": "person:owner", "reason": "motor replaced"}]}"#)
+    );
+    let cal = |children: Vec<El>| calibration(children).device("d/definition.tsx");
+    assert!(bad(cal(vec![joint().name("a").kp(0)])).contains("kp is a positive number"));
+    assert!(bad(cal(vec![rezero().joint("a").zero(0.1).at(1).by("owner")])).contains("by is person:<id> or agent:<id>"));
+    assert!(bad(cal(vec![rezero().joint("a").zero(0.1).at(2).by("person:o"), rezero().joint("a").zero(0.2).at(1).by("person:o")])).contains("oldest first"));
+    // A camera unit's calibration: its lens, where it is and the residual, with the run that measured it and its reality.
+    let lens = r#"{"width": 320, "height": 240, "fx": 207.6, "fy": 207.4, "cx": 160.1, "cy": 119.9}"#;
+    let cam = || camera().channel("view").robot("arm").intrinsics(json(lens)).extrinsics(json(r#"{"position_mm": [14.2, -509.1, 1006], "quaternion": [0.69, -0.06, -0.06, 0.72]}"#)).residual(json(r#"{"rms_px": 0.07, "position_mm": 0.83, "rotation_deg": 0.18}"#)).run("runs/c/run.json");
+    let (_, doc, _) = document(cal(vec![cam().reality("simulation")]));
+    assert_eq!(
+        doc.get("cameras"),
+        Some(&j(&format!(r#"[{{"channel": "view", "robot": "arm", "intrinsics": {lens}, "extrinsics": {{"position_mm": [14.2, -509.1, 1006], "quaternion": [0.69, -0.06, -0.06, 0.72]}}, "residual": {{"rms_px": 0.07, "position_mm": 0.83, "rotation_deg": 0.18}}, "run": "runs/c/run.json", "reality": "simulation"}}]"#)))
+    );
+    assert!(bad(cal(vec![cam()])).contains("says its reality"));
+    assert!(bad(cal(vec![cam().reality("simulation").intrinsics(json(r#"{"width": 320, "height": 240, "fx": 0, "fy": 1, "cx": 1, "cy": 1}"#))])).contains("intrinsics are"));
+    // A guided calibration: each joint's measured travel and its direction, who measured it and when.
+    let (_, doc, _) = document(
+        calibration([joint().name("pan").zero(0.03).min(712).max(3391), joint().name("lift").zero(-0.1).min(830).max(3270).reversed(true)])
+            .device("d/definition.tsx")
+            .by("person:owner")
+            .at(1793318400000_i64),
+    );
+    assert_eq!(
+        doc,
+        j(r#"{"device": "d/definition.tsx", "by": "person:owner", "at": 1793318400000,
+              "joints": [{"name": "pan", "zero": 0.03, "min": 712, "max": 3391}, {"name": "lift", "zero": -0.1, "min": 830, "max": 3270, "reversed": true}],
+              "rezeros": []}"#)
+    );
+    assert!(bad(cal(vec![joint().name("a").min(900)])).contains("both min and max"));
+    assert!(bad(cal(vec![joint().name("a").min(900).max(800)])).contains("min < max"));
+    // A joint found by motion on another servo than its definition says: the servo id on this unit's bus.
+    let (_, doc, _) = document(cal(vec![joint().name("pan").id(2), joint().name("lift").id(1)]));
+    assert_eq!(doc.get("joints"), Some(&j(r#"[{"name": "pan", "id": 2}, {"name": "lift", "id": 1}]"#)));
+    assert!(bad(cal(vec![joint().name("a").id(2), joint().name("b").id(2)])).contains("one servo is one joint"));
+}
