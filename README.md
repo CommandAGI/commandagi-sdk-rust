@@ -112,6 +112,7 @@ The same documents, element for element, as the TypeScript SDK's JSX (`commandag
 | `commandagi::design::products` | a product a seller sells (`name.product.rs`): `product`, `variant`, `discount` |
 | `commandagi::design::carts` | a buyer's cart at one seller (`Carts/<seller>.cart.rs`): `cart`, `item`, `offer`; no price |
 | `commandagi::design::storefronts` | a storefront its holder lists (`<name>.storefront.rs`): `storefront`, `offers`, `offer` |
+| `commandagi::design::money` | a money account a person or a company holds (`<name>.money.rs`): `money_account`, `connection`, `counterparty`, `at`, `recurring` |
 | `commandagi::design::connectors` | a remote API as a folder tree a mount can list (`name.connector.rs`): `connector`, `credential`, `licence`, `folder`, `request`, `here`, `each().in_(…).as_(…)`, `dir`, `file` |
 | `commandagi::design::infra` | a VPN exit (`exit.rs`), a logged-in state (`session.rs`), a vantage (`vantage.rs`). The CommandAGI platform does not run these: its scripts read `vantage.tsx` and `session.tsx`, and `make infra-plan` reads `exit.tsx` |
 | `commandagi::design::evals` | an eval (`eval`: its `case`s), a metric (`metric`) |

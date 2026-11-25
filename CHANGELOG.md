@@ -4,6 +4,17 @@ One entry for each release. A release is the tag `v<version>` in this repository
 (`cargo add commandagi`) from 0.6.10. The Python and TypeScript SDKs carry the same minor version. A version
 promises nothing about the next one: read this file before you change the tag you pin.
 
+## Unreleased
+
+Added
+
+- `commandagi::design::money`: `money_account([...]).name(..).kind(..).institution(..).last4(..).currency(..)
+  .ledger(..).books(..).statements(..).opened(..).closed(..).holder(..)` with `connection().id(..).provider(..)
+  .account(..).mode(..)`, `counterparty([at().connection(..).recipient(..)]).id(..).name(..).kind(..).file(..)` and
+  `recurring().id(..).to(..).amount(..).rail(..).every(..).day(..).by(..).starts(..).ends(..).memo(..)`: the money
+  account document of `<name>.money.rs` (CommandAGI's docs/financial-accounts.md). No bank or card number and no
+  credential: `last4` at most, the provider's own ids.
+
 ## 0.6.10 (2026-11-24)
 
 Added
