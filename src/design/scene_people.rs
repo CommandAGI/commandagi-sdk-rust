@@ -43,6 +43,7 @@ pub const LOOK_FIELDS: &[&str] = &[
 pub const GOAL_FIELDS: &[(&str, &[&str])] = &[
     ("walk", &["route", "speed"]),
     ("step", &["to", "heading"]),
+    ("steer", &["forward", "side", "heading", "pitch", "crouch", "seconds"]),
     ("turn", &["heading"]),
     ("sit", &["seat", "facing"]),
     ("stand", &[]),
@@ -71,6 +72,10 @@ pub const VEHICLE_GOALS: &[&str] = &["drive", "dock", "lift", "mast", "couple", 
 pub const WORK_HANDS: &[&str] = &["both", "left", "right"];
 pub const IDLE_ACTIVITIES: &[&str] = &["type", "look", "still", "talk"];
 pub const REACH_HANDS: &[&str] = &["left", "right", "both"];
+/// A steer goal's ranges (the walker, docs/fpv-walker.md): its speeds (m/s, along its heading and to its left) and the
+/// most seconds it holds. One table, the same in the three SDKs.
+pub const STEER_BOUNDS: &[(&str, f64, f64)] = &[("forward", -0.5, 1.6), ("side", -0.3, 0.3)];
+pub const STEER_SECONDS: f64 = 2.0;
 pub const HUMANOID_POLICY_FIELDS: &[&str] = &["id", "kind", "unit", "hz", "lookahead", "routine", "repeat"];
 /// The person's joints. Each is the constraint `humanoid_constraint(unit, joint)` that a `motors` command names.
 pub const HUMANOID_JOINTS: &[&str] = &[
@@ -214,6 +219,26 @@ pub fn goal_problem(g: &Json, besides: &[&str]) -> Option<String> {
     }
     if *kind == "turn" && num(g.get("heading")).is_none() {
         return Some("turn needs a heading (radians about z, from +x)".into());
+    }
+    if *kind == "steer" {
+        if num(g.get("heading")).is_none() {
+            return Some("steer needs a heading (radians about z, from +x): where the body faces".into());
+        }
+        for (k, lo, hi) in STEER_BOUNDS {
+            if has(k) && !num(g.get(*k)).is_some_and(|v| v >= *lo && v <= *hi) {
+                let way = if *k == "side" { "to its left" } else { "along its heading" };
+                return Some(format!("steer {k} is metres a second {way} from {lo} to {hi}"));
+            }
+        }
+        if has("pitch") && num(g.get("pitch")).is_none() {
+            return Some("steer pitch is the head's nod (radians, positive down), within its neck's range".into());
+        }
+        if has("crouch") && !matches!(g.get("crouch"), Some(Json::Bool(_))) {
+            return Some("steer crouch is true or false (walk and stand with bent knees)".into());
+        }
+        if has("seconds") && !num(g.get("seconds")).is_some_and(|v| v > 0.0 && v <= STEER_SECONDS) {
+            return Some(format!("steer seconds is how long it holds: over 0, at most {STEER_SECONDS}"));
+        }
     }
     if *kind == "step" && has("heading") && num(g.get("heading")).is_none() {
         return Some("step heading is radians about z, from +x".into());
