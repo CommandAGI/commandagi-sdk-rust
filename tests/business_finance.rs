@@ -31,6 +31,12 @@ fn finance_is_the_company_finance() {
     .unwrap();
     assert_eq!(doc.get("finance"), Some(&want));
     assert_eq!(document(company([]).name("Bare")).get("finance"), None, "no finance named: no field");
+    let by_file = document(company([bank_account().file("money/Operating.money.rs")]).name("Harbor"));
+    assert_eq!(
+        by_file.get("finance").and_then(|f| f.get("bankAccounts")),
+        Some(&Json::parse(r#"[{"file": "money/Operating.money.rs"}]"#).unwrap()),
+        "a money account by its file"
+    );
 }
 
 #[test]

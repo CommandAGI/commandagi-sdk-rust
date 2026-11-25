@@ -55,7 +55,9 @@ pub(super) const FINANCE_TAGS: &[TagSpec] = &[
     leaf("Budget", &[("journal", Text)], &["journal"]),
     leaf(
         "BankAccount",
+        // `file`: a money account (`<name>.money.rs`) that says every other field; CommandAGI refuses a second copy by name.
         &[
+            ("file", Text),
             ("name", Text),
             ("provider", Text),
             ("last4", Text),
@@ -66,7 +68,7 @@ pub(super) const FINANCE_TAGS: &[TagSpec] = &[
             ("opened", Text),
             ("closed", Text),
         ],
-        &["name"],
+        &[],
     ),
     leaf("Payroll", &[("provider", Text), ("ledger", Text), ("register", Text), ("schedule", Text), ("jurisdiction", Text)], &["provider"]),
     TagSpec { tag: "DataRoom", props: &[("name", Text), ("about", Text), ("expires", Text)], required: &["name"], one: &[], many: &[("include", "Include")] },

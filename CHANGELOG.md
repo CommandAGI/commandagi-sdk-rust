@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- `bank_account().file("money/Operating.money.rs")` names a money account that says every other field (`name` is no
+  longer required: a line has a name or a file).
 - `commandagi::design::money`: `money_account([...]).name(..).kind(..).institution(..).last4(..).currency(..)
   .ledger(..).books(..).statements(..).opened(..).closed(..).holder(..)` with `connection().id(..).provider(..)
   .account(..).mode(..)`, `counterparty([at().connection(..).recipient(..)]).id(..).name(..).kind(..).file(..)` and
