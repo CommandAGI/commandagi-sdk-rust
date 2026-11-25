@@ -52,7 +52,6 @@ attributes! {
 pub(crate) const FAMILY: Family = Family { module: "money", roots: &["MoneyAccount"], declare };
 
 pub const MONEY_KINDS: &[&str] = &["checking", "savings", "money-market", "card", "loan", "credit-line", "brokerage", "payments", "wallet", "other"];
-pub const MONEY_PROVIDER_IDS: &[&str] = &["stripe-financial-connections", "plaid", "stripe-treasury", "increase", "mercury", "brex", "venue"];
 pub const MONEY_RAILS: &[&str] = &["ach", "wire", "book", "rtp", "check"];
 pub const MONEY_EVERY: &[&str] = &["week", "month", "quarter", "year"];
 pub const MONEY_ACCOUNT_FIELDS: &[&str] = &["name", "kind", "institution", "last4", "currency", "ledger", "books", "statements", "opened", "closed", "holder"];
@@ -93,6 +92,13 @@ fn short(v: Option<&Json>, max: usize) -> Option<String> {
 
 fn str_of(v: Option<&Json>) -> Option<&str> {
     v.and_then(Json::as_str)
+}
+
+/// A provider is named by its id; the platform's catalog names the providers (docs/financial-accounts.md), so a new one needs no SDK release.
+fn provider_id(v: Option<&Json>) -> bool {
+    let Some(Json::Str(s)) = v else { return false };
+    let b = s.as_bytes();
+    !b.is_empty() && b.len() <= 40 && b[0].is_ascii_lowercase() && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
 fn one_of(v: Option<&Json>, list: &[&str]) -> bool {
@@ -160,8 +166,8 @@ fn id_of(t: &DocTree, tag: &str) -> Result<String, String> {
 
 fn connection_of(t: &DocTree) -> Result<Json, String> {
     let at = id_of(t, "Connection")?;
-    if !one_of(t.attr_of("provider"), MONEY_PROVIDER_IDS) {
-        return Err(format!("{at} provider is {}, not {}", MONEY_PROVIDER_IDS.join(", "), said(t.attr_of("provider"))));
+    if !provider_id(t.attr_of("provider")) {
+        return Err(format!("{at} provider is a provider's id (lowercase letters, digits and -, as plaid or increase), not {}", said(t.attr_of("provider"))));
     }
     if short(t.attr_of("account"), 200).is_none() {
         return Err(format!("{at} account is the provider's own id of the account (not a bank number), not {}", said(t.attr_of("account"))));

@@ -43,7 +43,7 @@ fn a_money_account_that_does_not_read_is_refused_with_why() {
     for (el, why) in [
         (money_account([]).name("O").kind("piggy-bank"), "kind is checking"),
         (money_account([]).name("O").kind("checking").last4("123456"), "last4 is the last four digits"),
-        (bare(vec![connection().id("x").provider("acme").account("a")]), "provider is stripe-financial-connections"),
+        (bare(vec![connection().id("x").provider("Acme Bank").account("a")]), "provider is a provider's id"),
         (bare(vec![counterparty([]).id("a").name("A")]), "needs an <At connection recipient>"),
         (bare(vec![counterparty([at().connection("nowhere").recipient("r")]).id("a").name("A")]), "<At> connection is the id of a <Connection>"),
         (operating(rent().to("nobody")), "to is the id of a <Counterparty>"),
