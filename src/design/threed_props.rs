@@ -2129,6 +2129,8 @@ pub struct ExternalPartProps {
     pub moves: Option<Vec<PlacedMove>>,
     /// A placed 3D document at other values of its `<parameter>`s, each by its name: a library profile at its cut length (`inputs={{ length: 2830 }}`), a screw at its length. The file is built at those values for this placement alone; a name the file does not declare is an error of the placement.
     pub inputs: Option<Vec<(String, f64)>>,
+    /// A placed 3D document's scene comes with it (`<externalPart … scene />`): its bodies, robots, people, policies, agents and systems step here, each id under this placement's (`place-ana`), with its environment when this document declares none (docs/formats.md § a placed file's scene). Only a placement whose importer is `3d`.
+    pub scene: Option<bool>,
     /// How the linked part's bodies combine with the bodies before it.
     /// Default: `"new"`.
     pub operation: Option<BooleanMode>,
@@ -2186,6 +2188,9 @@ impl ToJson for ExternalPartProps {
         }
         if let Some(v) = &self.inputs {
             o.set("inputs", v.to_json());
+        }
+        if let Some(v) = &self.scene {
+            o.set("scene", v.to_json());
         }
         if let Some(v) = &self.operation {
             o.set("operation", v.to_json());
