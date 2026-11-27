@@ -8,6 +8,8 @@ promises nothing about the next one: read this file before you change the tag yo
 
 Added
 
+- Products: `.kind("subscription")`, a product paid again each `.interval("month")` or `"year"` (on each `variant()`)
+  until the buyer cancels; the quantity bought is the number of seats. It ships nothing and names no file.
 - `bank_account().file("money/Operating.money.rs")` names a money account that says every other field (`name` is no
   longer required: a line has a name or a file).
 - `commandagi::design::money`: `money_account([...]).name(..).kind(..).institution(..).last4(..).currency(..)

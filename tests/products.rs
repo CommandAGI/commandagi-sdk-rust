@@ -61,13 +61,28 @@ fn the_examples_are_their_documents_each_site_by_its_key() {
 }
 
 #[test]
+fn a_subscription_is_its_document() {
+    let (_, doc, _) = document(product([variant().sku("team-seat-month").name("Team, a seat a month").price_cents(8900).interval("month")]).name("Team").kind("subscription").status("active"));
+    assert_eq!(
+        doc,
+        Json::parse(r#"{"name": "Team", "kind": "subscription", "status": "active",
+            "variants": [{"sku": "team-seat-month", "name": "Team, a seat a month", "priceCents": 8900, "interval": "month"}], "discounts": []}"#)
+        .unwrap()
+    );
+}
+
+#[test]
 fn a_product_that_does_not_read_is_refused_with_why() {
     let v = || variant().sku("a").name("b").price_cents(100);
     let d = || discount().code("SAVE5").amount_cents(500);
     let dig = |vs: Vec<El>| product(vs).name("x").kind("digital");
     let ph = |vs: Vec<El>| product(vs).name("x").kind("physical").shipping(json(SHIPPING));
     for (g, why) in [
-        (product([v()]).name("x").kind("service"), "kind is physical or digital"),
+        (product([v()]).name("x").kind("service"), "kind is physical or digital or subscription"),
+        (product([v()]).name("x").kind("subscription"), "is a subscription: interval is month or year"),
+        (product([v().interval("month").stock(3)]).name("x").kind("subscription"), "is a subscription: it has no stock"),
+        (product([v().interval("month")]).name("x").kind("subscription").shipping(json(SHIPPING)), "is subscription: it ships nothing"),
+        (ph(vec![v().interval("month")]), "is physical: it is paid once, so it has no interval"),
         (dig(vec![v().file("f.zip")]).shipping(json(SHIPPING)), "is digital: it ships nothing"),
         (dig(vec![v()]), "is digital: file names the file it sells"),
         (dig(vec![v().file("f.zip").deposit(json(r#"{"percent": 10}"#))]), "is digital: it takes no deposit"),

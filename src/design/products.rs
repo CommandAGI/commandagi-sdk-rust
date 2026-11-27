@@ -21,8 +21,9 @@
 //! ```
 //!
 //! `codes` (product schemes: unspsc, gs1, hs) and `tags` say what kind of product it is ([`super::classification`];
-//! docs/formats.md § classification). `kind` is `physical` (`shipping` is its policy, required) or `digital` (each variant names the `file` it sells; no
-//! shipping, weight, stock or deposit). A physical variant with no `stock` is made to order. A `deposit`
+//! docs/formats.md § classification). `kind` is `physical` (`shipping` is its policy, required), `digital` (each variant names the `file` it sells; no
+//! shipping, weight, stock or deposit) or `subscription` (paid again each `interval`, `month` or `year`; the quantity bought is
+//! the number of seats; no shipping, file, weight, stock or deposit). A physical variant with no `stock` is made to order. A `deposit`
 //! (`{"percent": 1..99}` or `{"cents": n}`, at least 50 and less than the price) makes a variant a pre-order. A
 //! `discount` takes `percent` or `amount_cents` off, between `starts_at` and `ends_at` (ISO 8601; a date-time with no
 //! offset is UTC), for at most `usage_limit` orders. A run gives back `{format: "product", document, sources}` beside an
@@ -47,17 +48,19 @@ attributes! {
     /// The fields of a product, of its variants and of its discounts, chained on their elements.
     pub trait ProductsAttrs {
         name; kind; slug; subtitle; description; images; status; shipping; fulfilment; quantity_terms; embodiment_kind; tax_code; codes; tags;
-        sku; price_cents; compare_at_cents; stock; options; weight_grams; file; deposit;
+        sku; price_cents; compare_at_cents; stock; options; weight_grams; file; deposit; interval;
         code; percent; amount_cents; starts_at; ends_at; usage_limit;
     }
 }
 
 pub(crate) const FAMILY: Family = Family { module: "products", roots: &["product"], declare };
 
-pub const PRODUCT_KINDS: &[&str] = &["physical", "digital"];
+pub const PRODUCT_KINDS: &[&str] = &["physical", "digital", "subscription"];
+/// How often a subscription is paid again.
+pub const SUBSCRIPTION_INTERVALS: &[&str] = &["month", "year"];
 pub const PRODUCT_STATUSES: &[&str] = &["draft", "active", "archived"];
 pub const PRODUCT_FIELDS: &[&str] = &["name", "kind", "slug", "subtitle", "description", "images", "status", "shipping", "fulfilment", "quantityTerms", "embodimentKind", "taxCode", "codes", "tags"];
-pub const VARIANT_FIELDS: &[&str] = &["sku", "name", "priceCents", "compareAtCents", "stock", "options", "weightGrams", "file", "deposit"];
+pub const VARIANT_FIELDS: &[&str] = &["sku", "name", "priceCents", "compareAtCents", "stock", "options", "weightGrams", "file", "deposit", "interval"];
 pub const DISCOUNT_FIELDS: &[&str] = &["code", "percent", "amountCents", "startsAt", "endsAt", "usageLimit"];
 
 const PRODUCT: Vocabulary = Vocabulary {
@@ -227,6 +230,23 @@ pub fn variant_of(t: &DocTree, kind: &str) -> Result<Json, String> {
         }
         out.set("options", o.clone());
     }
+    if kind == "subscription" {
+        for k in ["stock", "weightGrams", "deposit", "file"] {
+            if t.attr_of(k).is_some() {
+                return Err(format!("{at} is a subscription: it has no {k}"));
+            }
+        }
+        match t.attr_of("interval") {
+            Some(Json::Str(i)) if SUBSCRIPTION_INTERVALS.contains(&i.as_str()) => {
+                out.set("interval", Json::Str(i.clone()));
+            }
+            other => return Err(format!("{at} is a subscription: interval is month or year, not {}", said(other))),
+        }
+        return Ok(out);
+    }
+    if t.attr_of("interval").is_some() {
+        return Err(format!("{at} is {kind}: it is paid once, so it has no interval"));
+    }
     if kind == "digital" {
         if stock.is_some() {
             return Err(format!("{at} is digital: it has no stock (a file does not run out)"));
@@ -362,8 +382,8 @@ pub fn product_of(t: &DocTree) -> Result<Json, String> {
         }
         out.set("status", s.clone());
     }
-    if kind == "digital" && t.attr_of("shipping").is_some() {
-        return Err(format!("{at} is digital: it ships nothing, so it has no shipping"));
+    if kind != "physical" && t.attr_of("shipping").is_some() {
+        return Err(format!("{at} is {kind}: it ships nothing, so it has no shipping"));
     }
     if kind == "physical" {
         match t.attr_of("shipping") {
